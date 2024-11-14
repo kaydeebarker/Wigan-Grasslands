@@ -1,0 +1,65 @@
+---
+title: "Wigan Grassland Restoration"
+author: "Kaydee S. Barker"
+date: "`r Sys.Date()`"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(ggfortify)
+library(dplyr)
+
+
+```
+
+# FTIR data
+
+```{r, include=FALSE}
+
+#read in data
+FTIR <- read_csv("FTIR_Sam.csv")
+FTIR$Site <- as.factor(FTIR$Site)
+FTIR <- FTIR[,-1]
+
+#Standardize data
+FTIR_standardized <- FTIR %>%
+  mutate_if(is.numeric,scale)
+
+#Numeric values only for prcomp
+FTIR_standardized_num <- FTIR_standardized[,-1]
+
+```
+
+## Set up PCA
+```{r PCA}
+
+#PCA
+FTIR_pca <- prcomp(FTIR_standardized_num) #perform PCA on standardized variables
+
+summary(FTIR_pca) #view importance of principal components and proportion of variances
+
+FTIR_pca$rotation #view loadings from the standardized data
+screeplot(FTIR_pca) # diagnostic plot to make sure principal components are in order
+
+
+```
+
+## PCA Biplot
+```{r}
+
+#basic plot
+biplot(FTIR_pca)
+
+#customized plot
+autoplot(FTIR_pca, data = FTIR_standardized, colour = 'Site', 
+        loadings = TRUE, loadings.colour = 'red',
+        loadings.label = TRUE, loadings.label.size = 3,
+        frame = TRUE, frame.type = 'norm') +
+  theme_bw() + 
+  ggtitle("Principal Components of FTIR Wavelengths Across Sites") 
+
+```
