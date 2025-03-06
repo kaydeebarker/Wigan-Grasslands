@@ -7,34 +7,115 @@ output:
   html_document: default
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-library(tidyverse)
-library(ggfortify)
-library(dplyr)
+# Set up
 
+```{r setup, include=FALSE}
+
+rm(list=ls()) #clear global environment/workspace
+knitr::opts_chunk$set(echo = TRUE) #default display code in knit output (FALSE will hide)
 
 ```
 
-# FTIR data
+## Load libraries (and install if needed)
 
-```{r, include=FALSE}
+```{r libraries, warning=FALSE, include=FALSE}
 
-#read in data
+#Create groups of packages/libraries 
+
+##1. For data reading and manipulation - could just do tidyverse and a few others, or make group of specific libraries for faster loading
+datalib <- c("dplyr", "tidyr", "readr", "readxl", "stringr", "tibble", "reshape2", "janitor") 
+
+##2. For data visualization (note ggplot2 is in tidyverse)
+vislib <- c("ggplot2", "ggthemes", "ggfortify", "ggrepel", "plotrix", "RColorBrewer", "Cairo")
+
+##3. For calculation and stats functions, including ecology-specific libraries
+statlib <- c("car", "MASS", "rcompanion", "zoo", "lme4", "MuMIn", "emmeans", "ARTool", "dunn.test", "performance", "see", "corrplot", "BAT", "vegan")
+
+#Install packages as needed - commented out, but remove # and adjust as needed
+##as a group:
+#lapply(c(datalib, vislib, statlib), install.packages, character.only = TRUE)
+
+##or individually:
+#install.packages("janitor") #install janitor to help clean up data
+
+#Load libraries
+lapply(c(datalib, vislib, statlib), library, character.only = TRUE)
+
+```
+
+## Define custom design settings for plots
+
+```{r design, echo=FALSE}
+
+#Color palettes
+
+#color palette example using hex codes
+colors <- c("#F26361", "#F2D561", "#61F28F", "#6169F2")
+
+#color palette with gradient with 20 steps
+colors_ramp <- colorRampPalette(c("#F26361", "azure","#6169F2"))(20)
+
+#Color variables
+
+#define individual colors for plot elements
+plotline_color <- "darkgreen" #define color for plot lines
+fill_color <- "palegreen" #define color for fill
+
+#Custom ggplot configurations 
+
+#Create a custom theme for ggplot with font, legend, and background settings. Transparent allows transparent png or pdf export.
+my_theme <- theme(text = element_text(family = "Arial", size = 12, color = "grey10"), #set universal font family, size, and color
+              plot.title = element_text(size = 20, color = "black", face="bold"), #set title size, color, bold
+              plot.title.position = "plot", #set title position
+              legend.title = element_blank(), #remove legend title
+              legend.position="bottom", legend.box = "horizontal", #show legend at the bottom of your chart with variables listed side by side rather than stacked
+              panel.background = element_rect(fill='transparent'), plot.background = element_rect(fill='transparent', color=NA), #make backgrounds transparent
+              panel.grid.major = element_blank(), panel.grid.minor = element_blank()) #no gridlines
+
+```
+
+## Order variables
+
+```{r labels, echo=FALSE}
+
+#Create an order of observations within a variable to override the default order for plots
+order_sites <- c("Bickershaw 1", "Bickershaw 2", "Amberswood", "Flashes")
+
+order_management <- c("Unmanaged", "4 Years", "15 Years", "23 Years")
+
+```
+
+## Load data
+
+```{r load data, include=FALSE}
+
+#read in FTIR data
 FTIR <- read_csv("FTIR_Sam.csv")
 FTIR$Site <- as.factor(FTIR$Site)
 FTIR <- FTIR[,-1]
 
-#Standardize data
+#Standardize
 FTIR_standardized <- FTIR %>%
   mutate_if(is.numeric,scale)
 
 #Numeric values only for prcomp
 FTIR_standardized_num <- FTIR_standardized[,-1]
 
+#read in incubation data
+endbiomass <- read_csv("End_incubation_biomass.csv") #load
+
+summary_endbio <- endbiomass %>%
+  dplyr::select(Management, rocks_debris, end_drymass, end_drymass_perL) %>%
+  group_by(Management) %>%
+  summarise_all(funs(mean(., na.rm=TRUE), sd(., na.rm=TRUE), std.error(., na.rm=TRUE)))
+
+summary_endbio$Management <- factor(summary_endbio$Management, levels = order_management)
+
 ```
 
-## Set up PCA
+
+# PCA on FTIR Data
+
 ```{r PCA}
 
 #PCA
@@ -44,12 +125,6 @@ summary(FTIR_pca) #view importance of principal components and proportion of var
 
 FTIR_pca$rotation #view loadings from the standardized data
 screeplot(FTIR_pca) # diagnostic plot to make sure principal components are in order
-
-
-```
-
-## PCA Biplot
-```{r}
 
 #basic plot
 biplot(FTIR_pca)
@@ -63,3 +138,45 @@ autoplot(FTIR_pca, data = FTIR_standardized, colour = 'Site',
   ggtitle("Principal Components of FTIR Wavelengths Across Sites") 
 
 ```
+
+# Bar and box charts
+
+```{r end bio, warning=FALSE}
+
+#mass bar chart with error bars
+ggplot(data = summary_endbio, aes(x=Management, y=end_drymass_mean, fill=Management)) + 
+	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
+  scale_fill_manual(values = colors) + #define colors to use
+  geom_errorbar(aes(ymin=end_drymass_mean-end_drymass_std.error, ymax=end_drymass_mean+end_drymass_std.error),
+  color = "grey10", width = 0.7, position = "dodge") + 
+  ggtitle("Ending biomass per treatment") + #add a graph title
+  xlab("Management") + ylab("Root dry mass (g)") + #define/change X and Y labels
+  my_theme
+
+#ANOVA and Tukey
+endmass_aov <- aov(end_drymass ~ factor(Management), data = endbiomass)
+summary(endmass_aov) #P=0.0344
+TukeyHSD(endmass_aov) #Unmanaged-23 Years P=0.0278
+
+```
+
+```{r rocks, warning=FALSE}
+
+#mass bar chart with error bars
+ggplot(data = summary_endbio, aes(x=Management, y=rocks_debris_mean, fill=Management)) + 
+	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
+  scale_fill_manual(values = colors) + #define colors to use
+  geom_errorbar(aes(ymin=rocks_debris_mean-rocks_debris_std.error, ymax=rocks_debris_mean+rocks_debris_std.error),
+  color = "grey10", width = 0.7, position = "dodge") + 
+  ggtitle("Rocks and Debris per site") + #add a graph title
+  xlab("Management") + ylab("Mass (g)") + #define/change X and Y labels
+  my_theme
+
+#ANOVA and Tukey
+rmass_aov <- aov(rocks_debris ~ factor(Management), data = endbiomass)
+summary(rmass_aov) #P=2.3e-6
+TukeyHSD(rmass_aov) #Unmanaged-23 yr P=0.0000012, Unmanaged-15 yr P=0.0057, 4 yr-23 yr P=0.00013, 15 yr-23 yr P=0.0013
+
+```
+
+

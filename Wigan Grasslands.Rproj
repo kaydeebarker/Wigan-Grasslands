@@ -1,4 +1,5 @@
 Version: 1.0
+ProjectId: 9d822de8-01f8-4f09-8b31-751019d4c9df
 
 RestoreWorkspace: Default
 SaveWorkspace: Default
@@ -11,3 +12,5 @@ Encoding: UTF-8
 
 RnwWeave: Sweave
 LaTeX: pdfLaTeX
+
+ProjectName: Wigan Grasslands
