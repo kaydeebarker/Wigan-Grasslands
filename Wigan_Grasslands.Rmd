@@ -249,6 +249,20 @@ TukeyHSD(endmass_aov) #Unmanaged-23 Years P=0.0278
 
 ```
 
+## Root:shoot ratio
+```{r rs, warning=FALSE}
+
+#root:shoot ratio box plot
+ggplot(data = plant_harvest_est[-c(118,153),], #species data minus major outliers
+       aes(x=management, y=root_shoot, fill=management)) + 
+	geom_boxplot() +
+  scale_fill_manual(values = colors) + #define colors to use
+  ggtitle("Root:Shoot ratio per management time") + #add a graph title
+  xlab("Management") + ylab("Root:Shoot ratio") + #define/change X and Y labels
+  my_theme
+
+```
+
 ## Decomposition
 
 ```{r decomp, warning=FALSE}
