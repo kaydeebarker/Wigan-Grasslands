@@ -160,7 +160,7 @@ total_pots <- plant_harvest_est %>%
 
 #read in incubation data, add beginning, calculate change in biomass
 endbiomass <- read_csv("End_incubation_biomass.csv") %>% #load
-  mutate(est_beg_drymass = summary_pots$root[match(Pot, summary_pots$pot)]) %>% #add estimated beginning biomass
+  mutate(est_beg_drymass = total_pots$root[match(Pot, total_pots$pot)]) %>% #add estimated beginning biomass
   mutate(beg_drymass_perL = est_beg_drymass / 6.1) %>% #calculate dry mass per liter
   mutate(dmass_dT = est_beg_drymass - end_drymass) %>% #calculate change in dry mass
   mutate(dmass_dT_perL = beg_drymass_perL - end_drymass_perL) %>% #calculate change in dry mass per liter
