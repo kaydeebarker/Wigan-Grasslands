@@ -101,6 +101,43 @@ FTIR_standardized <- FTIR %>%
 #numeric values only for prcomp
 FTIR_standardized_num <- FTIR_standardized[,-1]
 
+#read in field soil C/N data
+SOM_fielddata <- read_csv("SOM_field.csv") 
+
+#Combine SOM, POM, and MAOM as one observation per plot
+SOM <- SOM_fielddata %>%
+  filter(Fraction == "SOM") %>%
+  rename("SOM_C" = "C_gkg") %>%
+  rename("SOM_N" = "N_gkg") %>%
+  rename("SOM_CN" = "C_N")
+
+POM <- SOM_fielddata %>%
+  filter(Fraction == "POM") %>%
+  rename("POM_C" = "C_gkg") %>%
+  rename("POM_N" = "N_gkg") %>%
+  rename("POM_CN" = "C_N")
+  
+MAOM <- SOM_fielddata %>%
+  filter(Fraction == "MAOM") %>%
+  rename("MAOM_C" = "C_gkg") %>%
+  rename("MAOM_N" = "N_gkg") %>%
+  rename("MAOM_CN" = "C_N")
+
+SOM_fielddata2 <- merge(SOM,POM, by=c("Site","Management", "Plot_ID"), all.y=TRUE) %>%
+  merge(MAOM, by=c("Site","Management", "Plot_ID"), all.y=TRUE) %>%
+  dplyr::select(Site, Management, Plot_ID, SOM_C, SOM_N, SOM_CN, POM_C, POM_N, POM_CN, MAOM_C, MAOM_N, MAOM_CN, fMAOM_C, fMAOM_N) %>%
+  mutate(years =
+           case_when(Management == "Unmanaged" ~ 0,
+                     Management == "4 Years" ~ 4,
+                     Management == "15 Years" ~ 15,
+                     Management == "23 Years" ~ 23))
+
+#summarize SOM data for plots
+summary_SOM <- SOM_fielddata2 %>%
+  dplyr::select(Site, Management, years, SOM_C, SOM_N, SOM_CN, POM_C, POM_N, POM_CN, MAOM_C, MAOM_N, MAOM_CN) %>%
+  group_by(Site, Management, years) %>%
+  summarise_all(funs(mean(., na.rm=TRUE), sd(., na.rm=TRUE), std.error(., na.rm=TRUE)))
+
 #read in 13C initial harvest data
 harvest <- read_csv("Stagg_harvest.csv") %>% #load
   clean_names() #clean up column names
@@ -133,6 +170,26 @@ summary_species <- plant_harvest %>%
 #add mean data to harvest data for estimates
 plant_harvest_est <- plant_harvest %>%
   #replace(is.na(.), 0) %>%
+  mutate(site2 =
+           case_when(pot == "G20" | pot == "G31" | #higher root values
+                       pot == "G37" | pot == "G7"
+                     ~ "bickershaw1_high",
+                     pot == "G1" | pot == "G30" | pot == "G39" | #lower root values
+                       pot == "G34" | pot == "G26" | pot == "G3" 
+                     ~ "bickershaw1_low",
+                     pot == "G33" | pot == "G35" | pot == "G41" |
+                       pot == "G23" | pot == "G24" |pot == "G40"
+                     ~ "bickershaw2_high",
+                     pot == "G8" | pot == "G42" |
+                       pot == "G4" | pot == "G28"
+                     ~ "bickershaw2_low",
+                     pot == "G12" | pot == "GA1" | pot == "GA2" |
+                       pot == "G5" | pot == "G6" | pot == "GA4" 
+                     ~ "amberswood_high",
+                     pot == "G22" | pot == "G9" |
+                       pot == "G21" | pot == "GA3"
+                     ~ "amberswood_low",
+                     .default = site)) %>%
   mutate(root_shoot =
            case_when(root_shoot > 0 ~ root_shoot, 
                      TRUE ~ summary_species$root_shoot_mean
@@ -142,35 +199,44 @@ plant_harvest_est <- plant_harvest %>%
                      TRUE ~ root_shoot * shoot))
 
 #summarize general roots amount by site
-general_roots <- plant_harvest %>%
+general_roots <- plant_harvest_est %>%
   filter(species == "general_roots") %>%
-  dplyr::select(site, root) %>%
-  group_by(site) %>%
+  dplyr::select(site2, root) %>%
+  group_by(site2) %>%
   summarise_all(funs(mean(., na.rm=TRUE), sd(., na.rm=TRUE), std.error(., na.rm=TRUE)))
 
 #calculate and estimate biomass per pot
 total_pots <- plant_harvest_est %>%
-  dplyr::select(site, management, pot, harvesttime, root, shoot, root_shoot) %>%
-  group_by(site, management, pot, harvesttime) %>%
+  dplyr::select(site2, management, pot, harvesttime, root, shoot, root_shoot) %>%
+  group_by(site2, management, pot, harvesttime) %>%
   summarise(root = sum(root, na.rm=TRUE), shoot = sum(shoot, na.rm=TRUE), root_shoot = mean(root_shoot, na.rm=TRUE)) %>% #summarize
   mutate(root = #add some general roots to the estimated beginning biomass for incubation
            dplyr::case_when(harvesttime == "T0" ~ root,
-                     TRUE ~ root + general_roots$mean[match(site, general_roots$site)] +
-                     general_roots$std.error[match(site, general_roots$site)]))
+                     TRUE ~ root + general_roots$mean[match(site2, general_roots$site2)])) #+
+                     #general_roots$sd[match(site2, general_roots$site2)]))
+
+#write csv for measured and estimated beginning biomass
+write.csv(plant_harvest_est, "begin_estimates_bysp.csv") #saves as csv in current workspace
+write.csv(total_pots, "begin_estimates_bypot.csv") #saves as csv in current workspace
 
 #read in incubation data, add beginning, calculate change in biomass
 endbiomass <- read_csv("End_incubation_biomass.csv") %>% #load
   mutate(est_beg_drymass = total_pots$root[match(Pot, total_pots$pot)]) %>% #add estimated beginning biomass
   mutate(beg_drymass_perL = est_beg_drymass / 6.1) %>% #calculate dry mass per liter
-  mutate(dmass_dT = est_beg_drymass - end_drymass) %>% #calculate change in dry mass
-  mutate(dmass_dT_perL = beg_drymass_perL - end_drymass_perL) %>% #calculate change in dry mass per liter
+  mutate(dmass_dT = est_beg_drymass - end_drymass_clean) %>% #calculate change in dry mass
+  mutate(dmass_dT_perL = beg_drymass_perL - end_drymass_perL_clean) %>% #calculate change in dry mass per liter
   mutate(decomp_per_unadj = dmass_dT / est_beg_drymass) %>% #calculate decomposition percentage - not adjusting volume
-  mutate(decomp_per_adj = dmass_dT_perL / beg_drymass_perL) #calculate decomposition percentage - adjusting volume
+  mutate(decomp_per_adj = dmass_dT_perL / beg_drymass_perL) %>% #calculate decomposition percentage - adjusting volume
+  mutate(years =
+           case_when(Management == "Unmanaged" ~ 0,
+                     Management == "4 Years" ~ 4,
+                     Management == "15 Years" ~ 15,
+                     Management == "23 Years" ~ 23))
 
 #summarise
 summary_endbio <- endbiomass %>%
-  dplyr::select(Management, rocks_debris, end_drymass, end_drymass_perL, est_beg_drymass, beg_drymass_perL, decomp_per_adj) %>%
-  group_by(Management) %>%
+  dplyr::select(Management, years, rocks_debris, end_drymass_clean, end_drymass_perL_clean, est_beg_drymass, beg_drymass_perL, decomp_per_adj) %>%
+  group_by(Management, years) %>%
   summarise_all(funs(mean(., na.rm=TRUE), sd(., na.rm=TRUE), std.error(., na.rm=TRUE)))
 
 #order variables
@@ -207,6 +273,146 @@ autoplot(FTIR_pca, data = FTIR_standardized, colour = 'Site',
 
 # Bar and box charts
 
+## Field Soil C and N
+
+```{r SOC}
+
+summary_SOM$Site <- factor(summary_SOM$Site, levels = order_sites)
+
+#SOM C bar chart with error bars
+ggplot(data = summary_SOM, aes(x=Site, y=SOM_C_mean, fill=Site)) + 
+	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
+  scale_fill_manual(values = colors) + #define colors to use
+  geom_errorbar(aes(ymin=SOM_C_mean-SOM_C_std.error, ymax=SOM_C_mean+SOM_C_std.error),
+  color = "grey10", width = 0.7, position = "dodge") + 
+  ggtitle("Soil Organic Matter C per site") + #add a graph title
+  xlab("Site") + ylab("C (g/kg)") + #define/change X and Y labels
+  my_theme
+
+```
+
+```{r SOM-N}
+
+#SOM N bar chart with error bars
+ggplot(data = summary_SOM, aes(x=Site, y=SOM_N_mean, fill=Site)) + 
+	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
+  scale_fill_manual(values = colors) + #define colors to use
+  geom_errorbar(aes(ymin=SOM_N_mean-SOM_N_std.error, ymax=SOM_N_mean+SOM_N_std.error),
+  color = "grey10", width = 0.7, position = "dodge") + 
+  ggtitle("Soil Organic Matter N per site") + #add a graph title
+  xlab("Site") + ylab("N (g/kg)") + #define/change X and Y labels
+  my_theme
+
+```
+
+```{r SOM-CN}
+
+#SOM CN boxplot
+ggplot(data = SOM_fielddata2, aes(x=Site, y=SOM_CN, fill=Site)) + 
+	geom_boxplot() +
+  scale_fill_manual(values = colors) + #define colors to use
+  ggtitle("Soil Organic Matter C:N per site") + #add a graph title
+  xlab("Site") + ylab("C:N") + #define/change X and Y labels
+  my_theme
+
+```
+
+```{r POM-C}
+
+#POM C bar chart with error bars
+ggplot(data = summary_SOM, aes(x=Site, y=POM_C_mean, fill=Site)) + 
+	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
+  scale_fill_manual(values = colors) + #define colors to use
+  geom_errorbar(aes(ymin=POM_C_mean-POM_C_std.error, ymax=POM_C_mean+POM_C_std.error),
+  color = "grey10", width = 0.7, position = "dodge") + 
+  ggtitle("Particulate Organic Matter C per site") + #add a graph title
+  xlab("Site") + ylab("C (g/kg)") + #define/change X and Y labels
+  my_theme
+
+```
+
+```{r POM-N}
+
+#POM N bar chart with error bars
+ggplot(data = summary_SOM, aes(x=Site, y=POM_N_mean, fill=Site)) + 
+	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
+  scale_fill_manual(values = colors) + #define colors to use
+  geom_errorbar(aes(ymin=POM_N_mean-POM_N_std.error, ymax=POM_N_mean+POM_N_std.error),
+  color = "grey10", width = 0.7, position = "dodge") + 
+  ggtitle("Particulate Organic Matter N per site") + #add a graph title
+  xlab("Site") + ylab("N (g/kg)") + #define/change X and Y labels
+  my_theme
+
+```
+
+```{r MAOM-C}
+
+#MAOM C bar chart with error bars
+ggplot(data = summary_SOM, aes(x=Site, y=MAOM_C_mean, fill=Site)) + 
+	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
+  scale_fill_manual(values = colors) + #define colors to use
+  geom_errorbar(aes(ymin=MAOM_C_mean-MAOM_C_std.error, ymax=MAOM_C_mean+MAOM_C_std.error),
+  color = "grey10", width = 0.7, position = "dodge") + 
+  ggtitle("Mineral Associated Organic Matter C per site") + #add a graph title
+  xlab("Site") + ylab("C (g/kg)") + #define/change X and Y labels
+  my_theme
+
+```
+
+```{r MAOM-N}
+
+#MAOM N bar chart with error bars
+ggplot(data = summary_SOM, aes(x=Site, y=MAOM_N_mean, fill=Site)) + 
+	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
+  scale_fill_manual(values = colors) + #define colors to use
+  geom_errorbar(aes(ymin=MAOM_N_mean-MAOM_N_std.error, ymax=MAOM_N_mean+MAOM_N_std.error),
+  color = "grey10", width = 0.7, position = "dodge") + 
+  ggtitle("Mineral Associated Organic Matter N per site") + #add a graph title
+  xlab("Site") + ylab("N (g/kg)") + #define/change X and Y labels
+  my_theme
+
+```
+
+```{r fMAOM-C}
+
+SOM_fielddata2$Site <- factor(SOM_fielddata2$Site, levels = order_sites)
+
+#fMAOM C box chart
+ggplot(data = SOM_fielddata2, aes(x=Site, y=fMAOM_C, fill=Site)) + 
+	geom_boxplot() +
+  scale_fill_manual(values = colors) + #define colors to use
+  ggtitle("fMAOM C per site") + #add a graph title
+  xlab("Site") + ylab("C (g/kg)") + #define/change X and Y labels
+  my_theme
+
+```
+
+```{r fMAOM-N}
+
+#fMAOM N box chart
+ggplot(data = SOM_fielddata2, aes(x=Site, y=fMAOM_N, fill=Site)) + 
+	geom_boxplot() +
+  scale_fill_manual(values = colors) + #define colors to use
+  ggtitle("fMAOM N per site") + #add a graph title
+  xlab("Site") + ylab("N (g/kg)") + #define/change X and Y labels
+  my_theme
+
+```
+
+
+```{r}
+
+summary(aov(SOM_C ~ Management, data = SOM_fielddata2))
+summary(aov(SOM_N ~ Management, data = SOM_fielddata2))
+summary(aov(POM_C ~ Management, data = SOM_fielddata2))
+summary(aov(POM_N ~ Management, data = SOM_fielddata2))
+summary(aov(MAOM_C ~ Management, data = SOM_fielddata2))
+summary(aov(MAOM_N ~ Management, data = SOM_fielddata2))
+summary(aov(fMAOM_C ~ Management, data = SOM_fielddata2))
+summary(aov(fMAOM_N ~ Management, data = SOM_fielddata2))
+
+```
+
 ## Biomass
 
 ### Beginning combined roots
@@ -233,19 +439,19 @@ TukeyHSD(begmass_aov) #Unmanaged-23 Years P=0.0048, 4 Years-23 Years P=0.00067, 
 ```{r end root bio, warning=FALSE}
 
 #mass bar chart with error bars
-ggplot(data = summary_endbio, aes(x=Management, y=end_drymass_mean, fill=Management)) + 
+ggplot(data = summary_endbio, aes(x=Management, y=end_drymass_clean_mean, fill=Management)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
   scale_fill_manual(values = colors) + #define colors to use
-  geom_errorbar(aes(ymin=end_drymass_mean-end_drymass_std.error, ymax=end_drymass_mean+end_drymass_std.error),
+  geom_errorbar(aes(ymin=end_drymass_clean_mean-end_drymass_clean_std.error, ymax=end_drymass_clean_mean+end_drymass_clean_std.error),
   color = "grey10", width = 0.7, position = "dodge") + 
   ggtitle("Ending biomass per management time") + #add a graph title
   xlab("Management") + ylab("Root dry mass (g)") + #define/change X and Y labels
   my_theme
 
 #ANOVA and Tukey
-endmass_aov <- aov(end_drymass ~ factor(Management), data = endbiomass)
-summary(endmass_aov) #P=0.0344
-TukeyHSD(endmass_aov) #Unmanaged-23 Years P=0.0278
+endmass_aov <- aov(end_drymass_clean ~ factor(Management), data = endbiomass)
+summary(endmass_aov) #P=0.0268
+TukeyHSD(endmass_aov) #Unmanaged-23yr P=0.024, 4yr-23yr almost 0.077
 
 ```
 
@@ -268,17 +474,33 @@ ggplot(data = plant_harvest_est[-c(118,153),], #species data minus major outlier
 ```{r decomp, warning=FALSE}
 
 #decomposition percentage box plot
-ggplot(data = endbiomass, aes(x=Management, y=decomp_per_adj, fill=Management)) + 
-	geom_boxplot() +
+ggplot(data = endbiomass, aes(x=Management, y=decomp_per_adj)) + 
+	geom_boxplot(aes(fill=Management)) +
   scale_fill_manual(values = colors) + #define colors to use
   ggtitle("Decomposition per treatment") + #add a graph title
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) + #change to %
   xlab("Management") + ylab("Decomposition (%)") + #define/change X and Y labels
   my_theme
 
+#decomposition lm plot
+ggplot(data = endbiomass[-1,], aes(x=years, y=decomp_per_adj)) + 
+	geom_point(aes(color=Management), size=2, alpha=0.5) +
+  scale_fill_manual(values = colors) + #define colors to use
+  geom_smooth(method="lm", se=TRUE, color=plotline_color, fill=fill_color) +
+  scale_x_continuous(breaks=c(0,4,15,23), expand = c(0.1,0.1)) + #set limits and change tick marks on x axis
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) + #change to %
+  ggtitle("Decomposition by Restoration Time") + #add a graph title
+  xlab("Management Time") + ylab("Decomposition (%)") + #define/change X and Y labels
+  my_theme
+
 #ANOVA and Tukey
-decomp_aov <- aov(decomp_per_adj ~ factor(Management), data = endbiomass)
-summary(decomp_aov) #P=0.056 almost
-TukeyHSD(decomp_aov) #Unmanaged-23 Years P=0.052 borderline
+decomp_aov <- aov(decomp_per_adj ~ factor(Management), data = endbiomass[-1,]) #remove G37
+summary(decomp_aov) #P=0.0012
+TukeyHSD(decomp_aov) #23yr vs. unmanaged P=0.0021, 23yr vs 4yr 0.013, 15yr vs unmanaged almost 0.057
+kruskal.test(decomp_per_adj ~ factor(Management), data = endbiomass[-1,]) #Kruskal-Wallis rank sum test P=0.0089
+dunn.test(endbiomass[-1,]$decomp_per_adj, endbiomass[-1,]$Management, method="bonferroni", kw=TRUE) #KW P=0.01, 23yr vs. unmanaged P=0.0053, 23yr vs. 4yr 0.047
+
+
 
 ```
 
