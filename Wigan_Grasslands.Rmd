@@ -50,25 +50,26 @@ lapply(c(datalib, vislib, statlib), library, character.only = TRUE)
 #Color palettes
 
 #color palette example using hex codes
-colors <- c("#F26361", "#F2D561", "#61F28F", "#6169F2")
+colors <- c("#84B699", "#EF8E45", "#BF876E", "#5DDEE7")
 
 #color palette with gradient with 20 steps
-colors_ramp <- colorRampPalette(c("#F26361", "azure","#6169F2"))(20)
+colors_ramp <- colorRampPalette(c("#84B699", "azure","#BF876E"))(20)
 
 #Color variables
 
 #define individual colors for plot elements
-plotline_color <- "darkgreen" #define color for plot lines
-fill_color <- "palegreen" #define color for fill
+plotline_color <- "#BF876E" #define color for plot lines
+fill_color <- "#84B699" #define color for fill
 
 #Custom ggplot configurations 
 
 #Create a custom theme for ggplot with font, legend, and background settings. Transparent allows transparent png or pdf export.
-my_theme <- theme(text = element_text(family = "Arial", size = 12, color = "grey10"), #set universal font family, size, and color
+my_theme <- theme(text = element_text(#family = "Arial", 
+                                      size = 12, color = "grey10"), #set universal font family, size, and color
               plot.title = element_text(size = 20, color = "black", face="bold"), #set title size, color, bold
               plot.title.position = "plot", #set title position
               legend.title = element_blank(), #remove legend title
-              legend.position="bottom", legend.box = "horizontal", #show legend at the bottom of your chart with variables listed side by side rather than stacked
+              legend.position="right", legend.box = "vertical", #where legend appears, what orientation
               panel.background = element_rect(fill='transparent'), plot.background = element_rect(fill='transparent', color=NA), #make backgrounds transparent
               panel.grid.major = element_blank(), panel.grid.minor = element_blank()) #no gridlines
 
@@ -139,6 +140,12 @@ summary_SOM <- SOM_fielddata2 %>%
   dplyr::select(Site, Management, years, SOM_C, SOM_N, SOM_CN, POM_C, POM_N, POM_CN, MAOM_C, MAOM_N, MAOM_CN) %>%
   group_by(Site, Management, years) %>%
   summarise_all(funs(mean(., na.rm=TRUE), sd(., na.rm=TRUE), std.error(., na.rm=TRUE)))
+
+#read in AM data
+AMdata <- read_csv("Wigan_myc.csv")
+
+#read in respiration data
+resp <- read_csv("Wigan_respiration.csv")
 
 #read in 13C initial harvest data
 harvest <- read_csv("Stagg_harvest.csv") %>% #load
@@ -281,16 +288,24 @@ autoplot(FTIR_pca, data = FTIR_standardized, colour = 'Site',
 ```{r SOC}
 
 summary_SOM$Site <- factor(summary_SOM$Site, levels = order_sites)
+summary_SOM$Management <- factor(summary_SOM$Management, levels = order_management)
 
 #SOM C bar chart with error bars
 ggplot(data = summary_SOM, aes(x=Site, y=SOM_C_mean, fill=Site)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
-  scale_fill_npg() + #define colors to use
+  scale_fill_manual(values=colors) + #define colors to use
   geom_errorbar(aes(ymin=SOM_C_mean-SOM_C_std.error, ymax=SOM_C_mean+SOM_C_std.error),
   color = "grey10", width = 0.7, position = "dodge") + 
   ggtitle("Soil Organic Matter C per site") + #add a graph title
   xlab("Site") + ylab("C (g/kg)") + #define/change X and Y labels
   my_theme
+
+#save figure
+ggsave('SOC.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 6, height = 4, units = "in", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
 
 ```
 
@@ -299,12 +314,19 @@ ggplot(data = summary_SOM, aes(x=Site, y=SOM_C_mean, fill=Site)) +
 #SOM N bar chart with error bars
 ggplot(data = summary_SOM, aes(x=Site, y=SOM_N_mean, fill=Site)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
-  scale_fill_npg() + #define colors to use
+  scale_fill_manual(values=colors) + #define colors to use
   geom_errorbar(aes(ymin=SOM_N_mean-SOM_N_std.error, ymax=SOM_N_mean+SOM_N_std.error),
   color = "grey10", width = 0.7, position = "dodge") + 
   ggtitle("Soil Organic Matter N per site") + #add a graph title
   xlab("Site") + ylab("N (g/kg)") + #define/change X and Y labels
   my_theme
+
+#save figure
+ggsave('SOM_N.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 6, height = 4, units = "in", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
 
 ```
 
@@ -313,7 +335,7 @@ ggplot(data = summary_SOM, aes(x=Site, y=SOM_N_mean, fill=Site)) +
 #SOM CN boxplot
 ggplot(data = SOM_fielddata2) + 
 	geom_boxplot(aes(x=Site, y=SOM_CN, fill=Site)) +
-  scale_fill_npg() + #define colors to use
+  scale_fill_manual(values=colors) + #define colors to use
   ggtitle("Soil Organic Matter C:N per site") + #add a graph title
   xlab("Site") + ylab("C:N") + #define/change X and Y labels
   my_theme
@@ -329,16 +351,19 @@ ggsave('SOM_CN.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "ti
 
 ```{r combined C plots}
 
+SOM_fielddata$Site <- factor(SOM_fielddata$Site, levels = order_sites)
+SOM_fielddata$Management <- factor(SOM_fielddata$Management, levels = order_management)
+
 #combined boxplots with error bars
 ggplot(data = SOM_fielddata) + 
-	geom_boxplot(aes(x=Site, y=C_gkg, fill=Fraction)) +
-  scale_fill_npg() + #define colors to use
+	geom_boxplot(aes(x=Management, y=C_gkg, fill=Fraction)) +
+  scale_fill_manual(values=colors) + #define colors to use
   ggtitle("Soil Organic Matter C per site") + #add a graph title
   xlab("Site") + ylab("C (g/kg)") + #define/change X and Y labels
   my_theme
 
 #save figure
-ggsave('SOC_all.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+ggsave('SOMC_all.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
 	path = "Figures", #save to folder within working directory
 	width = 6, height = 4, units = "in", #set dimensions for figure
 	dpi = 300, #set resolution
@@ -351,7 +376,7 @@ ggsave('SOC_all.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "t
 #combined boxplots with error bars
 ggplot(data = SOM_fielddata) + 
 	geom_boxplot(aes(x=Site, y=N_gkg, fill=Fraction)) +
-  scale_fill_npg() + #define colors to use
+  scale_fill_manual(values=colors) + #define colors to use
   ggtitle("Soil Organic Matter N per site") + #add a graph title
   xlab("Site") + ylab("N (g/kg)") + #define/change X and Y labels
   my_theme
@@ -370,7 +395,7 @@ ggsave('SOM_N_all.svg', #save plot name and type - can be "eps", "pdf", "jpeg", 
 #SOM CN boxplot
 ggplot(data = SOM_fielddata) + 
 	geom_boxplot(aes(x=Site, y=C_N, fill=Fraction)) +
-  scale_fill_npg() + #define colors to use
+  scale_fill_manual(values=colors) + #define colors to use
   ggtitle("Soil Organic Matter C:N per site") + #add a graph title
   xlab("Site") + ylab("C:N") + #define/change X and Y labels
   my_theme
@@ -382,7 +407,7 @@ ggplot(data = SOM_fielddata) +
 #POM C bar chart with error bars
 ggplot(data = summary_SOM, aes(x=Site, y=POM_C_mean, fill=Site)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
-  scale_fill_npg() + #define colors to use
+  scale_fill_manual(values=colors) + #define colors to use
   geom_errorbar(aes(ymin=POM_C_mean-POM_C_std.error, ymax=POM_C_mean+POM_C_std.error),
   color = "grey10", width = 0.7, position = "dodge") + 
   ggtitle("Particulate Organic Matter C per site") + #add a graph title
@@ -403,7 +428,7 @@ ggsave('POM_Cbar.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "
 #POM N bar chart with error bars
 ggplot(data = summary_SOM, aes(x=Site, y=POM_N_mean, fill=Site)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
-  scale_fill_npg() + #define colors to use
+  scale_fill_manual(values=colors) + #define colors to use
   geom_errorbar(aes(ymin=POM_N_mean-POM_N_std.error, ymax=POM_N_mean+POM_N_std.error),
   color = "grey10", width = 0.7, position = "dodge") + 
   ggtitle("Particulate Organic Matter N per site") + #add a graph title
@@ -424,7 +449,7 @@ ggsave('POM_Nbar.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "
 #MAOM C bar chart with error bars
 ggplot(data = summary_SOM, aes(x=Site, y=MAOM_C_mean, fill=Site)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
-  scale_fill_npg() + #define colors to use
+  scale_fill_manual(values=colors) + #define colors to use
   geom_errorbar(aes(ymin=MAOM_C_mean-MAOM_C_std.error, ymax=MAOM_C_mean+MAOM_C_std.error),
   color = "grey10", width = 0.7, position = "dodge") + 
   ggtitle("Mineral Associated Organic Matter C per site") + #add a graph title
@@ -445,7 +470,7 @@ ggsave('MAOM_Cbar.svg', #save plot name and type - can be "eps", "pdf", "jpeg", 
 #MAOM N bar chart with error bars
 ggplot(data = summary_SOM, aes(x=Site, y=MAOM_N_mean, fill=Site)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
-  scale_fill_npg() + #define colors to use
+  scale_fill_manual(values=colors) + #define colors to use
   geom_errorbar(aes(ymin=MAOM_N_mean-MAOM_N_std.error, ymax=MAOM_N_mean+MAOM_N_std.error),
   color = "grey10", width = 0.7, position = "dodge") + 
   ggtitle("Mineral Associated Organic Matter N per site") + #add a graph title
@@ -466,7 +491,7 @@ ggsave('MAOM_Nbar.svg', #save plot name and type - can be "eps", "pdf", "jpeg", 
 #fMAOM C box chart
 ggplot(data = SOM_fielddata2, aes(x=Site, y=fMAOM_C, fill=Site)) + 
 	geom_boxplot() +
-  scale_fill_npg() + #define colors to use
+  scale_fill_manual(values=colors) + #define colors to use
   ggtitle("fMAOM C per site") + #add a graph title
   xlab("Site") + ylab("C (g/kg)") + #define/change X and Y labels
   my_theme
@@ -485,7 +510,7 @@ ggsave('fMAOM_C.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "t
 #fMAOM N box chart
 ggplot(data = SOM_fielddata2, aes(x=Site, y=fMAOM_N, fill=Site)) + 
 	geom_boxplot() +
-  scale_fill_npg() + #define colors to use
+  scale_fill_manual(values=colors) + #define colors to use
   ggtitle("fMAOM N per site") + #add a graph title
   xlab("Site") + ylab("N (g/kg)") + #define/change X and Y labels
   my_theme
@@ -536,31 +561,154 @@ TukeyHSD(aov(fMAOM_N ~ Management, data = SOM_fielddata2))
 
 ```
 
+# AM Association
+
+```{r AM}
+
+AMdata$Management <- factor(AMdata$Management, levels = order_management)
+
+#Hyphal presence boxplot
+ggplot(data = AMdata, aes(x=Management, y=hyph_percent, fill=Management)) + 
+	geom_boxplot() + 
+  scale_fill_manual(values = colors) + #define colors to use
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) + #change to %
+  my_theme +
+  #ggtitle("Hyphal Presence Across Sites") + #add a graph title
+  xlab("Management") + ylab("Hyphal Presence (% of Root)") #define/change X and Y labels
+
+ggsave('AM_hyph.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+shapiro.test(resid(lm(hyph_percent ~ Management, data = AMdata))) #check normality of residuals - normal
+summary(aov(hyph_percent ~ Management, data = AMdata)) #P=0.00027
+TukeyHSD(aov(hyph_percent ~ Management, data = AMdata)) #23 vs. 0 P=0.0034, vs. 4 0.0007, 15 vs. 4 0.023
+
+
+```
+
 # Incubation Results
 
-### Root:shoot ratio
+## Respiration Data
+
+### 12 C
+
+```{r resp overall 12}
+
+resp$Management <- factor(resp$Management, levels = order_management)
+
+ggplot(data = resp, aes(x=Management, y=CO2_ppm, fill=Management)) + 
+	geom_boxplot() + 
+  scale_fill_manual(values = colors) + #define colors to use
+  my_theme +
+  ggtitle("12CO2 Respiration") + #add a graph title
+  xlab("Management") + ylab("CO2 (ppm)") #define/change X and Y labels
+
+ggsave('CO2_overall.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+#ANOVA and Tukey
+CO2 <- aov(CO2_ppm ~ factor(Management), data = resp)
+summary(CO2) #P=0.1
+TukeyHSD(CO2) #none - unmanaged vs 15 almost
+
+```
+
+```{r resp 12C by week}
+
+#time series boxplots of 12C
+ggplot(data = resp, aes(x=Week, y=CO2_ppm, group=interaction(Week,Management))) + 
+  geom_boxplot(aes(fill=Management), position = position_dodge()) +
+  geom_dotplot(aes(fill=Management, stroke=TRUE), binaxis = "y", dotsize = 0.5, position = position_dodge(), stackdir = "center", binpositions = "bygroup") +
+  scale_fill_manual(values = colors) + #define colors to use
+  scale_color_manual(values = colors) +
+  my_theme +
+  scale_y_continuous(name="12CO2 (ppm)", breaks = pretty(c(600,3200), n = 8)) + #set limits and change number of tick marks on y axis
+  scale_x_continuous(name ="Weeks of Incubation", breaks = c(0,1,2,3,4)) #set ticks and label for x axis
+
+ggsave('12C_wks.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 7, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+
+```
+
+### 13 C
+
+```{r resp overall 13}
+
+ggplot(data = resp, aes(x=Management, y=d13CO2_permille, fill=Management)) + 
+	geom_boxplot() + 
+  scale_fill_manual(values = colors) + #define colors to use
+  my_theme +
+  ggtitle("13CO2 Respiration") + #add a graph title
+  xlab("Management") + ylab("Delta 13CO2 (per mille)") + #define/change X and Y labels
+  theme(legend.position='none') #remove legend
+
+ggsave('13CO2_overall.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+#ANOVA and Tukey
+D13C <- aov(d13CO2_permille ~ factor(Management), data = resp)
+summary(D13C) #P=0.0011
+TukeyHSD(D13C) #23 vs. 15 0.00058, vs. unmanaged 0.074, 15 vs. 4 0.033
+
+```
+
+```{r resp 13C by week}
+
+#time series boxplots of 12C
+ggplot(data = resp, aes(x=Week, y=d13CO2_permille, group=interaction(Week,Management))) + 
+  geom_boxplot(aes(fill=Management), position = position_dodge()) +
+  geom_dotplot(aes(fill=Management, stroke=TRUE), binaxis = "y", dotsize = 0.5, position = position_dodge(), stackdir = "center", binpositions = "bygroup") +
+  scale_fill_manual(values = colors) + #define colors to use
+  scale_color_manual(values = colors) +
+  my_theme +
+  scale_y_continuous(name="Delta 13CO2 (per mille)", breaks = pretty(c(600,3200), n = 8)) + #set limits and change number of tick marks on y axis
+  scale_x_continuous(name ="Weeks of Incubation", breaks = c(0,1,2,3,4)) #set ticks and label for x axis
+
+ggsave('13C_wks.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 7, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+
+```
+
+## Root:shoot ratio
 ```{r rs, warning=FALSE}
 
 #root:shoot ratio box plot
 ggplot(data = plant_harvest_est[-c(118,153),], #species data minus major outliers
        aes(x=management, y=root_shoot, fill=management)) + 
 	geom_boxplot() +
-  scale_fill_npg() + #define colors to use
+  scale_fill_manual(values=colors) + #define colors to use
   ggtitle("Root:Shoot ratio per management time") + #add a graph title
   xlab("Management") + ylab("Root:Shoot ratio") + #define/change X and Y labels
   my_theme
 
 ```
 
-### Biomass
+## Biomass
 
-#### Beginning combined roots
+### Beginning combined roots
 ```{r beg root bio, warning=FALSE}
 
 #mass bar chart with error bars
 ggplot(data = summary_endbio, aes(x=Management, y=est_beg_drymass_mean, fill=Management)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
-  scale_fill_npg() + #define colors to use
+  scale_fill_manual(values=colors) + #define colors to use
   geom_errorbar(aes(ymin=est_beg_drymass_mean-est_beg_drymass_std.error, ymax=est_beg_drymass_mean+est_beg_drymass_std.error),
   color = "grey10", width = 0.7, position = "dodge") + 
   ggtitle("Beginning biomass per management time") + #add a graph title
@@ -574,13 +722,13 @@ TukeyHSD(begmass_aov) #Unmanaged-23 Years P=0.0048, 4 Years-23 Years P=0.00067, 
 
 ```
 
-#### Ending combined roots
+### Ending combined roots
 ```{r end root bio, warning=FALSE}
 
 #mass bar chart with error bars
 ggplot(data = summary_endbio, aes(x=Management, y=end_drymass_clean_mean, fill=Management)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
-  scale_fill_npg() + #define colors to use
+  scale_fill_manual(values=colors) + #define colors to use
   geom_errorbar(aes(ymin=end_drymass_clean_mean-end_drymass_clean_std.error, ymax=end_drymass_clean_mean+end_drymass_clean_std.error),
   color = "grey10", width = 0.7, position = "dodge") + 
   ggtitle("Ending biomass per management time") + #add a graph title
@@ -594,15 +742,15 @@ TukeyHSD(endmass_aov) #Unmanaged-23yr P=0.024, 4yr-23yr almost 0.077
 
 ```
 
-#### Decomposition
+### Decomposition
 
 ```{r decomp, warning=FALSE}
 
 #decomposition percentage box plot
 ggplot(data = endbiomass, aes(x=Management, y=decomp_per_adj)) + 
 	geom_boxplot(aes(fill=Management)) +
-  scale_fill_npg() + #define colors to use
-  ggtitle("Decomposition per treatment") + #add a graph title
+  scale_fill_manual(values=colors) + #define colors to use
+  ggtitle("Decomposition per Management") + #add a graph title
   scale_y_continuous(labels = scales::percent_format(accuracy = 1)) + #change to %
   xlab("Management") + ylab("Decomposition (%)") + #define/change X and Y labels
   my_theme
@@ -610,13 +758,20 @@ ggplot(data = endbiomass, aes(x=Management, y=decomp_per_adj)) +
 #decomposition lm plot
 ggplot(data = endbiomass[-1,], aes(x=years, y=decomp_per_adj)) + 
 	geom_point(aes(color=Management), size=2, alpha=0.5) +
-  scale_fill_npg() + #define colors to use
+  scale_fill_manual(values=colors) + #define colors to use
   geom_smooth(method="lm", se=TRUE, color=plotline_color, fill=fill_color) +
   scale_x_continuous(breaks=c(0,4,15,23), expand = c(0.1,0.1)) + #set limits and change tick marks on x axis
   scale_y_continuous(labels = scales::percent_format(accuracy = 1)) + #change to %
   ggtitle("Decomposition by Restoration Time") + #add a graph title
   xlab("Management Time") + ylab("Decomposition (%)") + #define/change X and Y labels
   my_theme
+
+#save figure
+ggsave('decomp.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 6, height = 4, units = "in", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
 
 #ANOVA and Tukey
 decomp_aov <- aov(decomp_per_adj ~ factor(Management), data = endbiomass[-1,]) #remove G37
@@ -636,7 +791,7 @@ dunn.test(endbiomass[-1,]$decomp_per_adj, endbiomass[-1,]$Management, method="bo
 #mass bar chart with error bars
 ggplot(data = summary_endbio, aes(x=Management, y=rocks_debris_mean, fill=Management)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
-  scale_fill_npg() + #define colors to use
+  scale_fill_manual(values=colors) + #define colors to use
   geom_errorbar(aes(ymin=rocks_debris_mean-rocks_debris_std.error, ymax=rocks_debris_mean+rocks_debris_std.error),
   color = "grey10", width = 0.7, position = "dodge") + 
   ggtitle("Rocks and Debris per site") + #add a graph title
@@ -657,7 +812,7 @@ TukeyHSD(rmass_aov) #Unmanaged-23 yr P=0.0000012, Unmanaged-15 yr P=0.0057, 4 yr
 #worms box plot
 ggplot(data = endbiomass, aes(x=Management, y=worms, fill=Management)) + 
 	geom_boxplot() +
-  scale_fill_npg() + #define colors to use
+  scale_fill_manual(values=colors) + #define colors to use
   ggtitle("Worms per site") + #add a graph title
   xlab("Management") + ylab("Number of worms") + #define/change X and Y labels
   my_theme
