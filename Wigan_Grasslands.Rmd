@@ -90,6 +90,19 @@ order_management <- c("Unmanaged", "4 Years", "15 Years", "23 Years")
 
 ```{r load data, include=FALSE}
 
+#read in site data
+site_data <- read_csv("Wigan_sitechar.csv") 
+
+#calc means and standard error for site data
+site_means <- site_data %>%
+  group_by(Site, Management) %>%
+    dplyr::select(!Mgmt_num) %>%
+    dplyr::select(!Collar_Lat) %>%
+    dplyr::select(!Collar_Long) %>%
+    dplyr::select(!Plot_ID) %>%
+    dplyr::select(!BD_avg) %>%
+  summarise_all(funs(mean(., na.rm=TRUE), sd(., na.rm=TRUE), std.error(., na.rm=TRUE)))
+
 #read in FTIR data
 FTIR <- read_csv("FTIR_Sam.csv")
 FTIR$Site <- as.factor(FTIR$Site)
@@ -98,6 +111,8 @@ FTIR <- FTIR[,-1]
 #standardize
 FTIR_standardized <- FTIR %>%
   mutate_if(is.numeric,scale)
+
+FTIR_standardized$Site <- factor(FTIR_standardized$Site, levels = order_sites)
 
 #numeric values only for prcomp
 FTIR_standardized_num <- FTIR_standardized[,-1]
@@ -124,21 +139,16 @@ MAOM <- SOM_fielddata %>%
   rename("MAOM_N" = "N_gkg") %>%
   rename("MAOM_CN" = "C_N")
 
-SOM_fielddata2 <- merge(SOM,POM, by=c("Site","Management", "Plot_ID"), all.y=TRUE) %>%
-  merge(MAOM, by=c("Site","Management", "Plot_ID"), all.y=TRUE) %>%
-  dplyr::select(Site, Management, Plot_ID, SOM_C, SOM_N, SOM_CN, POM_C, POM_N, POM_CN, MAOM_C, MAOM_N, MAOM_CN) %>%
+SOM_fielddata2 <- merge(MAOM,POM, by=c("Site","Management", "Mgmt_num", "Plot_ID"), all.y=TRUE) %>%
+  merge(SOM, by=c("Site","Management", "Mgmt_num", "Plot_ID"), all.y=TRUE) %>%
+  dplyr::select(Site, Management, Mgmt_num, SOM_C, SOM_N, SOM_CN, POM_C, POM_N, POM_CN, MAOM_C, MAOM_N, MAOM_CN,
+                C_gcm3, C_Tha) %>%
   mutate(fMAOM_C = MAOM_C / (SOM_C + POM_C + MAOM_C)) %>% #calculate fMAOM C
-  mutate(fMAOM_N = MAOM_N / (SOM_N + POM_N + MAOM_N)) %>% #calculate fMAOM N
-  mutate(years =
-           case_when(Management == "Unmanaged" ~ 0,
-                     Management == "4 Years" ~ 4,
-                     Management == "15 Years" ~ 15,
-                     Management == "23 Years" ~ 23))
+  mutate(fMAOM_N = MAOM_N / (SOM_N + POM_N + MAOM_N)) #calculate fMAOM N
 
 #summarize SOM data for plots
 summary_SOM <- SOM_fielddata2 %>%
-  dplyr::select(Site, Management, years, SOM_C, SOM_N, SOM_CN, POM_C, POM_N, POM_CN, MAOM_C, MAOM_N, MAOM_CN) %>%
-  group_by(Site, Management, years) %>%
+  group_by(Site, Management, Mgmt_num) %>%
   summarise_all(funs(mean(., na.rm=TRUE), sd(., na.rm=TRUE), std.error(., na.rm=TRUE)))
 
 #read in AM data
@@ -153,14 +163,14 @@ harvest <- read_csv("Stagg_harvest.csv") %>% #load
 
 #pivot and calculate root:shoot ratio
 plant_harvest <- harvest %>%
-  mutate(across(c(6:15), as.numeric)) %>% #convert columns to numeric
-  dplyr::select(site, management, pot, species, sample_type, biomass_g) %>%
+  mutate(across(c(7:16), as.numeric)) %>% #convert columns to numeric
+  dplyr::select(site, management, pot, species, functional_group, sample_type, biomass_g) %>%
   filter(biomass_g >= 0) %>% #remove non-plant data
-  group_by(site, management, pot, species, sample_type) %>%
+  group_by(site, management, pot, species, functional_group, sample_type) %>%
   summarise(biomass_g = mean(biomass_g, na.rm = TRUE), .groups = 'drop') %>% #summarize duplicate entries for groups
   pivot_wider(names_from = sample_type, values_from = biomass_g) %>% #determines observation name and value columns
   mutate(root_shoot = #calculate root:shoot ratio
-           dplyr::case_when(root > 0 & shoot > 0 ~ root / shoot, #when values are present
+           case_when(root > 0 & shoot > 0 ~ root / shoot, #when values are present
                      TRUE ~ NA)) %>% #default to NA when values are not present
   mutate(harvesttime = #define harvest time
         case_when(pot == "G1" | pot == "G20" | pot == "G30" | pot == "G31" | pot == "G39" |
@@ -170,10 +180,16 @@ plant_harvest <- harvest %>%
                   ~ "T0", #time 0 beginning of incubation
                      TRUE ~ "T10mos")) #10 months incubation
 
-#summarize by plant species
+#summarize for plots
+summary_harvest <- plant_harvest %>%
+  dplyr::select(site, management, species, functional_group, shoot, root, root_shoot) %>%
+  group_by(site, management, species, functional_group) %>%
+  summarise_all(funs(mean(., na.rm=TRUE), sd(., na.rm=TRUE), std.error(., na.rm=TRUE)))
+
+#summarize by plant species for estimates
 summary_species <- plant_harvest %>%
-  dplyr::select(species, shoot, root, root_shoot) %>%
-  group_by(species) %>%
+  dplyr::select(species, functional_group, shoot, root, root_shoot) %>%
+  group_by(species, functional_group) %>%
   summarise_all(funs(mean(., na.rm=TRUE), sd(., na.rm=TRUE), std.error(., na.rm=TRUE)))
 
 #add mean data to harvest data for estimates
@@ -255,6 +271,16 @@ summary_endbio$Management <- factor(summary_endbio$Management, levels = order_ma
 
 ```
 
+# Soil pH, nutrients, metals
+```{r soil char}
+
+#soil pH different
+shapiro.test(resid(lm(pH ~ Management, data = site_data))) #check normality of residuals - not normal
+kruskal.test(pH ~ Management, data = site_data) #Kruskal-Wallis test - significant
+dunn.test(site_data$pH, site_data$Management, method = "bonferroni", kw=TRUE) #23 yr vs. 4 and 0, 15 vs. 4
+
+
+```
 
 # PCA on FTIR Data
 
@@ -272,12 +298,23 @@ screeplot(FTIR_pca) # diagnostic plot to make sure principal components are in o
 biplot(FTIR_pca)
 
 #customized plot
-autoplot(FTIR_pca, data = FTIR_standardized, colour = 'Site', 
-        loadings = TRUE, loadings.colour = 'red',
-        loadings.label = TRUE, loadings.label.size = 3,
-        frame = TRUE, frame.type = 'norm') +
-  theme_bw() + 
+autoplot(FTIR_pca, data = FTIR_standardized, colour = 'Site', fill = 'Site',
+         loadings = TRUE, loadings.colour = 'black',
+         loadings.label = TRUE, loadings.label.size = 3,
+         frame = TRUE, frame.type = 'norm', frame.colour = 'Site', frame.fill = 'Site',
+         shape = 21) +
+  scale_color_manual(values = colors) +
+  scale_fill_manual(values = colors) +
+  my_theme +
   ggtitle("Principal Components of FTIR Wavelengths Across Sites") 
+
+#save figure
+ggsave('FTIR_PCA.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder within working directory
+       width = 6, height = 4, units = "in", #set dimensions for figure
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
 
 ```
 
@@ -308,6 +345,29 @@ ggsave('SOC.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff"
 	bg=NULL) #background from plot specifications
 
 ```
+
+```{r SOC ha}
+
+#SOM C bar chart with error bars per hectare
+ggplot(data = summary_SOM, aes(x=Site, y=C_Tha_mean, fill=Site)) + 
+	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
+  scale_fill_manual(values=colors) + #define colors to use
+  geom_errorbar(aes(ymin=(C_Tha_mean-C_Tha_std.error), ymax=(C_Tha_mean+C_Tha_std.error)),
+  color = "grey10", width = 0.7, position = "dodge") + 
+  scale_y_continuous(breaks = pretty(c(0,300), n = 6)) + #set limits and change number of tick marks on y axis
+  ggtitle("Soil Organic Matter C per hectare") + #add a graph title
+  xlab("Site") + ylab("C in top 10cm (T/ha)") + #define/change X and Y labels
+  my_theme
+
+#save figure
+ggsave('SOC_ha.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 6, height = 4, units = "in", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
+```
+
 
 ```{r SOM-N}
 
@@ -363,7 +423,7 @@ ggplot(data = SOM_fielddata) +
   my_theme
 
 #save figure
-ggsave('SOMC_all.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+ggsave('SOMC_all2.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
 	path = "Figures", #save to folder within working directory
 	width = 6, height = 4, units = "in", #set dimensions for figure
 	dpi = 300, #set resolution
@@ -561,6 +621,34 @@ TukeyHSD(aov(fMAOM_N ~ Management, data = SOM_fielddata2))
 
 ```
 
+```{r SOM field stats 2 pH}
+shapiro.test(resid(lm(SOM_C ~ Management * site_data$pH, data = SOM_fielddata2))) #check normality of residuals - normal
+summary(aov(SOM_C ~ Management * site_data$pH, data = SOM_fielddata2)) #Mgmt only
+
+shapiro.test(resid(lm(SOM_N ~ Management * site_data$pH, data = SOM_fielddata2))) #normal
+summary(aov(SOM_N ~ Management * site_data$pH, data = SOM_fielddata2)) #Mgmt only
+
+shapiro.test(resid(lm(POM_C ~ Management * site_data$pH, data = SOM_fielddata2))) #normal
+summary(aov(POM_C ~ Management * site_data$pH, data = SOM_fielddata2))
+
+shapiro.test(resid(lm(POM_N ~ Management * site_data$pH, data = SOM_fielddata2))) #normal
+summary(aov(POM_N ~ Management * site_data$pH, data = SOM_fielddata2))
+
+shapiro.test(resid(lm(MAOM_C ~ Management * site_data$pH, data = SOM_fielddata2))) #normal
+summary(aov(MAOM_C ~ Management * site_data$pH, data = SOM_fielddata2))
+
+shapiro.test(resid(lm(MAOM_N ~ Management * site_data$pH, data = SOM_fielddata2))) #normal
+summary(aov(MAOM_N ~ Management * site_data$pH, data = SOM_fielddata2))
+
+shapiro.test(resid(lm(fMAOM_C ~ Management * site_data$pH, data = SOM_fielddata2))) #normal
+summary(aov(fMAOM_C ~ Management * site_data$pH, data = SOM_fielddata2))
+
+shapiro.test(resid(lm(fMAOM_N ~ Management * site_data$pH, data = SOM_fielddata2))) #normal
+summary(aov(fMAOM_N ~ Management * site_data$pH, data = SOM_fielddata2))
+
+```
+
+
 # AM Association
 
 ```{r AM}
@@ -585,6 +673,33 @@ ggsave('AM_hyph.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "t
 shapiro.test(resid(lm(hyph_percent ~ Management, data = AMdata))) #check normality of residuals - normal
 summary(aov(hyph_percent ~ Management, data = AMdata)) #P=0.00027
 TukeyHSD(aov(hyph_percent ~ Management, data = AMdata)) #23 vs. 0 P=0.0034, vs. 4 0.0007, 15 vs. 4 0.023
+
+
+```
+
+# Plant Communities
+
+```{r plant communities}
+
+plant_harvest$management <- factor(plant_harvest$management, levels = order_management)
+
+#plot plant communities
+plant_harvest %>%
+  filter(functional_group != "moss") %>% #remove mosses
+  filter(functional_group != "unknown") %>% #remove unknown
+ggplot(aes(x=management, y=shoot, fill=functional_group)) + 
+	geom_boxplot() + 
+  scale_fill_manual(values = colors) + #define colors to use
+  my_theme +
+  ggtitle("Plant Shoot Biomass Across Managements") + #add a graph title
+  xlab("Management") + ylab("Shoot Biomass (g)") #define/change X and Y labels
+
+#save figure
+ggsave('plant_groups.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
 
 
 ```
