@@ -51,9 +51,10 @@ lapply(c(datalib, vislib, statlib), library, character.only = TRUE)
 
 #color palette example using hex codes
 colors <- c("#84B699", "#EF8E45", "#BF876E", "#5DDEE7")
+colors5 <- c("#84B699", "#EF8E45", "#BF876E", "#5DDEE7", "azure")
 
 #color palette with gradient with 20 steps
-colors_ramp <- colorRampPalette(c("#84B699", "azure","#BF876E"))(20)
+colors_ramp <- colorRampPalette(c("#84B699", "azure","#BF876E"))(25)
 
 #Color variables
 
@@ -91,7 +92,8 @@ order_management <- c("Unmanaged", "4 Years", "15 Years", "23 Years")
 ```{r load data, include=FALSE}
 
 #read in site data
-site_data <- read_csv("Wigan_sitechar.csv") 
+site_data <- read_csv("Wigan_sitechar.csv") %>%
+  filter(!is.na(Site)) #remove rows with no site
 
 #calc means and standard error for site data
 site_means <- site_data %>%
@@ -102,6 +104,16 @@ site_means <- site_data %>%
     dplyr::select(!Plot_ID) %>%
     dplyr::select(!BD_avg) %>%
   summarise_all(funs(mean(., na.rm=TRUE), sd(., na.rm=TRUE), std.error(., na.rm=TRUE)))
+
+#pivot metals with tidyr - increase rows / decrease columns
+soil_metals <- site_data %>%
+	pivot_longer(
+		  cols = c(10:13,15:26,28,29,31,32,34), #pick columns to pivot
+		  #cols = ppm_Al:ppm_Zn, #pick columns
+		  names_to = "nutrient", #name column to put original column names in
+		  names_prefix = "ppm_", #remove prefix from column names
+		  values_to = "ppm") %>% #name column to put values in
+  dplyr::select(Site, Management, nutrient, ppm) #select columns to keep
 
 #read in FTIR data
 FTIR <- read_csv("FTIR_Sam.csv")
@@ -271,16 +283,268 @@ summary_endbio$Management <- factor(summary_endbio$Management, levels = order_ma
 
 ```
 
-# Soil pH, nutrients, metals
+# Soil properties
 ```{r soil char}
 
-#soil pH different
+#soil pH differences
 shapiro.test(resid(lm(pH ~ Management, data = site_data))) #check normality of residuals - not normal
 kruskal.test(pH ~ Management, data = site_data) #Kruskal-Wallis test - significant
 dunn.test(site_data$pH, site_data$Management, method = "bonferroni", kw=TRUE) #23 yr vs. 4 and 0, 15 vs. 4
 
+#soil bulk density differences
+shapiro.test(resid(lm(BD ~ Management, data = site_data))) #check normality of residuals - normal
+summary(aov(BD ~ Management, data = site_data)) #ANOVA - not significant
+
 
 ```
+
+# Soil Metals / Micronutrients
+
+```{r metals stats}
+
+#pairwise comparisons
+
+evaluate_group_sizes <- function(data, factors, continuous_vars) {
+  insufficient_groups <- list()
+
+  for (cont_var in continuous_vars) {
+    for (factor in factors) {
+      # Remove NA values for the current continuous variable and factor
+      filtered_data <- na.omit(data[, c(factor, cont_var)])
+
+      # Calculate group sizes
+      group_sizes <- table(filtered_data[[factor]])
+      
+      # Identify groups with fewer than 2 observations
+      insufficient <- group_sizes[group_sizes < 2]
+      if (length(insufficient) > 0) {
+        insufficient_groups[[paste(cont_var, factor, sep = "_")]] <- data.frame(
+          Factor = factor,
+          Continuous_Var = cont_var,
+          Group = names(insufficient),
+          Observations = as.numeric(insufficient)
+        )
+      }
+    }
+  }
+
+  # Combine results into a single dataframe
+  if (length(insufficient_groups) > 0) {
+    return(bind_rows(insufficient_groups, .id = "Combination"))
+  } else {
+    return(data.frame(
+      Combination = character(),
+      Factor = character(),
+      Continuous_Var = character(),
+      Group = character(),
+      Observations = numeric()
+    ))
+  }
+}
+
+# Updated analysis function with Bartlett's test, group size evaluation, and NA omission
+differences_function <- function(data, factors, continuous_vars) {
+  results_list <- list()
+
+  for (cont_var in continuous_vars) {
+    for (factor in factors) {
+      # Remove NA values for the current continuous variable and factor
+      filtered_data <- na.omit(data[, c(factor, cont_var)])
+
+      # Check if all groups for the factor have at least 2 observations
+      group_sizes <- table(filtered_data[[factor]])
+      if (any(group_sizes < 2)) {
+        # If a group has fewer than 2 observations, skip Bartlett's test and add a note
+        results_list[[paste(cont_var, factor, sep = "_")]] <- data.frame(
+          Comparison = NA,
+          P_Value = NA,
+          Continuous_Var = cont_var,
+          Factor = factor,
+          Test = "Skipped (Insufficient group size for Bartlett's test)",
+          Significance = "Not significant"
+        )
+        next
+      }
+
+      # Bartlett's test for homogeneity of variances
+      bartlett <- bartlett.test(as.formula(paste(cont_var, "~", factor)), data = filtered_data)
+
+      if (bartlett$p.value > 0.05) {
+        # Homogeneous variances: Use ANOVA and Tukey's HSD
+        anova_res <- aov(as.formula(paste(cont_var, "~", factor)), data = filtered_data)
+        tukey <- TukeyHSD(anova_res)
+
+        # Extract pairwise comparisons and P-values
+        if (!is.null(tukey$comparison)) {
+          sig_pairs <- data.frame(
+            Comparison = rownames(tukey$comparison),
+            P_Value = tukey$comparison[, "pvalue"]
+          ) %>%
+            mutate(
+              Continuous_Var = cont_var,
+              Factor = factor,
+              Test = "Tukey's HSD",
+              Significance = case_when(
+                P_Value <= 0.001 ~ "***",
+                P_Value <= 0.01 ~ "**",
+                P_Value <= 0.05 ~ "*",
+                TRUE ~ "Not significant"
+              )
+            )
+
+          results_list[[paste(cont_var, factor, sep = "_")]] <- sig_pairs
+        } else {
+          # If no valid groupings are present, return an empty dataframe
+          results_list[[paste(cont_var, factor, sep = "_")]] <- data.frame(
+            Comparison = NA,
+            P_Value = NA,
+            Continuous_Var = cont_var,
+            Factor = factor,
+            Test = "Tukey's HSD (No significant groupings)",
+            Significance = "Not significant"
+          )
+        }
+      } else {
+        # Heterogeneous variances: Use Kruskal-Wallis and Dunn's Test
+        kruskal <- kruskal.test(as.formula(paste(cont_var, "~", factor)), data = filtered_data)
+
+        if (kruskal$p.value < 0.05) {
+          # Perform Dunn's Test if Kruskal-Wallis is significant
+          dunn <- dunn.test(filtered_data[[cont_var]], filtered_data[[factor]], method = "bonferroni", kw = FALSE)
+
+          # Extract pairwise comparisons and P-values
+          sig_pairs <- data.frame(
+            Comparison = dunn$comparisons,
+            P_Value = dunn$P.adjusted
+          ) %>%
+            filter(P_Value < 1) %>% # Include all comparisons
+            mutate(
+              Continuous_Var = cont_var,
+              Factor = factor,
+              Test = "Dunn's Test",
+              Significance = case_when(
+                P_Value <= 0.001 ~ "***",
+                P_Value <= 0.01 ~ "**",
+                P_Value <= 0.05 ~ "*",
+                TRUE ~ "Not significant"
+              )
+            )
+
+          results_list[[paste(cont_var, factor, sep = "_")]] <- sig_pairs
+        } else {
+          results_list[[paste(cont_var, factor, sep = "_")]] <- data.frame(
+            Comparison = NA,
+            P_Value = NA,
+            Continuous_Var = cont_var,
+            Factor = factor,
+            Test = "Kruskal-Wallis (NS)",
+            Significance = "Not significant"
+          )
+        }
+      }
+    }
+  }
+
+  # Combine results for all factors and continuous variables
+  results_df <- bind_rows(results_list, .id = "Analysis_Combination")
+  return(results_df)
+}
+
+# Define what to analyze
+factors <- "Management" #predictor variable
+continuous_vars <- c("ppm_Al", "ppm_B", "ppm_Ba", "ppm_Ca1", "ppm_Ca2", "ppm_Cd", "ppm_Co", "ppm_Cr", "ppm_Cu",
+                     "ppm_Fe", "ppm_K", "ppm_Li", "ppm_Mg", "ppm_Mn", "ppm_Na", "ppm_Ni", "ppm_P1", "ppm_P2",
+                     "ppm_Pb", "ppm_S1", "ppm_S2", "ppm_Si", "ppm_Sr1", "ppm_Sr2", "ppm_Zn") #response variables
+data <- site_data
+
+# Evaluate group sizes
+group_size_issues <- evaluate_group_sizes(data, factors, continuous_vars) #crude fiber only has 1 woody
+
+# Run the analysis
+metals_diff <- differences_function(data, factors, continuous_vars)
+
+
+```
+
+## Charts
+
+```{r metals chart}
+
+soil_metals$Site <- factor(soil_metals$Site, levels = order_sites)
+soil_metals$Management <- factor(soil_metals$Management, levels = order_management)
+
+#plot metals
+ggplot(data = soil_metals, aes(x=nutrient, y=ppm, fill=nutrient)) + 
+  geom_boxplot() +
+  facet_wrap(~Site, scales = "free_x") + #create a separate plot for each site
+  scale_fill_manual(values=colors_ramp) + #define colors to use
+  ggtitle("Soil Metals per site") + #add a graph title
+  xlab("Site") + ylab("ppm") + #define/change X and Y labels
+  theme(axis.text.x = element_text(angle=90), #set angle of variable labels
+        panel.grid.major.y = element_line(color = "grey40", size = 0.25)) + 
+  my_theme
+
+#save figure
+ggsave('metals_all.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 6, height = 4, units = "in", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
+
+```
+
+```{r metals chart 2}
+
+#plot metals
+soil_metals %>%
+  filter(nutrient == "Ca1" | nutrient == "Li" | nutrient == "Mg" | 
+           nutrient == "Pb" | nutrient == "S1") %>% #filter for significant nutrients
+ggplot(aes(x=nutrient, y=ppm, fill=nutrient)) + 
+  geom_boxplot() +
+  facet_wrap(~Site, scales = "free_x") + #create a separate plot for each site
+  scale_fill_manual(values=colors5) + #define colors to use
+  #ggtitle("Soil Metals per site") + #add a graph title
+  xlab("Site") + ylab("Nutrient (ppm)") + #define/change X and Y labels
+  theme(axis.text.x = element_text(angle=90), #set angle of variable labels
+        panel.grid.major.y = element_line(color = "grey40", size = 0.25)) + 
+  my_theme
+
+#save figure
+ggsave('metals_sig.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 6, height = 4, units = "in", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
+```
+
+
+```{r metals chart 3}
+
+#plot metals
+soil_metals %>%
+  filter(nutrient == "Ca1" | nutrient == "Li" | nutrient == "Mg" | 
+           nutrient == "Pb" | nutrient == "S1") %>% #filter for significant nutrients
+ggplot(aes(x=Site, y=ppm, fill=Site)) + 
+  geom_boxplot() +
+  facet_wrap(~nutrient, scales = "free", nrow=1) + #create a separate plot for each site
+  scale_fill_manual(values=colors5) + #define colors to use
+  #ggtitle("Soil Metals per site") + #add a graph title
+  xlab("Site") + ylab("Nutrient (ppm)") + #define/change X and Y labels
+  theme(axis.text.x = element_text(angle=90), #set angle of variable labels
+        panel.grid.major.y = element_line(color = "grey40", size = 0.25)) + 
+  my_theme
+
+#save figure
+ggsave('metals_sig2.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 8, height = 4, units = "in", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
+```
+
 
 # PCA on FTIR Data
 
