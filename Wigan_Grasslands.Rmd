@@ -31,12 +31,8 @@ vislib <- c("ggplot2", "ggthemes", "ggfortify", "ggrepel", "plotrix", "RColorBre
 ##3. For calculation and stats functions, including ecology-specific libraries
 statlib <- c("car", "MASS", "rcompanion", "zoo", "lme4", "MuMIn", "emmeans", "ARTool", "dunn.test", "performance", "see", "corrplot", "BAT", "vegan")
 
-#Install packages as needed - commented out, but remove # and adjust as needed
-##as a group:
-#lapply(c(datalib, vislib, statlib), install.packages, character.only = TRUE)
-
-##or individually:
-#install.packages("janitor") #install janitor to help clean up data
+#Install packages as needed - commented out, but remove # and adjust as neededas a group:
+#lapply(c(datalib, vislib, statlib), install.packages)
 
 #Load libraries
 lapply(c(datalib, vislib, statlib), library, character.only = TRUE)
@@ -133,7 +129,8 @@ FTIR_standardized_num <- FTIR_standardized[,-1]
 AMdata <- read_csv("Wigan_myc.csv")
 
 #read in respiration data
-resp <- read_csv("Wigan_respiration.csv")
+resp_min <- read_csv("Wigan_respiration.csv")
+resp_full <- read_csv("Wigan_resp_full.csv")
 
 #read in field soil C/N data
 SOM_fielddata <- read_csv("SOM_field.csv") 
@@ -176,40 +173,53 @@ SOM_13C <- read_csv("SOM_13C.csv")
 #Combine SOM, POM, and MAOM as one observation per plot
 SOM2 <- SOM_13C %>%
   filter(Fraction == "SOM") %>%
-  dplyr::select(Site, Management, Mgmt_num, Plot_ID, C_gkg, N_gkg, C_N, d13C, `13C_atom`, per_POM, per_MAOM) %>% #select columns to keep
+  filter(Incubation_T != 6) %>%
+  dplyr::select(Site, Management, Mgmt_num, Plot_ID, Incubation_T, C_gkg, N_gkg, C_N, d13C, `13C_atom`, `15N`, per_POM, per_MAOM) %>% #select columns to keep
   rename("SOM_C" = "C_gkg") %>%
   rename("SOM_N" = "N_gkg") %>%
   rename("SOM_CN" = "C_N") %>%
   rename("SOM_d13C" = "d13C") %>%
-  rename("SOM_13C_atom" = "13C_atom")
+  rename("SOM_13C_atom" = "13C_atom") %>%
+  rename("SOM_15N" = "15N")
 
 POM2 <- SOM_13C %>%
   filter(Fraction == "POM") %>%
-  dplyr::select(Site, Management, Mgmt_num, Plot_ID, C_gkg, N_gkg, C_N, d13C, `13C_atom`) %>% #select columns to keep
+  filter(Incubation_T != 6) %>%
+  dplyr::select(Site, Management, Mgmt_num, Plot_ID, Incubation_T, C_gkg, N_gkg, C_N, d13C, `13C_atom`, `15N`) %>% #select columns to keep
   rename("POM_C" = "C_gkg") %>%
   rename("POM_N" = "N_gkg") %>%
   rename("POM_CN" = "C_N") %>%
   rename("POM_d13C" = "d13C") %>%
-  rename("POM_13C_atom" = "13C_atom")
+  rename("POM_13C_atom" = "13C_atom") %>%
+  rename("POM_15N" = "15N")
   
 MAOM2 <- SOM_13C %>%
   filter(Fraction == "MAOM") %>%
-  dplyr::select(Site, Management, Mgmt_num, Plot_ID, C_gkg, N_gkg, C_N, d13C, `13C_atom`) %>% #select columns to keep
+  filter(Incubation_T != 6) %>%
+  dplyr::select(Site, Management, Mgmt_num, Plot_ID, Incubation_T, C_gkg, N_gkg, C_N, d13C, `13C_atom`, `15N`) %>% #select columns to keep
   rename("MAOM_C" = "C_gkg") %>%
   rename("MAOM_N" = "N_gkg") %>%
   rename("MAOM_CN" = "C_N")  %>%
   rename("MAOM_d13C" = "d13C") %>%
-  rename("MAOM_13C_atom" = "13C_atom")
+  rename("MAOM_13C_atom" = "13C_atom") %>%
+  rename("MAOM_15N" = "15N")
 
-SOM_13C_2 <- merge(SOM2, POM2, by=c("Site","Management", "Mgmt_num", "Plot_ID"), all.y=TRUE) %>%
-  merge(MAOM2, by=c("Site","Management", "Mgmt_num", "Plot_ID"), all.y=TRUE) %>%
-  dplyr::select(Plot_ID, Site, Management, Mgmt_num, per_POM, per_MAOM, SOM_C, SOM_N, SOM_CN, POM_C, POM_N, POM_CN, MAOM_C, MAOM_N, MAOM_CN,SOM_d13C, SOM_13C_atom, POM_d13C, POM_13C_atom, MAOM_d13C, MAOM_13C_atom) %>%
+SOM_13C_2 <- merge(SOM2, POM2, by=c("Site","Management", "Mgmt_num", "Plot_ID", "Incubation_T"), all=TRUE) %>%
+  merge(MAOM2, by=c("Site","Management", "Mgmt_num", "Plot_ID", "Incubation_T"), all.y=TRUE) %>%
+  dplyr::select(Plot_ID, Site, Management, Mgmt_num, Incubation_T, per_POM, per_MAOM, SOM_C, SOM_N, SOM_CN, 
+                POM_C, POM_N, POM_CN, MAOM_C, MAOM_N, MAOM_CN,SOM_d13C, SOM_13C_atom, 
+                POM_d13C, POM_13C_atom, MAOM_d13C, MAOM_13C_atom,
+                SOM_15N, POM_15N, MAOM_15N) %>%
   mutate(fMAOM_C = MAOM_C / (SOM_C + POM_C + MAOM_C)) %>% #calculate fMAOM C
   mutate(fMAOM_N = MAOM_N / (SOM_N + POM_N + MAOM_N)) #calculate fMAOM N
 
 #summarize SOM data for plots
-summary_SOM_13C <- SOM_13C_2 %>%
+summary_SOM_13C_a <- SOM_13C_2 %>%
   group_by(Site, Management, Mgmt_num) %>%
+  summarise_all(funs(mean(., na.rm=TRUE), sd(., na.rm=TRUE), std.error(., na.rm=TRUE)))
+
+summary_SOM_13C_b <- SOM_13C_2 %>%
+  group_by(Site, Management, Mgmt_num, Incubation_T) %>%
   summarise_all(funs(mean(., na.rm=TRUE), sd(., na.rm=TRUE), std.error(., na.rm=TRUE)))
 
 SOM_13C_2$pH <- site_data$pH[match(SOM_13C_2$Plot_ID, site_data$Plot_ID)] #add pH to SOM_13C_2
