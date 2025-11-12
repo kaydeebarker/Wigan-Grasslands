@@ -85,7 +85,8 @@ order_management <- c("Unmanaged", "4 Years", "15 Years", "23 Years")
 
 ## Load data
 
-```{r load data, include=FALSE}
+### Soil compounds and properties
+```{r load data 1, include=FALSE}
 
 #read in site data
 site_data <- read_csv("Wigan_sitechar.csv") %>%
@@ -125,107 +126,12 @@ FTIR_standardized$Site <- factor(FTIR_standardized$Site, levels = order_sites)
 #numeric values only for prcomp
 FTIR_standardized_num <- FTIR_standardized[,-1]
 
-#read in AM data
-AMdata <- read_csv("Wigan_myc.csv")
 
-#read in respiration data
-resp_min <- read_csv("Wigan_respiration.csv")
-resp_full <- read_csv("Wigan_resp_full.csv")
+```
 
-#read in field soil C/N data
-SOM_fielddata <- read_csv("SOM_field.csv") 
+### Plants and fungi
 
-#Combine SOM, POM, and MAOM as one observation per plot
-SOM <- SOM_fielddata %>%
-  filter(Fraction == "SOM") %>%
-  rename("SOM_C" = "C_gkg") %>%
-  rename("SOM_N" = "N_gkg") %>%
-  rename("SOM_CN" = "C_N")
-
-POM <- SOM_fielddata %>%
-  filter(Fraction == "POM") %>%
-  rename("POM_C" = "C_gkg") %>%
-  rename("POM_N" = "N_gkg") %>%
-  rename("POM_CN" = "C_N")
-  
-MAOM <- SOM_fielddata %>%
-  filter(Fraction == "MAOM") %>%
-  rename("MAOM_C" = "C_gkg") %>%
-  rename("MAOM_N" = "N_gkg") %>%
-  rename("MAOM_CN" = "C_N")
-
-SOM_fielddata2 <- merge(MAOM,POM, by=c("Site","Management", "Mgmt_num", "Plot_ID"), all.y=TRUE) %>%
-  merge(SOM, by=c("Site","Management", "Mgmt_num", "Plot_ID"), all.y=TRUE) %>%
-  dplyr::select(Site, Management, Mgmt_num, SOM_C, SOM_N, SOM_CN, POM_C, POM_N, POM_CN, MAOM_C, MAOM_N, MAOM_CN,
-                C_gcm3, C_Tha) %>%
-  mutate(fMAOM_C = MAOM_C / (SOM_C + POM_C + MAOM_C)) %>% #calculate fMAOM C
-  mutate(fMAOM_N = MAOM_N / (SOM_N + POM_N + MAOM_N)) #calculate fMAOM N
-
-#summarize SOM data for plots
-summary_SOM <- SOM_fielddata2 %>%
-  group_by(Site, Management, Mgmt_num) %>%
-  summarise_all(funs(mean(., na.rm=TRUE), sd(., na.rm=TRUE), std.error(., na.rm=TRUE)))
-
-
-#read in soil C/N and 13C data
-SOM_13C <- read_csv("SOM_13C.csv") 
-
-#Combine SOM, POM, and MAOM as one observation per plot
-SOM2 <- SOM_13C %>%
-  filter(Fraction == "SOM") %>%
-  filter(Incubation_T != 6) %>%
-  dplyr::select(Site, Management, Mgmt_num, Plot_ID, Incubation_T, C_gkg, N_gkg, C_N, d13C, `13C_atom`, `15N`, per_POM, per_MAOM) %>% #select columns to keep
-  rename("SOM_C" = "C_gkg") %>%
-  rename("SOM_N" = "N_gkg") %>%
-  rename("SOM_CN" = "C_N") %>%
-  rename("SOM_d13C" = "d13C") %>%
-  rename("SOM_13C_atom" = "13C_atom") %>%
-  rename("SOM_15N" = "15N")
-
-POM2 <- SOM_13C %>%
-  filter(Fraction == "POM") %>%
-  filter(Incubation_T != 6) %>%
-  dplyr::select(Site, Management, Mgmt_num, Plot_ID, Incubation_T, C_gkg, N_gkg, C_N, d13C, `13C_atom`, `15N`) %>% #select columns to keep
-  rename("POM_C" = "C_gkg") %>%
-  rename("POM_N" = "N_gkg") %>%
-  rename("POM_CN" = "C_N") %>%
-  rename("POM_d13C" = "d13C") %>%
-  rename("POM_13C_atom" = "13C_atom") %>%
-  rename("POM_15N" = "15N")
-  
-MAOM2 <- SOM_13C %>%
-  filter(Fraction == "MAOM") %>%
-  filter(Incubation_T != 6) %>%
-  dplyr::select(Site, Management, Mgmt_num, Plot_ID, Incubation_T, C_gkg, N_gkg, C_N, d13C, `13C_atom`, `15N`) %>% #select columns to keep
-  rename("MAOM_C" = "C_gkg") %>%
-  rename("MAOM_N" = "N_gkg") %>%
-  rename("MAOM_CN" = "C_N")  %>%
-  rename("MAOM_d13C" = "d13C") %>%
-  rename("MAOM_13C_atom" = "13C_atom") %>%
-  rename("MAOM_15N" = "15N")
-
-SOM_13C_2 <- merge(SOM2, POM2, by=c("Site","Management", "Mgmt_num", "Plot_ID", "Incubation_T"), all=TRUE) %>%
-  merge(MAOM2, by=c("Site","Management", "Mgmt_num", "Plot_ID", "Incubation_T"), all.y=TRUE) %>%
-  dplyr::select(Plot_ID, Site, Management, Mgmt_num, Incubation_T, per_POM, per_MAOM, SOM_C, SOM_N, SOM_CN, 
-                POM_C, POM_N, POM_CN, MAOM_C, MAOM_N, MAOM_CN,SOM_d13C, SOM_13C_atom, 
-                POM_d13C, POM_13C_atom, MAOM_d13C, MAOM_13C_atom,
-                SOM_15N, POM_15N, MAOM_15N) %>%
-  mutate(fMAOM_C = MAOM_C / (SOM_C + POM_C + MAOM_C)) %>% #calculate fMAOM C
-  mutate(fMAOM_N = MAOM_N / (SOM_N + POM_N + MAOM_N)) #calculate fMAOM N
-
-#summarize SOM data for plots
-summary_SOM_13C_a <- SOM_13C_2 %>%
-  group_by(Site, Management, Mgmt_num) %>%
-  summarise_all(funs(mean(., na.rm=TRUE), sd(., na.rm=TRUE), std.error(., na.rm=TRUE)))
-
-summary_SOM_13C_b <- SOM_13C_2 %>%
-  group_by(Site, Management, Mgmt_num, Incubation_T) %>%
-  summarise_all(funs(mean(., na.rm=TRUE), sd(., na.rm=TRUE), std.error(., na.rm=TRUE)))
-
-SOM_13C_2$pH <- site_data$pH[match(SOM_13C_2$Plot_ID, site_data$Plot_ID)] #add pH to SOM_13C_2
-SOM_13C_2$BD <- site_data$BD[match(SOM_13C_2$Plot_ID, site_data$Plot_ID)] #add bulk density to SOM_13C_2
-SOM_13C_2$AM_hyph <- AMdata$hyph_percent[match(SOM_13C_2$Plot_ID, AMdata$Sample)] #add AM hyphae to SOM_13C_2
-SOM_13C_2$AM_arb <- AMdata$arbuscule_percent[match(SOM_13C_2$Plot_ID, AMdata$Sample)] #add AM arbuscules to SOM_13C_2
+```{r load data 2, include=FALSE}
 
 #read in 13C initial harvest data
 harvest <- read_csv("Stagg_harvest.csv") %>% #load
@@ -311,8 +217,142 @@ total_pots <- plant_harvest_est %>%
                      #general_roots$sd[match(site2, general_roots$site2)]))
 
 #write csv for measured and estimated beginning biomass
-write.csv(plant_harvest_est, "begin_estimates_bysp.csv") #saves as csv in current workspace
-write.csv(total_pots, "begin_estimates_bypot.csv") #saves as csv in current workspace
+#write.csv(plant_harvest_est, "begin_estimates_bysp.csv") #saves as csv in current workspace
+#write.csv(total_pots, "begin_estimates_bypot.csv") #saves as csv in current workspace
+
+#read in AM data
+AMdata <- read_csv("Wigan_myc.csv")
+
+```
+
+### Soil organic matter
+
+```{r load data 3.1, include=FALSE}
+
+#read in field soil C/N data
+SOM_fielddata <- read_csv("SOM_field.csv") 
+
+#Combine SOM, POM, and MAOM as one observation per plot
+SOM <- SOM_fielddata %>%
+  filter(Fraction == "SOM") %>%
+  rename("SOM_C" = "C_gkg") %>%
+  rename("SOM_N" = "N_gkg") %>%
+  rename("SOM_CN" = "C_N")
+
+POM <- SOM_fielddata %>%
+  filter(Fraction == "POM") %>%
+  rename("POM_C" = "C_gkg") %>%
+  rename("POM_N" = "N_gkg") %>%
+  rename("POM_CN" = "C_N")
+  
+MAOM <- SOM_fielddata %>%
+  filter(Fraction == "MAOM") %>%
+  rename("MAOM_C" = "C_gkg") %>%
+  rename("MAOM_N" = "N_gkg") %>%
+  rename("MAOM_CN" = "C_N")
+
+SOM_fielddata2 <- merge(MAOM,POM, by=c("Site","Management", "Mgmt_num", "Plot_ID"), all.y=TRUE) %>%
+  merge(SOM, by=c("Site","Management", "Mgmt_num", "Plot_ID"), all.y=TRUE) %>%
+  dplyr::select(Site, Management, Mgmt_num, SOM_C, SOM_N, SOM_CN, POM_C, POM_N, POM_CN, MAOM_C, MAOM_N, MAOM_CN,
+                C_gcm3, C_Tha) %>%
+  mutate(fMAOM_C = MAOM_C / (POM_C + MAOM_C)) %>% #calculate fMAOM C
+  mutate(fMAOM_C_2 = MAOM_C / SOM_C) %>% #calculate fMAOM C
+  mutate(fMAOM_N = MAOM_N / (POM_N + MAOM_N)) %>% #calculate fMAOM N
+  mutate(fMAOM_N_2 = MAOM_N / SOM_N) #calculate fMAOM N
+
+#summarize SOM data for plots
+summary_SOM <- SOM_fielddata2 %>%
+  group_by(Site, Management, Mgmt_num) %>%
+  summarise_all(funs(mean(., na.rm=TRUE), sd(., na.rm=TRUE), std.error(., na.rm=TRUE)))
+
+#order variables
+SOM_fielddata$Site <- factor(SOM_fielddata$Site, levels = order_sites)
+SOM_fielddata$Management <- factor(SOM_fielddata$Management, levels = order_management)
+SOM_fielddata2$Site <- factor(SOM_fielddata2$Site, levels = order_sites)
+summary_SOM$Site <- factor(summary_SOM$Site, levels = order_sites)
+summary_SOM$Management <- factor(summary_SOM$Management, levels = order_management)
+
+```
+
+```{r load data 3.2, include=FALSE}
+
+#read in soil C/N and 13C data
+SOM_13C <- read_csv("SOM_13C.csv") 
+
+#Combine SOM, POM, and MAOM as one observation per plot
+SOM2 <- SOM_13C %>%
+  filter(Fraction == "SOM") %>%
+  filter(Incubation_T != 6) %>%
+  dplyr::select(Site, Management, Mgmt_num, Plot_ID, Incubation_T, C_gkg, N_gkg, C_N, d13C, `13C_atom`, `15N`, per_POM, per_MAOM) %>% #select columns to keep
+  rename("SOM_C" = "C_gkg") %>%
+  rename("SOM_N" = "N_gkg") %>%
+  rename("SOM_CN" = "C_N") %>%
+  rename("SOM_d13C" = "d13C") %>%
+  rename("SOM_13C_atom" = "13C_atom") %>%
+  rename("SOM_15N" = "15N")
+
+POM2 <- SOM_13C %>%
+  filter(Fraction == "POM") %>%
+  filter(Incubation_T != 6) %>%
+  dplyr::select(Site, Management, Mgmt_num, Plot_ID, Incubation_T, C_gkg, N_gkg, C_N, d13C, `13C_atom`, `15N`) %>% #select columns to keep
+  rename("POM_C" = "C_gkg") %>%
+  rename("POM_N" = "N_gkg") %>%
+  rename("POM_CN" = "C_N") %>%
+  rename("POM_d13C" = "d13C") %>%
+  rename("POM_13C_atom" = "13C_atom") %>%
+  rename("POM_15N" = "15N")
+  
+MAOM2 <- SOM_13C %>%
+  filter(Fraction == "MAOM") %>%
+  filter(Incubation_T != 6) %>%
+  dplyr::select(Site, Management, Mgmt_num, Plot_ID, Incubation_T, C_gkg, N_gkg, C_N, d13C, `13C_atom`, `15N`) %>% #select columns to keep
+  rename("MAOM_C" = "C_gkg") %>%
+  rename("MAOM_N" = "N_gkg") %>%
+  rename("MAOM_CN" = "C_N")  %>%
+  rename("MAOM_d13C" = "d13C") %>%
+  rename("MAOM_13C_atom" = "13C_atom") %>%
+  rename("MAOM_15N" = "15N")
+
+SOM_13C_2 <- merge(SOM2, POM2, by=c("Site","Management", "Mgmt_num", "Plot_ID", "Incubation_T"), all=TRUE) %>%
+  merge(MAOM2, by=c("Site","Management", "Mgmt_num", "Plot_ID", "Incubation_T"), all.y=TRUE) %>%
+  dplyr::select(Plot_ID, Site, Management, Mgmt_num, Incubation_T, per_POM, per_MAOM, SOM_C, SOM_N, SOM_CN, 
+                POM_C, POM_N, POM_CN, MAOM_C, MAOM_N, MAOM_CN,SOM_d13C, SOM_13C_atom, 
+                POM_d13C, POM_13C_atom, MAOM_d13C, MAOM_13C_atom,
+                SOM_15N, POM_15N, MAOM_15N) %>%
+  mutate(fMAOM_C = MAOM_C / (POM_C + MAOM_C)) %>% #calculate fMAOM C
+  mutate(fMAOM_C_2 = MAOM_C / SOM_C) %>% #calculate fMAOM C
+  mutate(fMAOM_N = MAOM_N / (POM_N + MAOM_N)) %>% #calculate fMAOM N
+  mutate(fMAOM_N_2 = MAOM_N / SOM_N) #calculate fMAOM N
+
+#summarize SOM data for plots
+summary_SOM_13C_a <- SOM_13C_2 %>%
+  group_by(Site, Management, Mgmt_num) %>%
+  summarise_all(funs(mean(., na.rm=TRUE), sd(., na.rm=TRUE), std.error(., na.rm=TRUE)))
+
+summary_SOM_13C_b <- SOM_13C_2 %>%
+  group_by(Site, Management, Mgmt_num, Incubation_T) %>%
+  summarise_all(funs(mean(., na.rm=TRUE), sd(., na.rm=TRUE), std.error(., na.rm=TRUE)))
+
+SOM_13C_2$pH <- site_data$pH[match(SOM_13C_2$Plot_ID, site_data$Plot_ID)] #add pH to SOM_13C_2
+SOM_13C_2$BD <- site_data$BD[match(SOM_13C_2$Plot_ID, site_data$Plot_ID)] #add bulk density to SOM_13C_2
+SOM_13C_2$AM_hyph <- AMdata$hyph_percent[match(SOM_13C_2$Plot_ID, AMdata$Sample)] #add AM hyphae to SOM_13C_2
+SOM_13C_2$AM_arb <- AMdata$arbuscule_percent[match(SOM_13C_2$Plot_ID, AMdata$Sample)] #add AM arbuscules to SOM_13C_2
+
+#order variables
+SOM_13C$Site <- factor(SOM_13C$Site, levels = order_sites)
+SOM_13C_2$Site <- factor(SOM_13C_2$Site, levels = order_sites)
+summary_SOM_13C_a$Site <- factor(summary_SOM_13C_a$Site, levels = order_sites)
+summary_SOM_13C_b$Site <- factor(summary_SOM_13C_b$Site, levels = order_sites)
+
+```
+
+### 13C respiration and decomposition
+
+```{r load data 4, include=FALSE}
+
+#read in respiration data
+resp_min <- read_csv("Wigan_respiration.csv")
+resp_full <- read_csv("Wigan_resp_full.csv")
 
 #read in incubation data, add beginning, calculate change in biomass
 endbiomass <- read_csv("End_incubation_biomass.csv") %>% #load
@@ -335,13 +375,14 @@ summary_endbio <- endbiomass %>%
   summarise_all(funs(mean(., na.rm=TRUE), sd(., na.rm=TRUE), std.error(., na.rm=TRUE)))
 
 #order variables for each
-SOM_fielddata2$Site <- factor(SOM_fielddata2$Site, levels = order_sites)
 endbiomass$Management <- factor(endbiomass$Management, levels = order_management)
 summary_endbio$Management <- factor(summary_endbio$Management, levels = order_management)
 
 ```
 
-# Soil properties
+# Stats and Charts
+
+## Soil properties
 ```{r soil char}
 
 #soil pH differences
@@ -356,7 +397,7 @@ summary(aov(BD ~ Management, data = site_data)) #ANOVA - not significant
 
 ```
 
-# Soil Metals / Micronutrients
+## Soil compounds
 
 ```{r metals stats}
 
@@ -524,8 +565,6 @@ metals_diff <- differences_function(data, factors, continuous_vars)
 
 ```
 
-## Charts
-
 ```{r metals chart}
 
 soil_metals$Site <- factor(soil_metals$Site, levels = order_sites)
@@ -604,7 +643,7 @@ ggsave('metals_sig2.svg', #save plot name and type - can be "eps", "pdf", "jpeg"
 ```
 
 
-# PCA on FTIR Data
+## FTIR Data
 
 ```{r PCA}
 
@@ -640,14 +679,11 @@ ggsave('FTIR_PCA.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "
 
 ```
 
-# Field Soil C and N Analyses
+## Soil C and N
 
-## Charts
+### Sam Kimpton's data
 
-```{r SOC}
-
-summary_SOM$Site <- factor(summary_SOM$Site, levels = order_sites)
-summary_SOM$Management <- factor(summary_SOM$Management, levels = order_management)
+```{r SOC chart - Kimpton}
 
 #SOM C bar chart with error bars
 ggplot(data = summary_SOM, aes(x=Site, y=SOM_C_mean, fill=Site)) + 
@@ -660,7 +696,7 @@ ggplot(data = summary_SOM, aes(x=Site, y=SOM_C_mean, fill=Site)) +
   my_theme
 
 #save figure
-ggsave('SOC.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+ggsave('SOC_Kimpton.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
 	path = "Figures", #save to folder within working directory
 	width = 6, height = 4, units = "in", #set dimensions for figure
 	dpi = 300, #set resolution
@@ -668,7 +704,7 @@ ggsave('SOC.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff"
 
 ```
 
-```{r SOC ha}
+```{r SOC ha - Kimpton}
 
 #SOM C bar chart with error bars per hectare
 ggplot(data = summary_SOM, aes(x=Site, y=C_Tha_mean, fill=Site)) + 
@@ -690,8 +726,7 @@ ggsave('SOC_ha.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "ti
 
 ```
 
-
-```{r SOM-N}
+```{r SOM-N - Kimpton}
 
 #SOM N bar chart with error bars
 ggplot(data = summary_SOM, aes(x=Site, y=SOM_N_mean, fill=Site)) + 
@@ -704,7 +739,7 @@ ggplot(data = summary_SOM, aes(x=Site, y=SOM_N_mean, fill=Site)) +
   my_theme
 
 #save figure
-ggsave('SOM_N.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+ggsave('SOM_N_Kimpton.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
 	path = "Figures", #save to folder within working directory
 	width = 6, height = 4, units = "in", #set dimensions for figure
 	dpi = 300, #set resolution
@@ -712,7 +747,7 @@ ggsave('SOM_N.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tif
 
 ```
 
-```{r SOM-CN}
+```{r SOM-CN - Kimpton}
 
 #SOM CN boxplot
 ggplot(data = SOM_fielddata2) + 
@@ -723,7 +758,7 @@ ggplot(data = SOM_fielddata2) +
   my_theme
 
 #save figure
-ggsave('SOM_CN.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+ggsave('SOM_CN_Kimpton.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
 	path = "Figures", #save to folder within working directory
 	width = 6, height = 4, units = "in", #set dimensions for figure
 	dpi = 300, #set resolution
@@ -731,21 +766,18 @@ ggsave('SOM_CN.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "ti
 
 ```
 
-```{r combined C plots}
-
-SOM_fielddata$Site <- factor(SOM_fielddata$Site, levels = order_sites)
-SOM_fielddata$Management <- factor(SOM_fielddata$Management, levels = order_management)
+```{r combined C plots - Kimpton}
 
 #combined boxplots with error bars
 ggplot(data = SOM_fielddata) + 
-	geom_boxplot(aes(x=Management, y=C_gkg, fill=Fraction)) +
+	geom_boxplot(aes(x=Site, y=C_gkg, fill=Fraction)) +
   scale_fill_manual(values=colors) + #define colors to use
   ggtitle("Soil Organic Matter C per site") + #add a graph title
   xlab("Site") + ylab("C (g/kg)") + #define/change X and Y labels
   my_theme
 
 #save figure
-ggsave('SOMC_all2.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+ggsave('SOMC_all_Kimpton.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
 	path = "Figures", #save to folder within working directory
 	width = 6, height = 4, units = "in", #set dimensions for figure
 	dpi = 300, #set resolution
@@ -753,7 +785,7 @@ ggsave('SOMC_all2.svg', #save plot name and type - can be "eps", "pdf", "jpeg", 
 
 ```
 
-```{r combined N plots}
+```{r combined N plots - Kimpton}
 
 #combined boxplots with error bars
 ggplot(data = SOM_fielddata) + 
@@ -764,7 +796,7 @@ ggplot(data = SOM_fielddata) +
   my_theme
 
 #save figure
-ggsave('SOM_N_all.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+ggsave('SOM_N_all_Kimpton.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
 	path = "Figures", #save to folder within working directory
 	width = 6, height = 4, units = "in", #set dimensions for figure
 	dpi = 300, #set resolution
@@ -772,19 +804,7 @@ ggsave('SOM_N_all.svg', #save plot name and type - can be "eps", "pdf", "jpeg", 
 
 ```
 
-```{r combined CN}
-
-#SOM CN boxplot
-ggplot(data = SOM_fielddata) + 
-	geom_boxplot(aes(x=Site, y=C_N, fill=Fraction)) +
-  scale_fill_manual(values=colors) + #define colors to use
-  ggtitle("Soil Organic Matter C:N per site") + #add a graph title
-  xlab("Site") + ylab("C:N") + #define/change X and Y labels
-  my_theme
-
-```
-
-```{r POM-C}
+```{r POM-C - Kimpton}
 
 #POM C bar chart with error bars
 ggplot(data = summary_SOM, aes(x=Site, y=POM_C_mean, fill=Site)) + 
@@ -797,7 +817,7 @@ ggplot(data = summary_SOM, aes(x=Site, y=POM_C_mean, fill=Site)) +
   my_theme
 
 #save figure
-ggsave('POM_Cbar.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+ggsave('POM_Cbar_Kimpton.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
 	path = "Figures", #save to folder within working directory
 	width = 6, height = 4, units = "in", #set dimensions for figure
 	dpi = 300, #set resolution
@@ -805,7 +825,7 @@ ggsave('POM_Cbar.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "
 
 ```
 
-```{r POM-N}
+```{r POM-N - Kimpton}
 
 #POM N bar chart with error bars
 ggplot(data = summary_SOM, aes(x=Site, y=POM_N_mean, fill=Site)) + 
@@ -818,7 +838,7 @@ ggplot(data = summary_SOM, aes(x=Site, y=POM_N_mean, fill=Site)) +
   my_theme
 
 #save figure
-ggsave('POM_Nbar.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+ggsave('POM_Nbar_Kimpton.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
 	path = "Figures", #save to folder within working directory
 	width = 6, height = 4, units = "in", #set dimensions for figure
 	dpi = 300, #set resolution
@@ -826,7 +846,7 @@ ggsave('POM_Nbar.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "
 
 ```
 
-```{r MAOM-C}
+```{r MAOM-C - Kimpton}
 
 #MAOM C bar chart with error bars
 ggplot(data = summary_SOM, aes(x=Site, y=MAOM_C_mean, fill=Site)) + 
@@ -839,7 +859,7 @@ ggplot(data = summary_SOM, aes(x=Site, y=MAOM_C_mean, fill=Site)) +
   my_theme
 
 #save figure
-ggsave('MAOM_Cbar.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+ggsave('MAOM_Cbar_Kimpton.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
 	path = "Figures", #save to folder within working directory
 	width = 6, height = 4, units = "in", #set dimensions for figure
 	dpi = 300, #set resolution
@@ -847,7 +867,7 @@ ggsave('MAOM_Cbar.svg', #save plot name and type - can be "eps", "pdf", "jpeg", 
 
 ```
 
-```{r MAOM-N}
+```{r MAOM-N - Kimpton}
 
 #MAOM N bar chart with error bars
 ggplot(data = summary_SOM, aes(x=Site, y=MAOM_N_mean, fill=Site)) + 
@@ -860,7 +880,7 @@ ggplot(data = summary_SOM, aes(x=Site, y=MAOM_N_mean, fill=Site)) +
   my_theme
 
 #save figure
-ggsave('MAOM_Nbar.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+ggsave('MAOM_Nbar_Kimpton.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
 	path = "Figures", #save to folder within working directory
 	width = 6, height = 4, units = "in", #set dimensions for figure
 	dpi = 300, #set resolution
@@ -868,18 +888,19 @@ ggsave('MAOM_Nbar.svg', #save plot name and type - can be "eps", "pdf", "jpeg", 
 
 ```
 
-```{r fMAOM-C}
+```{r fMAOM-C - Kimpton}
 
 #fMAOM C box chart
 ggplot(data = SOM_fielddata2, aes(x=Site, y=fMAOM_C, fill=Site)) + 
 	geom_boxplot() +
   scale_fill_manual(values=colors) + #define colors to use
   ggtitle("fMAOM C per site") + #add a graph title
-  xlab("Site") + ylab("C (g/kg)") + #define/change X and Y labels
+  xlab("Site") + ylab("Portion of SOC stored in MAOM") + #define/change X and Y labels
+  scale_y_continuous(labels = scales::percent) + #change y axis to percent
   my_theme
 
 #save figure
-ggsave('fMAOM_C.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+ggsave('fMAOM_C_Kimpton.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
 	path = "Figures", #save to folder within working directory
 	width = 6, height = 4, units = "in", #set dimensions for figure
 	dpi = 300, #set resolution
@@ -887,18 +908,244 @@ ggsave('fMAOM_C.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "t
 
 ```
 
-```{r fMAOM-N}
+```{r fMAOM-N - Kimpton}
 
 #fMAOM N box chart
 ggplot(data = SOM_fielddata2, aes(x=Site, y=fMAOM_N, fill=Site)) + 
 	geom_boxplot() +
   scale_fill_manual(values=colors) + #define colors to use
   ggtitle("fMAOM N per site") + #add a graph title
+  xlab("Site") + ylab("Portion of SOC stored in MAOM") + #define/change X and Y labels
+  scale_y_continuous(labels = scales::percent) + #change y axis to percent
+  my_theme
+
+#save figure
+ggsave('fMAOM_N_Kimpton.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 6, height = 4, units = "in", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
+```
+
+### Kaydee Barker's data
+
+```{r SOC chart - Barker}
+
+#SOM C bar chart with error bars
+ggplot(data = summary_SOM_13C_a, aes(x=Site, y=SOM_C_mean, fill=Site)) + 
+	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
+  scale_fill_manual(values=colors) + #define colors to use
+  geom_errorbar(aes(ymin=SOM_C_mean-SOM_C_std.error, ymax=SOM_C_mean+SOM_C_std.error),
+  color = "grey10", width = 0.7, position = "dodge") + 
+  ggtitle("Soil Organic Matter C per site") + #add a graph title
+  xlab("Site") + ylab("C (g/kg)") + #define/change X and Y labels
+  my_theme
+
+#save figure
+ggsave('SOC_KB.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 6, height = 4, units = "in", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
+```
+
+```{r SOM-N - Barker}
+
+#SOM N bar chart with error bars
+ggplot(data = summary_SOM_13C_a, aes(x=Site, y=SOM_N_mean, fill=Site)) + 
+	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
+  scale_fill_manual(values=colors) + #define colors to use
+  geom_errorbar(aes(ymin=SOM_N_mean-SOM_N_std.error, ymax=SOM_N_mean+SOM_N_std.error),
+  color = "grey10", width = 0.7, position = "dodge") + 
+  ggtitle("Soil Organic Matter N per site") + #add a graph title
   xlab("Site") + ylab("N (g/kg)") + #define/change X and Y labels
   my_theme
 
 #save figure
-ggsave('fMAOM_N.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+ggsave('SOM_N_KB.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 6, height = 4, units = "in", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
+```
+
+```{r SOM-CN - Barker}
+
+#SOM CN boxplot
+ggplot(data = SOM_13C_2) + 
+	geom_boxplot(aes(x=Site, y=SOM_CN, fill=Site)) +
+  scale_fill_manual(values=colors) + #define colors to use
+  ggtitle("Soil Organic Matter C:N per site") + #add a graph title
+  xlab("Site") + ylab("C:N") + #define/change X and Y labels
+  my_theme
+
+#save figure
+ggsave('SOM_CN_KB.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 6, height = 4, units = "in", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
+```
+
+```{r combined C plots - Barker}
+
+#combined boxplots with error bars
+ggplot(data = SOM_13C) + 
+	geom_boxplot(aes(x=Site, y=C_gkg, fill=Fraction)) +
+  scale_fill_manual(values=colors) + #define colors to use
+  ggtitle("Soil Organic Matter C per site") + #add a graph title
+  xlab("Site") + ylab("C (g/kg)") + #define/change X and Y labels
+  my_theme
+
+#save figure
+ggsave('SOMC_all_KB.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 6, height = 4, units = "in", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
+```
+
+```{r combined N plots - Barker}
+
+#combined boxplots with error bars
+ggplot(data = SOM_13C) + 
+	geom_boxplot(aes(x=Site, y=N_gkg, fill=Fraction)) +
+  scale_fill_manual(values=colors) + #define colors to use
+  ggtitle("Soil Organic Matter N per site") + #add a graph title
+  xlab("Site") + ylab("N (g/kg)") + #define/change X and Y labels
+  my_theme
+
+#save figure
+ggsave('SOM_N_all_KB.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 6, height = 4, units = "in", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
+```
+
+```{r POM-C - Barker}
+
+#POM C bar chart with error bars
+ggplot(data = summary_SOM_13C_a, aes(x=Site, y=POM_C_mean, fill=Site)) + 
+	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
+  scale_fill_manual(values=colors) + #define colors to use
+  geom_errorbar(aes(ymin=POM_C_mean-POM_C_std.error, ymax=POM_C_mean+POM_C_std.error),
+  color = "grey10", width = 0.7, position = "dodge") + 
+  ggtitle("Particulate Organic Matter C per site") + #add a graph title
+  xlab("Site") + ylab("POM-C (g C/kg soil)") + #define/change X and Y labels
+  my_theme
+
+#save figure
+ggsave('POM_Cbar_KB.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 6, height = 4, units = "in", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
+```
+
+```{r POM-N - Barker}
+
+#POM N bar chart with error bars
+ggplot(data = summary_SOM_13C_a, aes(x=Site, y=POM_N_mean, fill=Site)) + 
+	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
+  scale_fill_manual(values=colors) + #define colors to use
+  geom_errorbar(aes(ymin=POM_N_mean-POM_N_std.error, ymax=POM_N_mean+POM_N_std.error),
+  color = "grey10", width = 0.7, position = "dodge") + 
+  ggtitle("Particulate Organic Matter N per site") + #add a graph title
+  xlab("Site") + ylab("POM-N (g N/kg soil)") + #define/change X and Y labels
+  my_theme
+
+#save figure
+ggsave('POM_Nbar_KB.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 6, height = 4, units = "in", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
+```
+
+```{r MAOM-C - Barker}
+
+#MAOM C bar chart with error bars
+ggplot(data = summary_SOM_13C_a, aes(x=Site, y=MAOM_C_mean, fill=Site)) + 
+	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
+  scale_fill_manual(values=colors) + #define colors to use
+  geom_errorbar(aes(ymin=MAOM_C_mean-MAOM_C_std.error, ymax=MAOM_C_mean+MAOM_C_std.error),
+  color = "grey10", width = 0.7, position = "dodge") + 
+  ggtitle("Mineral Associated Organic Matter C per site") + #add a graph title
+  xlab("Site") + ylab("MAOM-C (g C/kg soil)") + #define/change X and Y labels
+  my_theme
+
+#save figure
+ggsave('MAOM_Cbar_KB.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 6, height = 4, units = "in", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
+```
+
+```{r MAOM-N - Barker}
+
+#MAOM N bar chart with error bars
+ggplot(data = summary_SOM_13C_a, aes(x=Site, y=MAOM_N_mean, fill=Site)) + 
+	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
+  scale_fill_manual(values=colors) + #define colors to use
+  geom_errorbar(aes(ymin=MAOM_N_mean-MAOM_N_std.error, ymax=MAOM_N_mean+MAOM_N_std.error),
+  color = "grey10", width = 0.7, position = "dodge") + 
+  ggtitle("Mineral Associated Organic Matter N per site") + #add a graph title
+  xlab("Site") + ylab("MAOM-N (g N/kg soil)") + #define/change X and Y labels
+  my_theme
+
+#save figure
+ggsave('MAOM_Nbar_KB.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 6, height = 4, units = "in", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
+```
+
+```{r fMAOM-C - Barker}
+
+#fMAOM C box chart
+ggplot(data = SOM_13C_2, aes(x=Site, y=fMAOM_C, fill=Site)) + 
+	geom_boxplot() +
+  scale_fill_manual(values=colors) + #define colors to use
+  ggtitle("fMAOM C per site") + #add a graph title
+  xlab("Site") + ylab("Portion of SOC stored in MAOM") + #define/change X and Y labels
+  scale_y_continuous(labels = scales::percent) + #change y axis to percent
+  my_theme
+
+#save figure
+ggsave('fMAOM_C_KB.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 6, height = 4, units = "in", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
+```
+
+```{r fMAOM-N - Barker}
+
+#fMAOM N box chart
+ggplot(data = SOM_13C_2, aes(x=Site, y=fMAOM_N, fill=Site)) + 
+	geom_boxplot() +
+  scale_fill_manual(values=colors) + #define colors to use
+  ggtitle("fMAOM N per site") + #add a graph title
+  xlab("Site") + ylab("Portion of SON stored in MAOM") + #define/change X and Y labels
+  scale_y_continuous(labels = scales::percent) + #change y axis to percent
+  my_theme
+
+#save figure
+ggsave('fMAOM_N_KB.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
 	path = "Figures", #save to folder within working directory
 	width = 6, height = 4, units = "in", #set dimensions for figure
 	dpi = 300, #set resolution
