@@ -46,8 +46,9 @@ lapply(c(datalib, vislib, statlib), library, character.only = TRUE)
 #Color palettes
 
 #color palette example using hex codes
-colors <- c("#84B699", "#EF8E45", "#BF876E", "#5DDEE7")
-colors5 <- c("#84B699", "#EF8E45", "#BF876E", "#5DDEE7", "azure")
+colors <- c("#84B699", "#EF8E45", "#BF876E", "#46A9B0")
+colors5 <- c("#84B699", "#EF8E45", "#BF876E", "#46A9B0", "azure")
+colors9 <- c("#84B699", "#EF8E45", "#BF876E", "#46A9B0", "azure", "#ABEBC6", "#F5A467", "#FFC2A6", "#5DDFE8")
 
 #color palette with gradient with 20 steps
 colors_ramp <- colorRampPalette(c("#84B699", "azure","#BF876E"))(25)
@@ -237,26 +238,29 @@ SOM <- SOM_fielddata %>%
   filter(Fraction == "SOM") %>%
   rename("SOM_C" = "C_gkg") %>%
   rename("SOM_N" = "N_gkg") %>%
-  rename("SOM_CN" = "C_N")
+  rename("SOM_CN" = "C_N") %>%
+  rename("SOM_C_kgm2_7cm" = "C_kgm2_7cm")
 
 POM <- SOM_fielddata %>%
   filter(Fraction == "POM") %>%
   rename("POM_C" = "C_gkg") %>%
   rename("POM_N" = "N_gkg") %>%
-  rename("POM_CN" = "C_N")
+  rename("POM_CN" = "C_N") %>%
+  rename("POM_C_kgm2_7cm" = "C_kgm2_7cm")
   
 MAOM <- SOM_fielddata %>%
   filter(Fraction == "MAOM") %>%
   rename("MAOM_C" = "C_gkg") %>%
   rename("MAOM_N" = "N_gkg") %>%
-  rename("MAOM_CN" = "C_N")
+  rename("MAOM_CN" = "C_N") %>%
+  rename("MAOM_C_kgm2_7cm" = "C_kgm2_7cm")
 
 SOM_fielddata2 <- merge(MAOM,POM, by=c("Site","Management", "Mgmt_num", "Plot_ID"), all.y=TRUE) %>%
   merge(SOM, by=c("Site","Management", "Mgmt_num", "Plot_ID"), all.y=TRUE) %>%
   dplyr::select(Site, Management, Mgmt_num, SOM_C, SOM_N, SOM_CN, POM_C, POM_N, POM_CN, MAOM_C, MAOM_N, MAOM_CN,
-                C_gcm3, C_Tha) %>%
-  mutate(fMAOM_C = MAOM_C / (POM_C + MAOM_C)) %>% #calculate fMAOM C
-  mutate(fMAOM_C_2 = MAOM_C / SOM_C) %>% #calculate fMAOM C
+                C_gcm3, C_Tha, SOM_C_kgm2_7cm, POM_C_kgm2_7cm, MAOM_C_kgm2_7cm) %>%
+  mutate(fMAOM_C = MAOM_C_kgm2_7cm / (POM_C_kgm2_7cm + MAOM_C_kgm2_7cm)) %>% #calculate fMAOM C
+  mutate(fMAOM_C_2 = MAOM_C_kgm2_7cm / SOM_C_kgm2_7cm) %>% #calculate fMAOM C
   mutate(fMAOM_N = MAOM_N / (POM_N + MAOM_N)) %>% #calculate fMAOM N
   mutate(fMAOM_N_2 = MAOM_N / SOM_N) #calculate fMAOM N
 
@@ -277,50 +281,54 @@ summary_SOM$Management <- factor(summary_SOM$Management, levels = order_manageme
 ```{r load data 3.2, include=FALSE}
 
 #read in soil C/N and 13C data
-SOM_13C <- read_csv("SOM_13C.csv") 
+SOM_13C <- read_csv("SOM_13C.csv")
 
 #Combine SOM, POM, and MAOM as one observation per plot
 SOM2 <- SOM_13C %>%
   filter(Fraction == "SOM") %>%
   filter(Incubation_T != 6) %>%
-  dplyr::select(Site, Management, Mgmt_num, Plot_ID, Incubation_T, C_gkg, N_gkg, C_N, d13C, `13C_atom`, `15N`, per_POM, per_MAOM) %>% #select columns to keep
+  dplyr::select(Site, Management, Mgmt_num, Plot_ID, Incubation_T, C_gkg, N_gkg, C_N, d13C, `13C_atom`, `15N`, per_POM, per_MAOM, C_kgm2_7cm) %>% #select columns to keep
   rename("SOM_C" = "C_gkg") %>%
   rename("SOM_N" = "N_gkg") %>%
   rename("SOM_CN" = "C_N") %>%
   rename("SOM_d13C" = "d13C") %>%
   rename("SOM_13C_atom" = "13C_atom") %>%
-  rename("SOM_15N" = "15N")
+  rename("SOM_15N" = "15N") %>%
+  rename("SOM_C_kgm2_7cm" = "C_kgm2_7cm")
 
 POM2 <- SOM_13C %>%
   filter(Fraction == "POM") %>%
   filter(Incubation_T != 6) %>%
-  dplyr::select(Site, Management, Mgmt_num, Plot_ID, Incubation_T, C_gkg, N_gkg, C_N, d13C, `13C_atom`, `15N`) %>% #select columns to keep
+  dplyr::select(Site, Management, Mgmt_num, Plot_ID, Incubation_T, C_gkg, N_gkg, C_N, d13C, `13C_atom`, `15N`, C_kgm2_7cm) %>% #select columns to keep
   rename("POM_C" = "C_gkg") %>%
   rename("POM_N" = "N_gkg") %>%
   rename("POM_CN" = "C_N") %>%
   rename("POM_d13C" = "d13C") %>%
   rename("POM_13C_atom" = "13C_atom") %>%
-  rename("POM_15N" = "15N")
+  rename("POM_15N" = "15N") %>%
+  rename("POM_C_kgm2_7cm" = "C_kgm2_7cm")
   
 MAOM2 <- SOM_13C %>%
   filter(Fraction == "MAOM") %>%
   filter(Incubation_T != 6) %>%
-  dplyr::select(Site, Management, Mgmt_num, Plot_ID, Incubation_T, C_gkg, N_gkg, C_N, d13C, `13C_atom`, `15N`) %>% #select columns to keep
+  dplyr::select(Site, Management, Mgmt_num, Plot_ID, Incubation_T, C_gkg, N_gkg, C_N, d13C, `13C_atom`, `15N`, C_kgm2_7cm) %>% #select columns to keep
   rename("MAOM_C" = "C_gkg") %>%
   rename("MAOM_N" = "N_gkg") %>%
   rename("MAOM_CN" = "C_N")  %>%
   rename("MAOM_d13C" = "d13C") %>%
   rename("MAOM_13C_atom" = "13C_atom") %>%
-  rename("MAOM_15N" = "15N")
+  rename("MAOM_15N" = "15N") %>%
+  rename("MAOM_C_kgm2_7cm" = "C_kgm2_7cm")
 
 SOM_13C_2 <- merge(SOM2, POM2, by=c("Site","Management", "Mgmt_num", "Plot_ID", "Incubation_T"), all=TRUE) %>%
   merge(MAOM2, by=c("Site","Management", "Mgmt_num", "Plot_ID", "Incubation_T"), all.y=TRUE) %>%
   dplyr::select(Plot_ID, Site, Management, Mgmt_num, Incubation_T, per_POM, per_MAOM, SOM_C, SOM_N, SOM_CN, 
-                POM_C, POM_N, POM_CN, MAOM_C, MAOM_N, MAOM_CN,SOM_d13C, SOM_13C_atom, 
-                POM_d13C, POM_13C_atom, MAOM_d13C, MAOM_13C_atom,
+                POM_C, POM_N, POM_CN, MAOM_C, MAOM_N, MAOM_CN,SOM_d13C, 
+                SOM_C_kgm2_7cm, POM_C_kgm2_7cm, MAOM_C_kgm2_7cm,
+                SOM_13C_atom, POM_d13C, POM_13C_atom, MAOM_d13C, MAOM_13C_atom,
                 SOM_15N, POM_15N, MAOM_15N) %>%
-  mutate(fMAOM_C = MAOM_C / (POM_C + MAOM_C)) %>% #calculate fMAOM C
-  mutate(fMAOM_C_2 = MAOM_C / SOM_C) %>% #calculate fMAOM C
+  mutate(fMAOM_C = MAOM_C_kgm2_7cm / (POM_C_kgm2_7cm + MAOM_C_kgm2_7cm)) %>% #calculate fMAOM C
+  mutate(fMAOM_C_2 = MAOM_C_kgm2_7cm / SOM_C_kgm2_7cm) %>% #calculate fMAOM C
   mutate(fMAOM_N = MAOM_N / (POM_N + MAOM_N)) %>% #calculate fMAOM N
   mutate(fMAOM_N_2 = MAOM_N / SOM_N) #calculate fMAOM N
 
@@ -334,7 +342,7 @@ summary_SOM_13C_b <- SOM_13C_2 %>%
   summarise_all(funs(mean(., na.rm=TRUE), sd(., na.rm=TRUE), std.error(., na.rm=TRUE)))
 
 SOM_13C_2$pH <- site_data$pH[match(SOM_13C_2$Plot_ID, site_data$Plot_ID)] #add pH to SOM_13C_2
-SOM_13C_2$BD <- site_data$BD[match(SOM_13C_2$Plot_ID, site_data$Plot_ID)] #add bulk density to SOM_13C_2
+#SOM_13C_2$BD <- site_data$BD[match(SOM_13C_2$Plot_ID, site_data$Plot_ID)] #add bulk density to SOM_13C_2
 SOM_13C_2$AM_hyph <- AMdata$hyph_percent[match(SOM_13C_2$Plot_ID, AMdata$Sample)] #add AM hyphae to SOM_13C_2
 SOM_13C_2$AM_arb <- AMdata$arbuscule_percent[match(SOM_13C_2$Plot_ID, AMdata$Sample)] #add AM arbuscules to SOM_13C_2
 
@@ -377,6 +385,59 @@ summary_endbio <- endbiomass %>%
 #order variables for each
 endbiomass$Management <- factor(endbiomass$Management, levels = order_management)
 summary_endbio$Management <- factor(summary_endbio$Management, levels = order_management)
+
+```
+
+### UK soil data to compare
+
+Manning, Peter; De Vries, Franciska T.; Tallowin, Jerry R. B. et al. (2016). Data from: Simple measures of climate, soil properties and plant traits predict national scale grassland soil carbon stocks [Dataset]. Dryad. https://doi.org/10.5061/dryad.s7867
+
+```{r load UK data}
+
+#load dataset UK grasslands - from DRYAD repository, Manning et al. 2016
+UK_soil <- read_csv("Manning2015_dryad.csv") %>%
+  filter(type == "U") %>% #use only unimproved sites
+  mutate(POM_C = C250 + C50_250) %>% #match to Wigan data
+  mutate(MAOM_C = C50_0.45) %>% #match to Wigan data
+  rename("pH" = "PH") %>% #match case with Wigan data
+  mutate(vegetation = str_replace(vegetation, "wet grassland", "Wet Grassland")) %>% #match naming with Wigan data
+  mutate(vegetation = str_replace(vegetation, "Acid grass", "Acid Grass")) %>% #match naming with Wigan data
+  dplyr::select(vegetation, type, site, pH, TotalC, POM_C, MAOM_C) %>%
+  mutate_at(vars(pH, TotalC, POM_C, MAOM_C), as.numeric) %>%
+  na.omit() #only include complete
+
+
+summary_UKsoils <- UK_soil %>%
+  group_by(vegetation) %>%
+  summarise(across(pH:MAOM_C, list(mean = ~ mean(., na.rm=TRUE),
+                                 sd = ~ sd(., na.rm=TRUE),
+                                 se = ~ std.error(., na.rm=TRUE))))
+
+soilC_compare <- SOM_13C_2 %>%
+  dplyr::select(Site, SOM_C_kgm2_7cm, POM_C_kgm2_7cm, MAOM_C_kgm2_7cm, pH) %>%
+  rename("site" = "Site") %>%
+  rename("TotalC" = "SOM_C_kgm2_7cm") %>%
+  rename("POM_C" = "POM_C_kgm2_7cm") %>%
+  rename("MAOM_C" = "MAOM_C_kgm2_7cm") %>%
+  mutate(type = "R") %>% #R for restored
+  mutate(vegetation = case_when(grepl("Bickershaw 1", site) #use grepl to find a substring within a column
+															  ~ "Restored Wet Grassland Uncut 4 Yrs", #set value in new column 
+															  grepl("Bickershaw 2", site) ~ "Restored Wet Grassland 4 Yrs", 
+															  grepl("Amberswood", site) ~ "Restored Mesotrophic 15 Yrs", 
+															  grepl("Flashes", site) ~ "Restored Mesotrophic 23 Yrs",
+		                           .default = "Restored")) %>% #set default value of new column
+  bind_rows(UK_soil) #%>%
+  #mutate(name = fct_relevel(vegetation, #change ordering manually
+  #                          "Acid grass", "Calcicolous", "Mesotrophic", "wet grassland", "restored"))
+
+
+#order variables
+soilC_compare$vegetation <- factor(soilC_compare$vegetation, 
+                                   levels = c("Acid Grass", "Calcicolous", "Mesotrophic", "Wet Grassland", 
+                                              "Restored Wet Grassland Uncut 4 Yrs",
+                                              "Restored Wet Grassland 4 Yrs",
+                                              "Restored Mesotrophic 15 Yrs",
+                                              "Restored Mesotrophic 23 Yrs"))
 
 ```
 
@@ -718,7 +779,7 @@ ggplot(data = summary_SOM, aes(x=Site, y=C_Tha_mean, fill=Site)) +
   my_theme
 
 #save figure
-ggsave('SOC_ha.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+ggsave('SOC_ha_Kimpton.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
 	path = "Figures", #save to folder within working directory
 	width = 6, height = 4, units = "in", #set dimensions for figure
 	dpi = 300, #set resolution
@@ -951,6 +1012,28 @@ ggsave('SOC_KB.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "ti
 
 ```
 
+```{r SOC chart 2 - Barker}
+
+#SOM C bar chart with error bars
+ggplot(data = summary_SOM_13C_a, aes(x=Site, y=SOM_C_kgm2_7cm_mean, fill=Site)) + 
+	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
+  scale_fill_manual(values=colors) + #define colors to use
+  geom_errorbar(aes(ymin=SOM_C_kgm2_7cm_mean-SOM_C_kgm2_7cm_std.error, 
+                    ymax=SOM_C_kgm2_7cm_mean+SOM_C_kgm2_7cm_std.error),
+  color = "grey10", width = 0.7, position = "dodge") + 
+  ggtitle("Soil Organic Matter C per site") + #add a graph title
+  xlab("Site") + ylab("SOC (kg/m2 in top 7cm)") + #define/change X and Y labels
+  my_theme
+
+#save figure
+ggsave('SOC_kgm2_KB.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 6, height = 4, units = "in", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
+```
+
 ```{r SOM-N - Barker}
 
 #SOM N bar chart with error bars
@@ -1153,41 +1236,164 @@ ggsave('fMAOM_N_KB.svg', #save plot name and type - can be "eps", "pdf", "jpeg",
 
 ```
 
+### UK unimproved grassland soils C
+```{SOC UK}
+
+#SOM C bar chart with error bars
+
+ggplot(data = summary_UKsoils, aes(x=vegetation, y=TotalC_mean, fill=vegetation)) + 
+	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
+  scale_fill_manual(values=colors) + #define colors to use
+  geom_errorbar(aes(ymin=TotalC_mean-TotalC_std.error, 
+                    ymax=TotalC_mean+TotalCstd.error),
+  color = "grey10", width = 0.7, position = "dodge") + 
+  ggtitle("Soil Organic Matter C across UK grasslands") + #add a graph title
+  xlab("Grassland Type") + ylab("SOC (kg/m2 in top 7cm)") + #define/change X and Y labels
+  my_theme
+
+
+#save figure
+ggsave('SOC_Manning.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 6, height = 4, units = "in", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
+
+```
+
+```{r compare soil C}
+
+ggplot(data = soilC_compare) + 
+	geom_boxplot(aes(x=vegetation, y=TotalC, fill=vegetation)) +
+  scale_fill_manual(values=colors5) + #define colors to use
+  ggtitle("Soil Organic Matter C across the UK") + #add a graph title
+  xlab("Grassland Type") + ylab("SOC (kg/m2 in top 7cm)") + #define/change X and Y labels
+  my_theme
+
+#save figure
+ggsave('SOC_comparison.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 6, height = 4, units = "in", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
+```
+
+```{r compare POM C}
+
+ggplot(data = soilC_compare) + 
+	geom_boxplot(aes(x=vegetation, y=POM_C, fill=vegetation)) +
+  scale_fill_manual(values=colors5) + #define colors to use
+  ggtitle("Particulate Organic Matter C across the UK") + #add a graph title
+  xlab("Grassland Type") + ylab("POM-C (kg/m2 in top 7cm)") + #define/change X and Y labels
+  my_theme
+
+#save figure
+ggsave('POM-C_comparison.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 6, height = 4, units = "in", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
+```
+
+```{r compare POM C}
+
+ggplot(data = soilC_compare) + 
+	geom_boxplot(aes(x=vegetation, y=MAOM_C, fill=vegetation)) +
+  scale_fill_manual(values=colors5) + #define colors to use
+  ggtitle("Mineral Associated Organic Matter C across the UK") + #add a graph title
+  xlab("Grassland Type") + ylab("MAOM-C (kg/m2 in top 7cm)") + #define/change X and Y labels
+  my_theme
+
+#save figure
+ggsave('MAOM-C_comparison.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 6, height = 4, units = "in", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
+```
+
 ## SOM Stats
-### By Management
-```{r SOM field stats}
-shapiro.test(resid(lm(SOM_C ~ Management, data = SOM_fielddata2))) #check normality of residuals - normal
-summary(aov(SOM_C ~ Management, data = SOM_fielddata2))
-TukeyHSD(aov(SOM_C ~ Management, data = SOM_fielddata2)) 
 
-shapiro.test(resid(lm(SOM_N ~ Management, data = SOM_fielddata2))) #normal
-summary(aov(SOM_N ~ Management, data = SOM_fielddata2))
-TukeyHSD(aov(SOM_N ~ Management, data = SOM_fielddata2))
+### Compare with UK-wide unimproved grasslands soil C
+```{r SOC compare}
 
-shapiro.test(resid(lm(POM_C ~ Management, data = SOM_fielddata2))) #not normal
-shapiro.test(resid(lm(log(POM_C) ~ Management, data = SOM_fielddata2))) #normal
-summary(aov(log(POM_C) ~ Management, data = SOM_fielddata2))
-TukeyHSD(aov(log(POM_C) ~ Management, data = SOM_fielddata2))
+shapiro.test(resid(lm(TotalC ~ vegetation, data = soilC_compare))) #check normality of residuals - not normal
+shapiro.test(resid(lm(log(TotalC) ~ vegetation, data = soilC_compare))) #normal
+summary(aov(log(TotalC) ~ vegetation, data = soilC_compare)) #very sig
+TukeyHSD(aov(log(TotalC) ~ vegetation, data = soilC_compare)) #restored vs. Acid, Calc, Meso, and wet - all higher
 
-shapiro.test(resid(lm(POM_N ~ Management, data = SOM_fielddata2))) #normal
-summary(aov(POM_N ~ Management, data = SOM_fielddata2))
-TukeyHSD(aov(POM_N ~ Management, data = SOM_fielddata2))
+shapiro.test(resid(lm(POM_C ~ vegetation, data = soilC_compare))) #check normality of residuals - not normal
+shapiro.test(resid(lm(log(POM_C) ~ vegetation, data = soilC_compare))) #normal
+summary(aov(log(POM_C) ~ vegetation, data = soilC_compare)) #very sig
+TukeyHSD(aov(log(POM_C) ~ vegetation, data = soilC_compare)) #restored vs. Meso - higher
 
-shapiro.test(resid(lm(MAOM_C ~ Management, data = SOM_fielddata2))) #normal
-summary(aov(MAOM_C ~ Management, data = SOM_fielddata2))
-TukeyHSD(aov(MAOM_C ~ Management, data = SOM_fielddata2))
+shapiro.test(resid(lm(MAOM_C ~ vegetation, data = soilC_compare))) #check normality of residuals - not normal
+shapiro.test(resid(lm(log(MAOM_C) ~ vegetation, data = soilC_compare))) #still not - might need another transform
+summary(aov(log(MAOM_C) ~ vegetation, data = soilC_compare)) #very sig
+TukeyHSD(aov(log(MAOM_C) ~ vegetation, data = soilC_compare)) #restored vs. Acid, Calc, Meso, wet... also Acid vs. Meso, wet vs. Calc., wet vs Meso
+  
+```
 
-shapiro.test(resid(lm(MAOM_N ~ Management, data = SOM_fielddata2))) #normal
-summary(aov(MAOM_N ~ Management, data = SOM_fielddata2))
-TukeyHSD(aov(MAOM_N ~ Management, data = SOM_fielddata2))
+```{r SOC compare pH}
 
-shapiro.test(resid(lm(fMAOM_C ~ Management, data = SOM_fielddata2))) #normal
-summary(aov(fMAOM_C ~ Management, data = SOM_fielddata2))
-TukeyHSD(aov(fMAOM_C ~ Management, data = SOM_fielddata2))
+shapiro.test(resid(lm(TotalC ~ vegetation, data = soilC_compare))) #check normality of residuals - not normal
+shapiro.test(resid(lm(log(TotalC) ~ vegetation, data = soilC_compare))) #normal
+summary(aov(log(TotalC) ~ vegetation, data = soilC_compare)) #very sig
+TukeyHSD(aov(log(TotalC) ~ vegetation, data = soilC_compare)) #restored vs. Acid, Calc, Meso, and wet - all higher
 
-shapiro.test(resid(lm(fMAOM_N ~ Management, data = SOM_fielddata2))) #normal
-summary(aov(fMAOM_N ~ Management, data = SOM_fielddata2))
-TukeyHSD(aov(fMAOM_N ~ Management, data = SOM_fielddata2))
+shapiro.test(resid(lm(POM_C ~ vegetation, data = soilC_compare))) #check normality of residuals - not normal
+shapiro.test(resid(lm(log(POM_C) ~ vegetation, data = soilC_compare))) #normal
+summary(aov(log(POM_C) ~ vegetation, data = soilC_compare)) #very sig
+TukeyHSD(aov(log(POM_C) ~ vegetation, data = soilC_compare)) #restored vs. Meso - higher
+
+shapiro.test(resid(lm(MAOM_C ~ vegetation, data = soilC_compare))) #check normality of residuals - not normal
+shapiro.test(resid(lm(log(MAOM_C) ~ vegetation, data = soilC_compare))) #still not - might need another transform
+summary(aov(log(MAOM_C) ~ vegetation, data = soilC_compare)) #very sig
+TukeyHSD(aov(log(MAOM_C) ~ vegetation, data = soilC_compare)) #restored vs. Acid, Calc, Meso, wet... also Acid vs. Meso, wet vs. Calc., wet vs Meso
+  
+```
+
+
+### Compare sites at Wigan
+```{r SOM stats Wigan}
+
+shapiro.test(resid(lm(SOM_C ~ Site, data = SOM_13C_2))) #check normality of residuals - not normal
+shapiro.test(resid(lm(log(SOM_C) ~ Site, data = SOM_13C_2))) 
+summary(aov(log(SOM_C) ~ Site, data = SOM_13C_2)) #sig
+TukeyHSD(aov(log(SOM_C) ~ Site, data = SOM_13C_2)) #Flashes vs. all, Bick 1 vs. Amber
+
+shapiro.test(resid(lm(SOM_N ~ Site, data = SOM_13C_2))) #normal
+summary(aov(SOM_N ~ Site, data = SOM_13C_2)) #sig
+TukeyHSD(aov(SOM_N ~ Site, data = SOM_13C_2)) #Flashes vs. all
+
+shapiro.test(resid(lm(POM_C ~ Site, data = SOM_13C_2))) #normal
+summary(aov(POM_C ~ Site, data = SOM_13C_2)) #sig
+TukeyHSD(aov(POM_C ~ Site, data = SOM_13C_2)) #Flashes vs. all
+
+shapiro.test(resid(lm(POM_N ~ Site, data = SOM_13C_2))) #not normal
+shapiro.test(resid(lm(log(POM_N) ~ Site, data = SOM_13C_2))) #normal
+summary(aov(log(POM_N) ~ Site, data = SOM_13C_2)) #sig
+TukeyHSD(aov(log(POM_N) ~ Site, data = SOM_13C_2)) #Flashes vs. all, Bick 1 vs. all
+
+shapiro.test(resid(lm(MAOM_C ~ Site, data = SOM_13C_2))) #normal
+summary(aov(MAOM_C ~ Site, data = SOM_13C_2)) #sig
+TukeyHSD(aov(MAOM_C ~ Site, data = SOM_13C_2)) #Flashes vs. all
+
+shapiro.test(resid(lm(MAOM_N ~ Site, data = SOM_13C_2))) #normal
+summary(aov(MAOM_N ~ Site, data = SOM_13C_2)) #sig
+TukeyHSD(aov(MAOM_N ~ Site, data = SOM_13C_2)) #Flashes vs. Bick 1, Amber
+
+shapiro.test(resid(lm(fMAOM_C ~ Site, data = SOM_13C_2))) #normal
+summary(aov(fMAOM_C ~ Site, data = SOM_13C_2)) #sig
+TukeyHSD(aov(fMAOM_C ~ Site, data = SOM_13C_2)) #Flashes vs. Bick 1 & 2, Amber vs. Bick 1
+
+shapiro.test(resid(lm(fMAOM_N ~ Site, data = SOM_13C_2))) #normal
+summary(aov(fMAOM_N ~ Site, data = SOM_13C_2)) #sig
+TukeyHSD(aov(fMAOM_N ~ Site, data = SOM_13C_2)) #Flashes vs. Bick 1 & 2, Amber vs. Bick 1
 
 ```
 
