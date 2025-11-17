@@ -361,7 +361,9 @@ plant13C <- harvest %>%
                      [match(paste(site, sample_type), 
                             paste(nat_abun$site, nat_abun$sample_type))],TRUE ~ NA)) %>% 
   mutate(excess13C_mg = case_when(sample_type == "shoot" | sample_type == "root"
-                     ~ biomass_g * (excess_d13C / 1000), #calculate excess 13C in mg
+                     ~ total_c_mg * 
+                       ((100*0.0112372*(excess_d13C/1000+1))/
+                       (1+0.0112372*(excess_d13C/1000+1))/100), #excess 13C to atom % times total C in mg
                      TRUE ~ NA)) 
   
 
@@ -372,7 +374,7 @@ summary_plant13C_sp <- plant13C %>%
 
 #summarize 13C for plots add up - by site and type only
 summary_plant13C <- plant13C %>%
-  dplyr::select(site, sample_type, pot, total_c_mg, excess13C_mg) %>%
+  dplyr::select(site, sample_type, pot, biomass_g, total_c_mg, excess13C_mg) %>%
   group_by(site, sample_type, pot) %>%
   summarise_all(funs(sum(., na.rm=TRUE))) %>% #first add up per pot
   group_by(site, sample_type) %>%
@@ -1828,7 +1830,11 @@ TukeyHSD(aov(hyph_percent ~ Site, data = AMdata)) #Flashes > Bick 1 & 2, Ambers 
 
 # Plant Communities
 
-```{r plant communities}
+```{r plant groups}
+
+#order variables
+plant_harvest$functional_group <- factor(plant_harvest$functional_group, 
+                                        levels = c("grass", "forb", "legume", "shrub"))
 
 #plot plant communities
 plant_harvest %>%
@@ -1836,7 +1842,10 @@ plant_harvest %>%
   filter(functional_group != "unknown") %>% #remove unknown
 ggplot(aes(x=site, y=shoot, fill=functional_group)) + 
 	geom_boxplot() + 
+  geom_jitter(position=position_jitterdodge(jitter.width=0.2, dodge.width=0.75), #add points with jitter
+              alpha=0.5, size=0.8, color="black") + #point appearance
   scale_fill_manual(values = colors) + #define colors to use
+  #scale_color_manual(values = colors) + #define colors to use
   my_theme +
   #ggtitle("Plant Shoot Biomass Across Sites") + #add a graph title
   xlab("") + ylab("Shoot Biomass (g)") #define/change X and Y labels
@@ -1848,9 +1857,38 @@ ggsave('plant_groups.svg', #save plot name and type - can be "eps", "pdf", "jpeg
        dpi = 300, #set resolution
        bg=NULL) #background from plot specifications
 
-shapiro.test(resid(lm(functional_group ~ site, data = plant_harvest[plant_harvest$species != "general_roots"]))) #check normality of residuals - normal
-summary(aov(hyph_percent ~ Site, data = AMdata)) #sig
-TukeyHSD(aov(hyph_percent ~ Site, data = AMdata)) #Flashes > Bick 1 & 2, Ambers > Bick 1
+shapiro.test(resid(lm(shoot ~ functional_group * site, data = plant_harvest[ #check normality of residuals - not normal
+                          !is.na(plant_harvest$shoot), c(1,5,6)]))) #subset only columns of interest, remove na
+shapiro.test(resid(lm(log(shoot) ~ functional_group * site, data = plant_harvest[ #normal
+                          !is.na(plant_harvest$shoot), c(1,5,6)]))) #subset only columns of interest, remove na
+summary(aov(log(shoot) ~ functional_group * site, data = plant_harvest[ 
+                          !is.na(plant_harvest$shoot), c(1,5,6)])) #sig for all terms
+TukeyHSD(aov(log(shoot) ~ functional_group * site, data = plant_harvest[ #normal
+                          !is.na(plant_harvest$shoot), c(1,5,6)])) 
+#grass:Bickershaw 2-forb:Bickershaw 1       0.0051386
+#legume:Amberswood-grass:Bickershaw 2       0.0241997
+
+
+```
+
+```{r plant biodiversity}
+
+#Pivot data to wide format
+species_df_wide <- plant_harvest %>%
+  dplyr::select(pot, species, shoot) %>% #select only needed columns
+  filter(!is.na(species) & !grepl("general_roots", species)) %>% #remove any NA species
+  pivot_wider(names_from = species, values_from = shoot) %>% #determines observation name and value columns
+  replace(is.na(.), 0) %>% #make any missing values 0
+  column_to_rownames(var="pot") #sets observation column as row names
+
+#Calculate species richness, Shannon index, and Simpson index with vegan library
+species_richness <- specnumber(species_df_wide) #calculate species richness
+shannon <- diversity(species_df_wide, index = "shannon") #calculate Shannon index
+simpson <- diversity(species_df_wide, index = "simpson") #calculate Simpson index
+
+#Combine biodiversity metrics into a dataframe
+diversity <- do.call(rbind, Map(data.frame, shannon=shannon, simpson=simpson, species_richness=species_richness)) %>% #combine into dataframe with column names matching
+  rownames_to_column(var = "observation") #put observations back into column
 
 ```
 
@@ -1865,6 +1903,7 @@ summary_plant13C %>%
 ggplot(aes(x=site, y=excess13C_mg_mean, fill=site)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
   scale_fill_manual(values=colors) + #define colors to use
+  scale_y_continuous(breaks = pretty) +
   geom_errorbar(aes(ymin=excess13C_mg_mean-excess13C_mg_std.error, ymax=excess13C_mg_mean+excess13C_mg_std.error), 
                 color = "grey10", width = 0.7, position = "dodge") + 
   #ggtitle("") + #add a graph title
@@ -1885,11 +1924,13 @@ ggsave('excess13C_shoots.svg', #save plot name and type - can be "eps", "pdf", "
 ```{r plant 13C roots}
 
 #bar plot of plant excess 13C with error bars - shoot
+
 summary_plant13C %>%
   filter(sample_type == "root") %>%
 ggplot(aes(x=site, y=excess13C_mg_mean, fill=site)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
   scale_fill_manual(values=colors) + #define colors to use
+  scale_y_continuous(limits = c(0, 150), breaks = seq(0, 150, by = 50)) + #set y axis ticks
   geom_errorbar(aes(ymin=excess13C_mg_mean-excess13C_mg_std.error, ymax=excess13C_mg_mean+excess13C_mg_std.error), 
                 color = "grey10", width = 0.7, position = "dodge") + 
   #ggtitle("") + #add a graph title
@@ -1932,7 +1973,7 @@ ggplot(data = summary_soil13C[-5,], aes(x=Site, y=pot_excess13C_mean, fill=Site)
   scale_fill_manual(values=colors) + #define colors to use
   geom_errorbar(aes(ymin=pot_excess13C_mean-pot_excess13C_std.error, ymax=pot_excess13C_mean+pot_excess13C_std.error),
   color = "grey10", width = 0.7, position = "dodge") + 
-  scale_y_continuous(labels = scales::number_format(scale=1*1000, accuracy=1)) + #change y axis to mg
+  scale_y_continuous(labels = scales::number_format(scale=1*1000, accuracy=1), breaks = pretty) + #change y axis to mg
   #ggtitle("Rocks and Debris per site") + #add a graph title
   xlab("") + ylab(expression(""^13*"C transferred to soil (mg/pot)")) + #define/change X and Y labels
   my_theme +
