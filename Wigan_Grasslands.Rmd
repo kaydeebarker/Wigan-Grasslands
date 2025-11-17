@@ -48,7 +48,7 @@ lapply(c(datalib, vislib, statlib), library, character.only = TRUE)
 #color palette example using hex codes
 colors <- c("#84B699", "#EF8E45", "#BF876E", "#46A9B0")
 colors5 <- c("#84B699", "#EF8E45", "#BF876E", "#46A9B0", "azure")
-colors9 <- c("#84B699", "#EF8E45", "#BF876E", "#46A9B0", "azure", "#ABEBC6", "#FFAB6B", "#FFC2A6", "#5DDFE8")
+colors9 <- c("#84B699", "#EF8E45", "#BF876E", "#46A9B0", "azure", "#A1EBCF", "#FFBC7E", "#FFCAB1", "#61E9F2")
 
 #color palette with gradient with 20 steps
 colors_ramp <- colorRampPalette(c("#84B699", "azure","#BF876E"))(25)
@@ -84,6 +84,170 @@ order_management <- c("Unmanaged", "4 Years", "15 Years", "23 Years")
 
 ```
 
+## Write functions to determine differences
+
+```{r comparisons stats - set up function}
+
+#pairwise comparisons
+
+#first look at group sizes
+evaluate_group_sizes <- function(data, factors, continuous_vars) {
+  insufficient_groups <- list()
+
+  for (cont_var in continuous_vars) {
+    for (factor in factors) {
+      filtered_data <- na.omit(data[, c(factor, cont_var)]) #remove NA values for continuous variable and factor
+
+      group_sizes <- table(filtered_data[[factor]]) #calculate group sizes
+      
+      #identify groups with fewer than 2 observations
+      insufficient <- group_sizes[group_sizes < 2]
+      if (length(insufficient) > 0) {
+        insufficient_groups[[paste(cont_var, factor, sep = "_")]] <- data.frame(
+          Factor = factor,
+          Continuous_Var = cont_var,
+          Group = names(insufficient),
+          Observations = as.numeric(insufficient)
+        )
+      }
+    }
+  }
+
+  #combine results into a single dataframe
+  if (length(insufficient_groups) > 0) {
+    return(bind_rows(insufficient_groups, .id = "Combination"))
+  } else {
+    return(data.frame(
+      Combination = character(),
+      Factor = character(),
+      Continuous_Var = character(),
+      Group = character(),
+      Observations = numeric()
+    ))
+  }
+}
+
+#analysis function with Bartlett's test, group size evaluation, and NA omission
+differences_function <- function(data, factors, continuous_vars) {
+  results_list <- list()
+
+  for (cont_var in continuous_vars) {
+    for (factor in factors) {
+      # Remove NA values for the current continuous variable and factor
+      filtered_data <- na.omit(data[, c(factor, cont_var)])
+
+      # Check if all groups for the factor have at least 2 observations
+      group_sizes <- table(filtered_data[[factor]])
+      if (any(group_sizes < 2)) {
+        # If a group has fewer than 2 observations, skip Bartlett's test and add a note
+        results_list[[paste(cont_var, factor, sep = "_")]] <- data.frame(
+          Comparison = NA,
+          P_Value = NA,
+          Continuous_Var = cont_var,
+          Factor = factor,
+          Test = "Skipped (Insufficient group size for Bartlett's test)",
+          Significance = "Not significant"
+        )
+        next
+      }
+
+      #Bartlett's test for homogeneity of variances
+      bartlett <- bartlett.test(as.formula(paste(cont_var, "~", factor)), data = filtered_data)
+
+      if (bartlett$p.value > 0.05) { #for homogeneous variances: ANOVA and Tukey's HSD
+        anova_res <- aov(as.formula(paste(cont_var, "~", factor)), data = filtered_data)
+        tukey <- TukeyHSD(anova_res)
+
+        #extract pairwise comparisons and P-values
+        if (!is.null(tukey$comparison)) {
+          sig_pairs <- data.frame(
+            Comparison = rownames(tukey$comparison),
+            P_Value = tukey$comparison[, "pvalue"]
+          ) %>%
+            mutate(
+              Continuous_Var = cont_var,
+              Factor = factor,
+              Test = "Tukey's HSD",
+              Significance = case_when(
+                P_Value <= 0.001 ~ "***",
+                P_Value <= 0.01 ~ "**",
+                P_Value <= 0.05 ~ "*",
+                TRUE ~ "Not significant"
+              )
+            )
+
+          results_list[[paste(cont_var, factor, sep = "_")]] <- sig_pairs
+        } else {
+          #if no valid groupings are present, return an empty dataframe
+          results_list[[paste(cont_var, factor, sep = "_")]] <- data.frame(
+            Comparison = NA,
+            P_Value = NA,
+            Continuous_Var = cont_var,
+            Factor = factor,
+            Test = "Tukey's HSD (No significant groupings)",
+            Significance = "Not significant"
+          )
+        }
+      } else {
+        #heterogeneous variances: Kruskal-Wallis and Dunn's Test
+        kruskal <- kruskal.test(as.formula(paste(cont_var, "~", factor)), data = filtered_data)
+
+        if (kruskal$p.value < 0.05) { #Dunn's Test if Kruskal-Wallis is significant
+          dunn <- dunn.test(filtered_data[[cont_var]], filtered_data[[factor]], method = "bonferroni", kw = FALSE)
+
+          #extract pairwise comparisons and P-values
+          sig_pairs <- data.frame(
+            Comparison = dunn$comparisons,
+            P_Value = dunn$P.adjusted
+          ) %>%
+            filter(P_Value < 1) %>% #include all comparisons
+            mutate(
+              Continuous_Var = cont_var,
+              Factor = factor,
+              Test = "Dunn's Test",
+              Significance = case_when(
+                P_Value <= 0.001 ~ "***",
+                P_Value <= 0.01 ~ "**",
+                P_Value <= 0.05 ~ "*",
+                TRUE ~ "Not significant"
+              )
+            )
+
+          results_list[[paste(cont_var, factor, sep = "_")]] <- sig_pairs
+        } else {
+          results_list[[paste(cont_var, factor, sep = "_")]] <- data.frame(
+            Comparison = NA,
+            P_Value = NA,
+            Continuous_Var = cont_var,
+            Factor = factor,
+            Test = "Kruskal-Wallis (NS)",
+            Significance = "Not significant"
+          )
+        }
+      }
+    }
+  }
+
+  #combine results for all factors and continuous variables
+  results_df <- bind_rows(results_list, .id = "Analysis_Combination")
+  return(results_df)
+}
+
+#define what to analyze
+#factors <- "Site" #predictor variable
+#continuous_vars <- c("var1","var2","var3") #response variables
+#data <- site_data
+
+#evaluate group sizes
+#group_size_issues <- evaluate_group_sizes(data, factors, continuous_vars) 
+
+#run the analysis
+#var_diff <- differences_function(data, factors, continuous_vars)
+
+
+```
+
+
 ## Load data
 
 ### Soil compounds and properties
@@ -117,6 +281,16 @@ soil_metals <- site_data %>%
 FTIR <- read_csv("FTIR_Sam.csv")
 FTIR$Site <- as.factor(FTIR$Site)
 FTIR <- FTIR[,-1]
+
+#order variable
+FTIR$Site <- factor(FTIR$Site, levels = order_sites)
+
+#pivot
+FTIR_long <- FTIR %>%
+  pivot_longer(
+    cols = c(2:ncol(FTIR)), #pick columns to pivot
+    names_to = "wavelength", #name column to put original column names in
+    values_to = "absorbance") #name column to put values in
 
 #standardize
 FTIR_standardized <- FTIR %>%
@@ -157,17 +331,52 @@ plant_harvest <- harvest %>%
                   ~ "T0", #time 0 beginning of incubation
                      TRUE ~ "T10mos")) #10 months incubation
 
-#summarize for plots
+#summarize biomass for plots
 summary_harvest <- plant_harvest %>%
   dplyr::select(site, management, species, functional_group, shoot, root, root_shoot) %>%
   group_by(site, management, species, functional_group) %>%
   summarise_all(funs(mean(., na.rm=TRUE), sd(., na.rm=TRUE), std.error(., na.rm=TRUE)))
 
-#summarize by plant species for estimates
+#summarize biomass by plant species for estimates
 summary_species <- plant_harvest %>%
   dplyr::select(species, functional_group, shoot, root, root_shoot) %>%
   group_by(species, functional_group) %>%
   summarise_all(funs(mean(., na.rm=TRUE), sd(., na.rm=TRUE), std.error(., na.rm=TRUE)))
+
+#13C calculations
+nat_abun <- harvest %>%
+  filter(grepl("pre", sample_type)) %>% #keep only pre-labelling data
+  dplyr::select(site, sample_type, adjusted_delta, per_c) %>%
+  mutate(sample_type = str_replace(sample_type, "leaf pre sample", "shoot")) %>% #match naming
+  mutate(sample_type = str_replace(sample_type, "root pre sample", "root")) %>% #match naming
+  mutate(sample_type = str_replace(sample_type, "soil pre sample", "soil")) #match naming)
+
+#13C df for plants only
+plant13C <- harvest %>%
+  filter(biomass_g >= 0) %>% #remove non-plant data
+  dplyr::select(site, pot, species, functional_group, sample_type, biomass_g, adjusted_delta, per_c) %>%
+  mutate(total_c_mg = biomass_g * (per_c / 100) * 1000) %>% #calculate total C in mg
+  mutate(excess_d13C = case_when(sample_type == "shoot" | sample_type == "root"
+                     ~ adjusted_delta - nat_abun$adjusted_delta #calculate excess 13C
+                     [match(paste(site, sample_type), 
+                            paste(nat_abun$site, nat_abun$sample_type))],TRUE ~ NA)) %>% 
+  mutate(excess13C_mg = case_when(sample_type == "shoot" | sample_type == "root"
+                     ~ biomass_g * (excess_d13C / 1000), #calculate excess 13C in mg
+                     TRUE ~ NA)) 
+  
+
+#summarize means 13C for plots - by species
+summary_plant13C_sp <- plant13C %>%
+  group_by(site, sample_type, species, functional_group) %>%
+  summarise_all(funs(mean(., na.rm=TRUE), sd(., na.rm=TRUE), std.error(., na.rm=TRUE)))
+
+#summarize 13C for plots add up - by site and type only
+summary_plant13C <- plant13C %>%
+  dplyr::select(site, sample_type, pot, total_c_mg, excess13C_mg) %>%
+  group_by(site, sample_type, pot) %>%
+  summarise_all(funs(sum(., na.rm=TRUE))) %>% #first add up per pot
+  group_by(site, sample_type) %>%
+  summarise_all(funs(mean(., na.rm=TRUE), sd(., na.rm=TRUE), std.error(., na.rm=TRUE))) #then summarize per site
 
 #add mean data to harvest data for estimates
 plant_harvest_est <- plant_harvest %>%
@@ -227,6 +436,9 @@ AMdata <- read_csv("Wigan_myc.csv")
 #order variables
 plant_harvest$site <- factor(plant_harvest$site, levels = order_sites)
 plant_harvest_est$site <- factor(plant_harvest_est$site, levels = order_sites)
+plant13C$site <- factor(plant13C$site, levels = order_sites)
+summary_plant13C$site <- factor(summary_plant13C$site, levels = order_sites)
+
 AMdata$Site <- factor(AMdata$Site, levels = order_sites)
 
 
@@ -287,6 +499,27 @@ summary_SOM$Management <- factor(summary_SOM$Management, levels = order_manageme
 ```{r load data 3.2, include=FALSE}
 
 #read in soil C/N and 13C data
+soil_13C_calcs <- read_csv("soil_13C_calcs.csv") %>%
+  mutate(C_gkg = perC_samplemean * 10)
+
+#summarize SOM data for plots
+summary_soil13C <- soil_13C_calcs %>%
+  group_by(Site, Management, Mgmt_num) %>%
+  summarise_all(funs(mean(., na.rm=TRUE), sd(., na.rm=TRUE), std.error(., na.rm=TRUE)))
+
+#make 
+TotalC <- soil_13C_calcs %>%
+  dplyr::select(Site, C_kgm2_7cm)
+
+#order variables
+soil_13C_calcs$Site <- factor(SOM_13C$Site, levels = order_sites)
+summary_soil13C$Site <- factor(summary_soil13C$Site, levels = order_sites)
+
+```
+
+```{r load data 3.2, include=FALSE}
+
+#read in soil C/N and 13C data
 SOM_13C <- read_csv("SOM_13C.csv")
 
 #Combine SOM, POM, and MAOM as one observation per plot
@@ -333,6 +566,7 @@ SOM_13C_2 <- merge(SOM2, POM2, by=c("Site","Management", "Mgmt_num", "Plot_ID", 
                 SOM_C_kgm2_7cm, POM_C_kgm2_7cm, MAOM_C_kgm2_7cm,
                 SOM_13C_atom, POM_d13C, POM_13C_atom, MAOM_d13C, MAOM_13C_atom,
                 SOM_15N, POM_15N, MAOM_15N) %>%
+  mutate(TotalC = soil_13C_calcs$C_kgm2_7cm[match(SOM_13C_2$Plot_ID, soil_13C_calcs$Plot_ID)]) %>%
   mutate(fMAOM_C = MAOM_C_kgm2_7cm / (POM_C_kgm2_7cm + MAOM_C_kgm2_7cm)) %>% #calculate fMAOM C
   mutate(fMAOM_C_2 = MAOM_C_kgm2_7cm / SOM_C_kgm2_7cm) %>% #calculate fMAOM C
   mutate(fMAOM_N = MAOM_N / (POM_N + MAOM_N)) %>% #calculate fMAOM N
@@ -369,6 +603,7 @@ summary_SOM_13C_a$Site <- factor(summary_SOM_13C_a$Site, levels = order_sites)
 summary_SOM_13C_b$Site <- factor(summary_SOM_13C_b$Site, levels = order_sites)
 
 ```
+
 
 ### 13C respiration and decomposition
 
@@ -457,10 +692,10 @@ summary_UKsoils <- UK_soil %>%
                                  sd = ~ sd(., na.rm=TRUE),
                                  se = ~ std.error(., na.rm=TRUE))))
 
+
 soilC_compare <- SOM_13C_2 %>%
-  dplyr::select(Site, SOM_C_kgm2_7cm, POM_C_kgm2_7cm, MAOM_C_kgm2_7cm, pH) %>%
+  dplyr::select(Site, TotalC, POM_C_kgm2_7cm, MAOM_C_kgm2_7cm, pH) %>%
   rename("site" = "Site") %>%
-  rename("TotalC" = "SOM_C_kgm2_7cm") %>%
   rename("POM_C" = "POM_C_kgm2_7cm") %>%
   rename("MAOM_C" = "MAOM_C_kgm2_7cm") %>%
   mutate(type = "R") %>% #R for restored
@@ -511,157 +746,13 @@ summary(aov(BD ~ Management, data = site_data)) #ANOVA - not significant
 
 ```
 
-## Soil compounds
+## Soil metals
 
-```{r metals stats}
+```{r comparisons stats - set up function}
 
 #pairwise comparisons
-
-evaluate_group_sizes <- function(data, factors, continuous_vars) {
-  insufficient_groups <- list()
-
-  for (cont_var in continuous_vars) {
-    for (factor in factors) {
-      # Remove NA values for the current continuous variable and factor
-      filtered_data <- na.omit(data[, c(factor, cont_var)])
-
-      # Calculate group sizes
-      group_sizes <- table(filtered_data[[factor]])
-      
-      # Identify groups with fewer than 2 observations
-      insufficient <- group_sizes[group_sizes < 2]
-      if (length(insufficient) > 0) {
-        insufficient_groups[[paste(cont_var, factor, sep = "_")]] <- data.frame(
-          Factor = factor,
-          Continuous_Var = cont_var,
-          Group = names(insufficient),
-          Observations = as.numeric(insufficient)
-        )
-      }
-    }
-  }
-
-  # Combine results into a single dataframe
-  if (length(insufficient_groups) > 0) {
-    return(bind_rows(insufficient_groups, .id = "Combination"))
-  } else {
-    return(data.frame(
-      Combination = character(),
-      Factor = character(),
-      Continuous_Var = character(),
-      Group = character(),
-      Observations = numeric()
-    ))
-  }
-}
-
-# Updated analysis function with Bartlett's test, group size evaluation, and NA omission
-differences_function <- function(data, factors, continuous_vars) {
-  results_list <- list()
-
-  for (cont_var in continuous_vars) {
-    for (factor in factors) {
-      # Remove NA values for the current continuous variable and factor
-      filtered_data <- na.omit(data[, c(factor, cont_var)])
-
-      # Check if all groups for the factor have at least 2 observations
-      group_sizes <- table(filtered_data[[factor]])
-      if (any(group_sizes < 2)) {
-        # If a group has fewer than 2 observations, skip Bartlett's test and add a note
-        results_list[[paste(cont_var, factor, sep = "_")]] <- data.frame(
-          Comparison = NA,
-          P_Value = NA,
-          Continuous_Var = cont_var,
-          Factor = factor,
-          Test = "Skipped (Insufficient group size for Bartlett's test)",
-          Significance = "Not significant"
-        )
-        next
-      }
-
-      # Bartlett's test for homogeneity of variances
-      bartlett <- bartlett.test(as.formula(paste(cont_var, "~", factor)), data = filtered_data)
-
-      if (bartlett$p.value > 0.05) {
-        # Homogeneous variances: Use ANOVA and Tukey's HSD
-        anova_res <- aov(as.formula(paste(cont_var, "~", factor)), data = filtered_data)
-        tukey <- TukeyHSD(anova_res)
-
-        # Extract pairwise comparisons and P-values
-        if (!is.null(tukey$comparison)) {
-          sig_pairs <- data.frame(
-            Comparison = rownames(tukey$comparison),
-            P_Value = tukey$comparison[, "pvalue"]
-          ) %>%
-            mutate(
-              Continuous_Var = cont_var,
-              Factor = factor,
-              Test = "Tukey's HSD",
-              Significance = case_when(
-                P_Value <= 0.001 ~ "***",
-                P_Value <= 0.01 ~ "**",
-                P_Value <= 0.05 ~ "*",
-                TRUE ~ "Not significant"
-              )
-            )
-
-          results_list[[paste(cont_var, factor, sep = "_")]] <- sig_pairs
-        } else {
-          # If no valid groupings are present, return an empty dataframe
-          results_list[[paste(cont_var, factor, sep = "_")]] <- data.frame(
-            Comparison = NA,
-            P_Value = NA,
-            Continuous_Var = cont_var,
-            Factor = factor,
-            Test = "Tukey's HSD (No significant groupings)",
-            Significance = "Not significant"
-          )
-        }
-      } else {
-        # Heterogeneous variances: Use Kruskal-Wallis and Dunn's Test
-        kruskal <- kruskal.test(as.formula(paste(cont_var, "~", factor)), data = filtered_data)
-
-        if (kruskal$p.value < 0.05) {
-          # Perform Dunn's Test if Kruskal-Wallis is significant
-          dunn <- dunn.test(filtered_data[[cont_var]], filtered_data[[factor]], method = "bonferroni", kw = FALSE)
-
-          # Extract pairwise comparisons and P-values
-          sig_pairs <- data.frame(
-            Comparison = dunn$comparisons,
-            P_Value = dunn$P.adjusted
-          ) %>%
-            filter(P_Value < 1) %>% # Include all comparisons
-            mutate(
-              Continuous_Var = cont_var,
-              Factor = factor,
-              Test = "Dunn's Test",
-              Significance = case_when(
-                P_Value <= 0.001 ~ "***",
-                P_Value <= 0.01 ~ "**",
-                P_Value <= 0.05 ~ "*",
-                TRUE ~ "Not significant"
-              )
-            )
-
-          results_list[[paste(cont_var, factor, sep = "_")]] <- sig_pairs
-        } else {
-          results_list[[paste(cont_var, factor, sep = "_")]] <- data.frame(
-            Comparison = NA,
-            P_Value = NA,
-            Continuous_Var = cont_var,
-            Factor = factor,
-            Test = "Kruskal-Wallis (NS)",
-            Significance = "Not significant"
-          )
-        }
-      }
-    }
-  }
-
-  # Combine results for all factors and continuous variables
-  results_df <- bind_rows(results_list, .id = "Analysis_Combination")
-  return(results_df)
-}
+#function 1 evaluate_group_sizes
+#function2 differences_function
 
 # Define what to analyze
 factors <- "Site" #predictor variable
@@ -671,7 +762,7 @@ continuous_vars <- c("ppm_Al", "ppm_B", "ppm_Ba", "ppm_Ca1", "ppm_Ca2", "ppm_Cd"
 data <- site_data
 
 # Evaluate group sizes
-group_size_issues <- evaluate_group_sizes(data, factors, continuous_vars) #crude fiber only has 1 woody
+evaluate_group_sizes(data, factors, continuous_vars) 
 
 # Run the analysis
 metals_diff <- differences_function(data, factors, continuous_vars)
@@ -745,8 +836,9 @@ ggplot(aes(x=Site, y=ppm, fill=Site)) +
   xlab("Site") + ylab("Nutrient (ppm)") + #define/change X and Y labels
   theme(axis.text.x = element_text(angle=90), #set angle of variable labels
         panel.grid.major.y = element_line(color = "grey40", size = 0.25)) + 
+  scale_x_discrete(labels = "", "", "", "") + #remove x axis labels
   my_theme +
-  theme(legend.position='none') #remove legend
+  theme(legend.position='bottom') #remove legend
 
 #save figure
 ggsave('metals_sig2.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
@@ -758,9 +850,68 @@ ggsave('metals_sig2.svg', #save plot name and type - can be "eps", "pdf", "jpeg"
 ```
 
 
-## FTIR Data
+## FTIR compounds
 
-```{r PCA}
+```{r FTIR stats}
+
+#define what to analyze for differences
+factors <- "site" #predictor variable
+continuous_vars <- c("x907", "x1002", "x1402", "x1630", "x794", "x2846", "x2937", "x3620") #response variables
+data <- FTIR %>%
+  clean_names()
+
+#evaluate group sizes
+evaluate_group_sizes(data, factors, continuous_vars) 
+
+#eun the analysis
+FTIR_diff <- differences_function(data, factors, continuous_vars)
+
+#aromatic:aliphatic ratio
+FTIR_stbl_lbl <- FTIR %>%
+  clean_names() %>%
+  group_by(site) %>%
+  mutate(ar_al = (x794)/(x1402)) %>%
+  mutate(stbl_lbl = (x794+x2846+x2937)/(x907+x1002+x1402)) #%>%
+  summarise(across(ar_al:stbl_lbl, list(mean = ~ mean(., na.rm=TRUE),
+                                 sd = ~ sd(., na.rm=TRUE),
+                                 se = ~ std.error(., na.rm=TRUE))))
+
+shapiro.test(resid(lm(ar_al ~ site, data = FTIR_stbl_lbl))) #check normality of residuals - normal
+summary(aov(ar_al ~ site, data = FTIR_stbl_lbl)) #ANOVA - significant
+TukeyHSD(aov(ar_al ~ site, data = FTIR_stbl_lbl)) #Flashes vs. all, Amberswood vs. Bickershaw 1
+
+```
+
+```{r FTIR plot}
+
+#plot order
+FTIR_long$wavelength <- factor(FTIR_long$wavelength, 
+                             levels = c("907", "1002", "1402", "1630", "794", "2846", "2937", "3620"))
+#facet_wrap plot
+FTIR_long %>%
+ggplot(aes(x=Site, y=absorbance, fill=Site)) + 
+  geom_boxplot() +
+  facet_wrap(~wavelength, scales = "free", nrow=2) + #create a separate plot for each site
+  scale_fill_manual(values=colors9) + #define colors to use
+  #ggtitle("Soil carbon compounds per site") + #add a graph title
+  xlab("Site") + ylab(expression("Absorbance (cm"^-1*")")) + #define/change X and Y labels
+  theme(#axis.text.x = element_text(angle=90), #set angle of variable labels
+        panel.grid.major.y = element_line(color = "grey40", size = 0.25)) + 
+  scale_x_discrete(labels = "", "", "", "") + #remove x axis labels
+  my_theme +
+  theme(legend.position='bottom') #remove legend
+
+#save figure
+ggsave('FTIR_boxplot.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 2000, height = 1200, units = "px", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
+
+```
+
+```{r FTIR PCA}
 
 #PCA
 FTIR_pca <- prcomp(FTIR_standardized_num) #perform PCA on standardized variables
@@ -1043,18 +1194,19 @@ ggsave('fMAOM_N_Kimpton.svg', #save plot name and type - can be "eps", "pdf", "j
 
 ```
 
-### Kaydee Barker's data
+### Updated data
 
-```{r SOC chart - Barker}
+```{r SOC chart - sample means}
 
 #SOM C bar chart with error bars
-ggplot(data = summary_SOM_13C_a, aes(x=Site, y=SOM_C_mean, fill=Site)) + 
+summary_soil13C[-5,] %>%
+ggplot(aes(x=Site, y=C_gkg_mean, fill=Site)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
   scale_fill_manual(values=colors) + #define colors to use
-  geom_errorbar(aes(ymin=SOM_C_mean-SOM_C_std.error, ymax=SOM_C_mean+SOM_C_std.error),
+  geom_errorbar(aes(ymin=C_gkg_mean-C_gkg_std.error, ymax=C_gkg_mean+C_gkg_std.error),
   color = "grey10", width = 0.7, position = "dodge") + 
   ggtitle("Soil Organic Matter C per site") + #add a graph title
-  xlab("Site") + ylab("C (g/kg)") + #define/change X and Y labels
+  xlab("") + ylab("C (g/kg)") + #define/change X and Y labels
   my_theme
 
 #save figure
@@ -1066,21 +1218,22 @@ ggsave('SOC_KB.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "ti
 
 ```
 
-```{r SOC chart 2 - Barker}
+```{r SOC chart 2 - sample means}
 
 #SOM C bar chart with error bars
-ggplot(data = summary_SOM_13C_a, aes(x=Site, y=SOM_C_kgm2_7cm_mean, fill=Site)) + 
+summary_soil13C[-5,] %>%
+ggplot(aes(x=Site, y=C_kgm2_7cm_mean, fill=Site)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
   scale_fill_manual(values=colors) + #define colors to use
-  geom_errorbar(aes(ymin=SOM_C_kgm2_7cm_mean-SOM_C_kgm2_7cm_std.error, 
-                    ymax=SOM_C_kgm2_7cm_mean+SOM_C_kgm2_7cm_std.error),
+  geom_errorbar(aes(ymin=C_kgm2_7cm_mean-C_kgm2_7cm_std.error, 
+                    ymax=C_kgm2_7cm_mean+C_kgm2_7cm_std.error),
   color = "grey10", width = 0.7, position = "dodge") + 
   ggtitle("Soil Organic Matter C per site") + #add a graph title
-  xlab("Site") + ylab("SOC (kg/m2 in top 7cm)") + #define/change X and Y labels
+  xlab("") + ylab("SOC (kg/m2 in top 7cm)") + #define/change X and Y labels
   my_theme
 
 #save figure
-ggsave('SOC_kgm2_KB.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+ggsave('SOC_kgm2_means.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
 	path = "Figures", #save to folder within working directory
 	width = 6, height = 4, units = "in", #set dimensions for figure
 	dpi = 300, #set resolution
@@ -1112,8 +1265,8 @@ ggsave('SOM_N_KB.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "
 ```{r SOM-CN - Barker}
 
 #SOM CN boxplot
-ggplot(data = SOM_13C_2) + 
-	geom_boxplot(aes(x=Site, y=SOM_CN, fill=Site)) +
+ggplot(data = soil_13C_calcs) + 
+	geom_boxplot(aes(x=Site, y=C_N, fill=Site)) +
   scale_fill_manual(values=colors) + #define colors to use
   ggtitle("Soil Organic Matter C:N per site") + #add a graph title
   xlab("Site") + ylab("C:N") + #define/change X and Y labels
@@ -1328,7 +1481,7 @@ ggplot(data = soilC_compare) +
 #save figure
 ggsave('SOC_comparison.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
 	path = "Figures", #save to folder within working directory
-	width = 6, height = 4, units = "in", #set dimensions for figure
+	width = 2000, height = 1000, units = "px", #set dimensions for figure
 	dpi = 300, #set resolution
 	bg=NULL) #background from plot specifications
 
@@ -1347,7 +1500,7 @@ ggplot(data = soilC_compare) +
 #save figure
 ggsave('SOC_comparison2.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
 	path = "Figures", #save to folder within working directory
-	width = 6, height = 4, units = "in", #set dimensions for figure
+	width = 2000, height = 1000, units = "px", #set dimensions for figure
 	dpi = 300, #set resolution
 	bg=NULL) #background from plot specifications
 
@@ -1359,7 +1512,7 @@ ggsave('SOC_comparison2.svg', #save plot name and type - can be "eps", "pdf", "j
 ggplot(data = soilC_compare) + 
 	geom_boxplot(aes(x=type, y=POM_C, fill=vegetation)) +
   scale_fill_manual(values=colors9) + #define colors to use
-  ggtitle("Particulate Organic Matter C across the UK") + #add a graph title
+  #ggtitle("Particulate Organic Matter C across the UK") + #add a graph title
   xlab("") + ylab(expression("POM-C (kg/m"^2*" in top 7cm)")) + #define/change X and Y labels
   scale_x_discrete(labels = c("Unimproved Grasslands", "Restored Grasslands")) + #remove vegetation labels from x axis
   my_theme 
@@ -1367,18 +1520,18 @@ ggplot(data = soilC_compare) +
 #save figure
 ggsave('POM-C_comparison.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
 	path = "Figures", #save to folder within working directory
-	width = 6, height = 4, units = "in", #set dimensions for figure
+	width = 2000, height = 800, units = "px", #set dimensions for figure
 	dpi = 300, #set resolution
 	bg=NULL) #background from plot specifications
 
 ```
 
-```{r compare POM C}
+```{r compare MAOM C}
 
 ggplot(data = soilC_compare) + 
 	geom_boxplot(aes(x=type, y=MAOM_C, fill=vegetation)) +
   scale_fill_manual(values=colors9) + #define colors to use
-  ggtitle("Mineral Associated Organic Matter C across the UK") + #add a graph title
+  #ggtitle("Mineral Associated Organic Matter C across the UK") + #add a graph title
   xlab("") + ylab(expression("MAOM-C (kg/m"^2*" in top 7cm)")) + #define/change X and Y labels
   scale_x_discrete(labels = c("Unimproved Grasslands", "Restored Grasslands")) + #remove vegetation labels from x axis
   my_theme 
@@ -1386,7 +1539,7 @@ ggplot(data = soilC_compare) +
 #save figure
 ggsave('MAOM-C_comparison.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
 	path = "Figures", #save to folder within working directory
-	width = 6, height = 4, units = "in", #set dimensions for figure
+	width = 2000, height = 800, units = "px", #set dimensions for figure
 	dpi = 300, #set resolution
 	bg=NULL) #background from plot specifications
 
@@ -1425,26 +1578,6 @@ summary(aov(MAOM_C ~ vegetation, data = soilC_compare)) #very sig
 TukeyHSD(aov(MAOM_C ~ vegetation, data = soilC_compare)) #all rest > all non
   
 ```
-
-```{r SOC compare pH}
-
-shapiro.test(resid(lm(TotalC ~ vegetation + pH_range, data = soilC_compare))) #check normality of residuals - not normal
-shapiro.test(resid(lm(log(TotalC) ~ vegetation + pH_range, data = soilC_compare))) #not normal but closer
-summary(aov(log(TotalC) ~ vegetation + pH_range, data = soilC_compare)) #very sig for both
-TukeyHSD(aov(log(TotalC) ~ vegetation + pH_range, data = soilC_compare)) #pH not as important
-
-shapiro.test(resid(lm(POM_C ~ vegetation, data = soilC_compare))) #check normality of residuals - not normal
-shapiro.test(resid(lm(log(POM_C) ~ vegetation, data = soilC_compare))) #normal
-summary(aov(log(POM_C) ~ vegetation, data = soilC_compare)) #very sig
-TukeyHSD(aov(log(POM_C) ~ vegetation, data = soilC_compare)) #restored vs. Meso - higher
-
-shapiro.test(resid(lm(MAOM_C ~ vegetation, data = soilC_compare))) #check normality of residuals - not normal
-shapiro.test(resid(lm(log(MAOM_C) ~ vegetation, data = soilC_compare))) #still not - might need another transform
-summary(aov(log(MAOM_C) ~ vegetation, data = soilC_compare)) #very sig
-TukeyHSD(aov(log(MAOM_C) ~ vegetation, data = soilC_compare)) #restored vs. Acid, Calc, Meso, wet... also Acid vs. Meso, wet vs. Calc., wet vs Meso
-  
-```
-
 
 ### Compare sites at Wigan
 ```{r SOM stats Wigan}
@@ -1502,9 +1635,64 @@ summary(aov(SOM_N ~ Site * site_data$pH, data = SOM_13C_2)) #Site only
 
 ```
 
-### Linear Mixed Models
 
-#### By Mycorrhizal Association
+
+### Linear Mixed Models explaining soil C
+
+#### By soil pH
+
+```{r SOC compare pH}
+
+shapiro.test(resid(lm(SOM_C ~ pH_range, data = SOM_13C_2))) #check normality of residuals - not normal
+shapiro.test(resid(lm(log(SOM_C) ~ pH_range, data = SOM_13C_2))) #not normal but closer
+summary(aov(log(SOM_C) ~ pH_range, data = SOM_13C_2)) #sig
+
+Anova(lmer(log(SOM_C) ~ pH_range +
+             (1|Site), #site random
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_2, #choose dataframe
+    na.action = na.omit), type=3) #not sig
+
+shapiro.test(resid(lm(POM_C ~ pH_range, data = SOM_13C_2))) #check normality of residuals - not normal
+shapiro.test(resid(lm(log(POM_C) ~ pH_range, data = SOM_13C_2))) #normal
+summary(aov(log(SOM_C) ~ pH_range, data = SOM_13C_2)) #sig
+
+Anova(lmer(log(POM_C) ~ pH_range + (1|Site), #site random
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_2, #choose dataframe
+    na.action = na.omit), type=3) #pH barely sig
+
+POM_C_pH_lme <- lmer(POM_C ~ pH_range + (1|Site), 
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_2, #choose dataframe
+    na.action = na.omit)
+summary(POM_C_pH_lme) #random accounts for most variance
+shapiro.test(resid(POM_C_pH_lme)) #normal
+performance::r2(POM_C_pH_lme, multivariate=TRUE) #calculate R-squared for model fit
+MuMIn::AICc(POM_C_pH_lme, k=2) #calculate AICc for for model comparison with small sample sizes
+TukeyHSD(aov(POM_C ~ pH_range + Site, data = SOM_13C_2)) #acidic lower
+
+shapiro.test(resid(lm(MAOM_C ~ pH_range, data = SOM_13C_2))) #check normality of residuals - normal
+summary(aov(MAOM_C ~ pH_range, data = SOM_13C_2)) #very sig
+
+Anova(lmer(log(MAOM_C) ~ pH_range + (1|Site), #site random
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_2, #choose dataframe
+    na.action = na.omit), type=3) #sig
+
+MAOM_C_pH_lme <- lmer(MAOM_C ~ pH_range + (1|Site), 
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_2, #choose dataframe
+    na.action = na.omit)
+summary(MAOM_C_pH_lme) #random accounts for less
+shapiro.test(resid(MAOM_C_pH_lme)) #normal
+performance::r2(MAOM_C_pH_lme, multivariate=TRUE) #calculate R-squared for model fit
+MuMIn::AICc(MAOM_C_pH_lme, k=2) #calculate AICc for for model comparison with small sample sizes
+TukeyHSD(aov(MAOM_C ~ pH_range + Site, data = SOM_13C_2)) #acidic lower
+  
+```
+
+#### By mycorrhizal association
 ```{r SOM vs AM}
 
 shapiro.test(resid(lm(SOM_C ~ AM_hyph_per + AM_arb_per, data = SOM_13C_2))) #check normality of residuals - not normal
@@ -1642,17 +1830,16 @@ TukeyHSD(aov(hyph_percent ~ Site, data = AMdata)) #Flashes > Bick 1 & 2, Ambers 
 
 ```{r plant communities}
 
-
 #plot plant communities
 plant_harvest %>%
   filter(functional_group != "moss") %>% #remove mosses
   filter(functional_group != "unknown") %>% #remove unknown
-ggplot(aes(x=management, y=shoot, fill=functional_group)) + 
+ggplot(aes(x=site, y=shoot, fill=functional_group)) + 
 	geom_boxplot() + 
   scale_fill_manual(values = colors) + #define colors to use
   my_theme +
-  ggtitle("Plant Shoot Biomass Across Managements") + #add a graph title
-  xlab("Management") + ylab("Shoot Biomass (g)") #define/change X and Y labels
+  #ggtitle("Plant Shoot Biomass Across Sites") + #add a graph title
+  xlab("") + ylab("Shoot Biomass (g)") #define/change X and Y labels
 
 #save figure
 ggsave('plant_groups.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
@@ -1661,17 +1848,120 @@ ggsave('plant_groups.svg', #save plot name and type - can be "eps", "pdf", "jpeg
        dpi = 300, #set resolution
        bg=NULL) #background from plot specifications
 
+shapiro.test(resid(lm(functional_group ~ site, data = plant_harvest[plant_harvest$species != "general_roots"]))) #check normality of residuals - normal
+summary(aov(hyph_percent ~ Site, data = AMdata)) #sig
+TukeyHSD(aov(hyph_percent ~ Site, data = AMdata)) #Flashes > Bick 1 & 2, Ambers > Bick 1
 
 ```
 
-# Incubation Results
+# Isotope and Incubation Results
+
+## Plant 13C allocation
+```{r plant 13C shoots}
+
+#bar plot of plant excess 13C with error bars - shoot
+summary_plant13C %>%
+  filter(sample_type == "shoot") %>%
+ggplot(aes(x=site, y=excess13C_mg_mean, fill=site)) + 
+	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
+  scale_fill_manual(values=colors) + #define colors to use
+  geom_errorbar(aes(ymin=excess13C_mg_mean-excess13C_mg_std.error, ymax=excess13C_mg_mean+excess13C_mg_std.error), 
+                color = "grey10", width = 0.7, position = "dodge") + 
+  #ggtitle("") + #add a graph title
+  xlab("") + ylab(expression(""^13*"C in Shoots (mg/pot)")) + #define/change X and Y labels
+  my_theme +
+  theme(legend.position = "none")
+
+#save figure
+ggsave('excess13C_shoots.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 6, height = 4, units = "in", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
+
+```
+
+```{r plant 13C roots}
+
+#bar plot of plant excess 13C with error bars - shoot
+summary_plant13C %>%
+  filter(sample_type == "root") %>%
+ggplot(aes(x=site, y=excess13C_mg_mean, fill=site)) + 
+	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
+  scale_fill_manual(values=colors) + #define colors to use
+  geom_errorbar(aes(ymin=excess13C_mg_mean-excess13C_mg_std.error, ymax=excess13C_mg_mean+excess13C_mg_std.error), 
+                color = "grey10", width = 0.7, position = "dodge") + 
+  #ggtitle("") + #add a graph title
+  xlab("") + ylab(expression(""^13*"C in Roots (mg/pot)")) + #define/change X and Y labels
+  my_theme +
+  theme(legend.position = "none")
+
+#save figure
+ggsave('excess13C_roots.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 6, height = 4, units = "in", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
+
+```
+
 
 ## Soil isotopes
 ```{r soil 13C}
 
+#test differences in pre-label soils (natural abundance) 13C
+shapiro.test(resid(lm(d13C_MS_pre ~ Site, data = soil_13C_calcs))) #check normality of residuals - normal
+summary(aov(d13C_MS_pre ~ Site, data = soil_13C_calcs)) #sig
+TukeyHSD(aov(d13C_MS_pre ~ Site, data = soil_13C_calcs)) #Amber > Bick 1 & 2
+
+#test differences in post-label soils 13C
+shapiro.test(resid(lm(T0_d13C_m ~ Site, data = soil_13C_calcs))) #check normality of residuals - not normal
+summary(aov(T0_d13C_m ~ Site, data = soil_13C_calcs)) #not sig
+
+#test differences in excess 13C in pots
+shapiro.test(resid(lm(pot_excess13C ~ Site, data = soil_13C_calcs))) #check normality of residuals - not normal
+shapiro.test(resid(lm(log(pot_excess13C) ~ Site, data = soil_13C_calcs))) #not normal but closer
+summary(aov(log(pot_excess13C) ~ Site, data = soil_13C_calcs)) #sig
+TukeyHSD(aov(log(pot_excess13C) ~ Site, data = soil_13C_calcs)) #Flashes > Bick 2
+
+#plot excess 13C in pots
+ggplot(data = summary_soil13C[-5,], aes(x=Site, y=pot_excess13C_mean, fill=Site)) + 
+	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
+  scale_fill_manual(values=colors) + #define colors to use
+  geom_errorbar(aes(ymin=pot_excess13C_mean-pot_excess13C_std.error, ymax=pot_excess13C_mean+pot_excess13C_std.error),
+  color = "grey10", width = 0.7, position = "dodge") + 
+  scale_y_continuous(labels = scales::number_format(scale=1*1000, accuracy=1)) + #change y axis to mg
+  #ggtitle("Rocks and Debris per site") + #add a graph title
+  xlab("") + ylab(expression(""^13*"C transferred to soil (mg/pot)")) + #define/change X and Y labels
+  my_theme +
+  theme(legend.position = "none")
+
+#save figure
+ggsave('excess13C_soil.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 6, height = 4, units = "in", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
 ```
 
 ```{r soil 15N}
+
+shapiro.test(resid(lm(SOM_15N ~ Site, data = SOM_13C_2))) #check normality of residuals - normal
+summary(aov(SOM_15N ~ Site, data = SOM_13C_2)) #sig
+TukeyHSD(aov(SOM_15N ~ Site, data = SOM_13C_2)) #Bick 1 < all, Bick 2 < Amber & Flashes
+
+shapiro.test(resid(lm(POM_15N ~ Site, data = SOM_13C_2))) #check normality of residuals - normal
+summary(aov(POM_15N ~ Site, data = SOM_13C_2)) #sig
+TukeyHSD(aov(POM_15N ~ Site, data = SOM_13C_2)) #Bick 1 < Amber & Flashes, Bick 2 < Amber & Flashes
+
+shapiro.test(resid(lm(MAOM_15N ~ Site, data = SOM_13C_2))) #check normality of residuals - not normal
+shapiro.test(resid(lm(log(MAOM_15N) ~ Site, data = SOM_13C_2))) #normal
+summary(aov(log(MAOM_15N) ~ Site, data = SOM_13C_2)) #sig
+TukeyHSD(aov(log(MAOM_15N) ~ Site, data = SOM_13C_2)) #Bick 1 < Amber & Flashes, Bick 2 < Amber & Flashes
+
 
 ```
 
@@ -1879,7 +2169,7 @@ ggplot(data = endbiomass[-1,], aes(x=years, y=decomp_per_adj)) +
 
 #decomposition lm plot vs restoration time
 ggplot(data = endbiomass[-1,], aes(x=pH, y=decomp_per_adj)) + 
-	geom_point(aes(color=Site), size=2, alpha=0.5) +
+	geom_point(aes(color=Site), size=2) +
   scale_color_manual(values=colors) + #define colors to use
   geom_smooth(method="lm", se=TRUE, color=plotline_color, fill=fill_color) +
   scale_y_continuous(labels = scales::percent_format(accuracy = 1)) + #change to %
@@ -1897,7 +2187,6 @@ ggsave('decomp_pH.svg', #save plot name and type - can be "eps", "pdf", "jpeg", 
 ```
 
 
-#### Stats 
 ```{r decomp stats}
 
 #ANOVA and Tukey - Site comparison
@@ -1936,14 +2225,21 @@ MuMIn::AICc(decomp_pH_lme, k=2) #calculate AICc for for model comparison with sm
 ```{r rocks, warning=FALSE}
 
 #mass bar chart with error bars
-ggplot(data = summary_endbio, aes(x=Management, y=rocks_debris_mean, fill=Management)) + 
+ggplot(data = summary_endbio, aes(x=Site, y=rocks_debris_mean, fill=Site)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
   scale_fill_manual(values=colors) + #define colors to use
   geom_errorbar(aes(ymin=rocks_debris_mean-rocks_debris_std.error, ymax=rocks_debris_mean+rocks_debris_std.error),
   color = "grey10", width = 0.7, position = "dodge") + 
-  ggtitle("Rocks and Debris per site") + #add a graph title
-  xlab("Management") + ylab("Mass (g)") + #define/change X and Y labels
+  #ggtitle("Rocks and Debris per site") + #add a graph title
+  xlab("") + ylab("Mass of Coal Debris in 20 cm (g)") + #define/change X and Y labels
   my_theme
+
+#save figure
+ggsave('debris.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 6, height = 4, units = "in", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
 
 #ANOVA and Tukey
 rmass_aov <- aov(rocks_debris ~ factor(Management), data = endbiomass)
