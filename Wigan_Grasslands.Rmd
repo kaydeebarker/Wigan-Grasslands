@@ -446,6 +446,36 @@ AMdata$Site <- factor(AMdata$Site, levels = order_sites)
 
 ```
 
+```{r calc plant biodiversity}
+
+#Pivot data to wide format
+species_df_wide <- plant_harvest %>%
+  dplyr::select(pot, species, shoot) %>% #select only needed columns
+  filter(!is.na(species) & !grepl("general_roots", species)) %>% #remove any NA species
+  pivot_wider(names_from = species, values_from = shoot) %>% #determines observation name and value columns
+  replace(is.na(.), 0) %>% #make any missing values 0
+  column_to_rownames(var="pot") #sets observation column as row names
+
+#Calculate species richness, Shannon index, and Simpson index with vegan library
+species_richness <- specnumber(species_df_wide) #calculate species richness
+shannon <- diversity(species_df_wide, index = "shannon") #calculate Shannon index
+simpson <- diversity(species_df_wide, index = "simpson") #calculate Simpson index
+
+#Combine biodiversity metrics into a dataframe
+diversity <- data.frame(
+  pot = rownames(species_df_wide), #put observations back into column
+  species_richness = species_richness,
+  shannon = shannon,
+  simpson = simpson,
+  row.names = NULL
+) %>%
+  mutate(site = plant_harvest$site[match(diversity$pot, plant_harvest$pot)]) #add site information back in
+
+
+
+```
+
+
 ### Soil organic matter
 
 ```{r load data 3.1, include=FALSE}
@@ -1648,6 +1678,7 @@ summary(aov(SOM_N ~ Site * site_data$pH, data = SOM_13C_2)) #Site only
 shapiro.test(resid(lm(SOM_C ~ pH_range, data = SOM_13C_2))) #check normality of residuals - not normal
 shapiro.test(resid(lm(log(SOM_C) ~ pH_range, data = SOM_13C_2))) #not normal but closer
 summary(aov(log(SOM_C) ~ pH_range, data = SOM_13C_2)) #sig
+summary(aov(log(SOM_C) ~ pH, data = SOM_13C_2)) #sig
 
 Anova(lmer(log(SOM_C) ~ pH_range +
              (1|Site), #site random
@@ -1657,7 +1688,8 @@ Anova(lmer(log(SOM_C) ~ pH_range +
 
 shapiro.test(resid(lm(POM_C ~ pH_range, data = SOM_13C_2))) #check normality of residuals - not normal
 shapiro.test(resid(lm(log(POM_C) ~ pH_range, data = SOM_13C_2))) #normal
-summary(aov(log(SOM_C) ~ pH_range, data = SOM_13C_2)) #sig
+summary(aov(log(POM_C) ~ pH_range, data = SOM_13C_2)) #sig
+summary(aov(log(POM_C) ~ pH, data = SOM_13C_2)) #sig
 
 Anova(lmer(log(POM_C) ~ pH_range + (1|Site), #site random
     REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
@@ -1676,6 +1708,7 @@ TukeyHSD(aov(POM_C ~ pH_range + Site, data = SOM_13C_2)) #acidic lower
 
 shapiro.test(resid(lm(MAOM_C ~ pH_range, data = SOM_13C_2))) #check normality of residuals - normal
 summary(aov(MAOM_C ~ pH_range, data = SOM_13C_2)) #very sig
+summary(aov(MAOM_C ~ pH, data = SOM_13C_2)) #very sig
 
 Anova(lmer(log(MAOM_C) ~ pH_range + (1|Site), #site random
     REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
@@ -1693,6 +1726,61 @@ MuMIn::AICc(MAOM_C_pH_lme, k=2) #calculate AICc for for model comparison with sm
 TukeyHSD(aov(MAOM_C ~ pH_range + Site, data = SOM_13C_2)) #acidic lower
   
 ```
+
+```{r SOM C vs pH plot}
+
+#SOM-C plot
+ggplot(data = SOM_13C_2, aes(x=pH, y=SOM_C)) + 
+  geom_point(aes(color = factor(Site))) + #add points to plot
+  geom_smooth(method="lm", se=TRUE, color=plotline_color, fill=fill_color) +
+  scale_color_manual(values = colors) + #define colors to use
+  my_theme +
+  xlab("pH") + ylab("SOM-C (g C/kg soil)") #define/change X and Y labels
+
+ggsave('SOM_C_bypH.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+```
+
+```{r POM C vs pH plot}
+
+#POM-C plot
+ggplot(data = SOM_13C_2, aes(x=pH, y=POM_C)) + 
+  geom_point(aes(color = factor(Site))) + #add points to plot
+  geom_smooth(method="lm", se=TRUE, color=plotline_color, fill=fill_color) +
+  scale_color_manual(values = colors) + #define colors to use
+  my_theme +
+  xlab("pH") + ylab("POM-C (g C/kg soil)") #define/change X and Y labels
+
+ggsave('POM_C_bypH.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+```
+
+```{r MAOM C vs pH plot}
+
+#SOM-C plot
+ggplot(data = SOM_13C_2, aes(x=pH, y=MAOM_C)) + 
+  geom_point(aes(color = factor(Site))) + #add points to plot
+  geom_smooth(method="lm", se=TRUE, color=plotline_color, fill=fill_color) +
+  scale_color_manual(values = colors) + #define colors to use
+  my_theme +
+  xlab("pH") + ylab("MAOM-C (g C/kg soil)") #define/change X and Y labels
+
+ggsave('MAOM_C_bypH.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+```
+
 
 #### By mycorrhizal association
 ```{r SOM vs AM}
@@ -1804,7 +1892,7 @@ ggsave('POM_N_byAMhyph.svg', #save plot name and type - can be "eps", "pdf", "jp
 
 # AM Association by site
 
-```{r AM}
+```{r AM presence}
 
 #Hyphal presence boxplot
 ggplot(data = AMdata, aes(x=Site, y=hyph_percent, fill=Site)) + 
@@ -1824,6 +1912,30 @@ ggsave('AM_hyph.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "t
 shapiro.test(resid(lm(hyph_percent ~ Site, data = AMdata))) #check normality of residuals - normal
 summary(aov(hyph_percent ~ Site, data = AMdata)) #sig
 TukeyHSD(aov(hyph_percent ~ Site, data = AMdata)) #Flashes > Bick 1 & 2, Ambers > Bick 1
+
+
+```
+
+```{r AM vesicles}
+
+#Vesicles boxplot
+ggplot(data = AMdata, aes(x=Site, y=Vesicle, fill=Site)) + 
+	geom_boxplot() + 
+  scale_fill_manual(values = colors) + #define colors to use
+  #scale_y_continuous(labels = scales::percent_format(accuracy = 1)) + #change to %
+  my_theme +
+  #ggtitle("Hyphal Presence Across Sites") + #add a graph title
+  xlab("") + ylab("AM Vesicles (Count)") #define/change X and Y labels
+
+ggsave('AM_ves.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+shapiro.test(resid(lm(Vesicle ~ Site, data = AMdata))) #check normality of residuals - normal
+summary(aov(Vesicle ~ Site, data = AMdata)) #sig
+TukeyHSD(aov(Vesicle ~ Site, data = AMdata)) #Flashes > Bick 1 & 2, Ambers > Bick 1
 
 
 ```
@@ -1871,26 +1983,86 @@ TukeyHSD(aov(log(shoot) ~ functional_group * site, data = plant_harvest[ #normal
 
 ```
 
-```{r plant biodiversity}
+```{r plant species richness}
 
-#Pivot data to wide format
-species_df_wide <- plant_harvest %>%
-  dplyr::select(pot, species, shoot) %>% #select only needed columns
-  filter(!is.na(species) & !grepl("general_roots", species)) %>% #remove any NA species
-  pivot_wider(names_from = species, values_from = shoot) %>% #determines observation name and value columns
-  replace(is.na(.), 0) %>% #make any missing values 0
-  column_to_rownames(var="pot") #sets observation column as row names
+#box plots of plant biodiversity metrics
+ggplot(diversity, aes(x=site, y=species_richness, fill=site)) + 
+  geom_boxplot() +
+  scale_fill_manual(values=colors9) + #define colors to use
+  scale_y_continuous(breaks = pretty) +
+  #ggtitle("Species richness per site") + #add a graph title
+  xlab("") + ylab("Species Richness (#)") + #define/change X and Y labels
+  #scale_x_discrete(labels = "", "", "", "") + #remove x axis labels
+  my_theme 
+  #theme(legend.position='bottom') #remove legend
 
-#Calculate species richness, Shannon index, and Simpson index with vegan library
-species_richness <- specnumber(species_df_wide) #calculate species richness
-shannon <- diversity(species_df_wide, index = "shannon") #calculate Shannon index
-simpson <- diversity(species_df_wide, index = "simpson") #calculate Simpson index
+#save figure
+ggsave('plant_species.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
 
-#Combine biodiversity metrics into a dataframe
-diversity <- do.call(rbind, Map(data.frame, shannon=shannon, simpson=simpson, species_richness=species_richness)) %>% #combine into dataframe with column names matching
-  rownames_to_column(var = "observation") #put observations back into column
+#stats
+shapiro.test(resid(lm(species_richness ~ site, data = diversity))) #check normality of residuals - normal
+summary(aov(species_richness ~ site, data = diversity)) #sig
+TukeyHSD(aov(species_richness ~ site, data = diversity)) #Ambers > Bick 1 & 2
 
 ```
+
+```{r plant shannon}
+
+#box plots of plant biodiversity metrics
+ggplot(diversity, aes(x=site, y=shannon, fill=site)) + 
+  geom_boxplot() +
+  scale_fill_manual(values=colors9) + #define colors to use
+  scale_y_continuous(breaks = pretty) +
+  #ggtitle("Species richness per site") + #add a graph title
+  xlab("") + ylab("Shannon Diversity Index") + #define/change X and Y labels
+  #scale_x_discrete(labels = "", "", "", "") + #remove x axis labels
+  my_theme 
+  #theme(legend.position='bottom') #remove legend
+
+#save figure
+ggsave('plant_shannon.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+#stats
+shapiro.test(resid(lm(shannon ~ site, data = diversity))) #check normality of residuals - normal
+summary(aov(shannon ~ site, data = diversity)) #not sig
+
+```
+
+```{r plant simpson}
+
+#box plots of plant biodiversity metrics
+ggplot(diversity, aes(x=site, y=simpson, fill=site)) + 
+  geom_boxplot() +
+  scale_fill_manual(values=colors9) + #define colors to use
+  scale_y_continuous(breaks = pretty) +
+  #ggtitle("Species richness per site") + #add a graph title
+  xlab("") + ylab("Simpson Diversity Index") + #define/change X and Y labels
+  #scale_x_discrete(labels = "", "", "", "") + #remove x axis labels
+  my_theme 
+  #theme(legend.position='bottom') #remove legend
+
+#save figure
+ggsave('plant_simpson.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+#stats
+shapiro.test(resid(lm(simpson ~ site, data = diversity))) #check normality of residuals - normal
+summary(aov(simpson ~ site, data = diversity)) #sig
+TukeyHSD(aov(simpson ~ site, data = diversity)) #Flashes > Bick 1
+
+```
+
 
 # Isotope and Incubation Results
 
