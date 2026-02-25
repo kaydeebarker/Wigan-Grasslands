@@ -39,7 +39,24 @@ lapply(c(datalib, vislib, statlib), library, character.only = TRUE)
 
 ```
 
-## Define custom design settings for plots
+## Create code for commonly used functions, colors, settings, etc
+
+### Summary statistics list
+
+```{r reuse code, echo=FALSE}
+
+#Create list of descriptive statistics to run across multiple variables with one function - will use in summarise with across
+summary_stats <- list(
+  n = ~length(.), #sample size
+	mean = ~mean(., na.rm=TRUE), #mean
+	sd = ~sd(., na.rm=TRUE), #standard deviation
+	var = ~var(., na.rm=TRUE), #variance
+  cv = ~sd(., na.rm = TRUE) / mean(., na.rm = TRUE), #coefficient of variation
+  se = ~plotrix::std.error(., na.rm = TRUE)) #standard error
+
+```
+
+### Custom design settings for plots
 
 ```{r design, echo=FALSE}
 
@@ -73,7 +90,7 @@ my_theme <- theme(text = element_text(#family = "Arial",
 
 ```
 
-## Order variables
+### Order variables
 
 ```{r labels, echo=FALSE}
 
@@ -84,7 +101,7 @@ order_management <- c("Unmanaged", "4 Years", "15 Years", "23 Years")
 
 ```
 
-## Write functions to determine differences
+### Write functions to determine differences
 
 ```{r comparisons stats - set up function}
 
@@ -265,7 +282,7 @@ site_means <- site_data %>%
     dplyr::select(!Collar_Long) %>%
     dplyr::select(!Plot_ID) %>%
     dplyr::select(!BD_avg) %>%
-  summarise_all(funs(mean(., na.rm=TRUE), sd(., na.rm=TRUE), std.error(., na.rm=TRUE)))
+  summarise(across(where(is.numeric), summary_stats)) #run all summary stats
 
 #pivot metals with tidyr - increase rows / decrease columns
 soil_metals <- site_data %>%
@@ -335,13 +352,13 @@ plant_harvest <- harvest %>%
 summary_harvest <- plant_harvest %>%
   dplyr::select(site, management, species, functional_group, shoot, root, root_shoot) %>%
   group_by(site, management, species, functional_group) %>%
-  summarise_all(funs(mean(., na.rm=TRUE), sd(., na.rm=TRUE), std.error(., na.rm=TRUE)))
+  summarise(across(where(is.numeric), summary_stats)) #run all summary stats
 
 #summarize biomass by plant species for estimates
 summary_species <- plant_harvest %>%
   dplyr::select(species, functional_group, shoot, root, root_shoot) %>%
   group_by(species, functional_group) %>%
-  summarise_all(funs(mean(., na.rm=TRUE), sd(., na.rm=TRUE), std.error(., na.rm=TRUE)))
+  summarise(across(where(is.numeric), summary_stats)) #run all summary stats
 
 #13C calculations
 nat_abun <- harvest %>%
@@ -369,7 +386,7 @@ plant13C <- harvest %>%
 #summarize means 13C for plots - by species
 summary_plant13C_sp <- plant13C %>%
   group_by(site, sample_type, species, functional_group) %>%
-  summarise_all(funs(mean(., na.rm=TRUE), sd(., na.rm=TRUE), std.error(., na.rm=TRUE)))
+  summarise(across(where(is.numeric), summary_stats)) #run all summary stats
 
 #summarize 13C for plots add up - by site and type only
 summary_plant13C <- plant13C %>%
@@ -377,7 +394,7 @@ summary_plant13C <- plant13C %>%
   group_by(site, sample_type, pot) %>%
   summarise_all(funs(sum(., na.rm=TRUE))) %>% #first add up per pot
   group_by(site, sample_type) %>%
-  summarise_all(funs(mean(., na.rm=TRUE), sd(., na.rm=TRUE), std.error(., na.rm=TRUE))) #then summarize per site
+  summarise(across(where(is.numeric), summary_stats)) #run all summary stats #then summarize per site
 
 #add mean data to harvest data for estimates
 plant_harvest_est <- plant_harvest %>%
@@ -415,7 +432,7 @@ general_roots <- plant_harvest_est %>%
   filter(species == "general_roots") %>%
   dplyr::select(site2, root) %>%
   group_by(site2) %>%
-  summarise_all(funs(mean(., na.rm=TRUE), sd(., na.rm=TRUE), std.error(., na.rm=TRUE)))
+  summarise(across(where(is.numeric), summary_stats)) #run all summary stats
 
 #calculate and estimate biomass per pot
 total_pots <- plant_harvest_est %>%
@@ -518,7 +535,7 @@ SOM_fielddata2 <- merge(MAOM,POM, by=c("Site","Management", "Mgmt_num", "Plot_ID
 #summarize SOM data for plots
 summary_SOM <- SOM_fielddata2 %>%
   group_by(Site, Management, Mgmt_num) %>%
-  summarise_all(funs(mean(., na.rm=TRUE), sd(., na.rm=TRUE), std.error(., na.rm=TRUE)))
+  summarise(across(where(is.numeric), summary_stats)) #run all summary stats
 
 #order variables
 SOM_fielddata$Site <- factor(SOM_fielddata$Site, levels = order_sites)
@@ -540,7 +557,7 @@ soil_13C_calcs <- read_csv("soil_13C_calcs.csv") %>%
 #summarize SOM data for plots
 summary_soil13C <- soil_13C_calcs %>%
   group_by(Site, Management, Mgmt_num) %>%
-  summarise_all(funs(mean(., na.rm=TRUE), sd(., na.rm=TRUE), std.error(., na.rm=TRUE)))
+  summarise(across(where(is.numeric), summary_stats)) #run all summary stats
 
 #make 
 TotalC <- soil_13C_calcs %>%
@@ -622,12 +639,12 @@ SOM_13C_T0 <- SOM_13C_T0 %>%
 #summarize SOM data for plots for T0
 summary_SOM_13C_T0 <- SOM_13C_T0 %>%
   group_by(Site, Management, Mgmt_num) %>%
-  summarise_all(funs(mean(., na.rm=TRUE), sd(., na.rm=TRUE), std.error(., na.rm=TRUE)))
+  summarise(across(where(is.numeric), summary_stats)) #run all summary stats
 
 #summarize SOM data for plots and incubation
 summary_SOM_13C <- SOM_13C[-137,] %>%
   group_by(Site, Management, Mgmt_num, Incubation_T, Fraction) %>%
-  summarise_all(funs(mean(., na.rm=TRUE), sd(., na.rm=TRUE), std.error(., na.rm=TRUE)))
+  summarise(across(where(is.numeric), summary_stats)) #run all summary stats
 
 
 SOM_13C_T0 <- SOM_13C_T0 %>%
@@ -710,7 +727,7 @@ endbiomass <- endbiomass %>%
 summary_endbio <- endbiomass %>%
   dplyr::select(Site, Management, years, rocks_debris, end_drymass_clean, end_drymass_perL_clean, est_beg_drymass, beg_drymass_perL, decomp_per_adj) %>%
   group_by(Site, Management, years) %>%
-  summarise_all(funs(mean(., na.rm=TRUE), sd(., na.rm=TRUE), std.error(., na.rm=TRUE)))
+  summarise(across(where(is.numeric), summary_stats)) #run all summary stats
 
 #order variables for each
 resp_min$Site <- factor(resp_min$Site, levels = order_sites)
@@ -2545,7 +2562,7 @@ TukeyHSD(aov(mass_excess13C ~ factor(Site), data = resp_full)) #all sig except F
 
 ```{r resp 13C mass by week}
 
-#time series boxplots of 12C
+#time series boxplots
 ggplot(data = resp_full, aes(x=Week, y=mass_excess13C, group=interaction(Week,Site))) + 
   geom_boxplot(aes(fill=Site), position = position_dodge()) +
   #geom_dotplot(aes(fill=Site, stroke=TRUE), binaxis = "y", dotsize = 0.5, position = position_dodge(), stackdir = "center", binpositions = "bygroup") +
