@@ -37,6 +37,9 @@ statlib <- c("car", "MASS", "rcompanion", "zoo", "lme4", "MuMIn", "emmeans", "AR
 #Load libraries
 lapply(c(datalib, vislib, statlib), library, character.only = TRUE)
 
+#Remove lists from environment to clean up
+rm(datalib, vislib, statlib)
+
 ```
 
 ## Create code for commonly used functions, colors, settings, etc
@@ -66,6 +69,7 @@ summary_stats <- list(
 colors <- c("#84B699", "#EF8E45", "#BF876E", "#46A9B0")
 colors5 <- c("#84B699", "#EF8E45", "#BF876E", "#46A9B0", "azure")
 colors9 <- c("#84B699", "#EF8E45", "#BF876E", "#46A9B0", "azure", "#A1EBCF", "#FFBC7E", "#FFCAB1", "#61E9F2")
+colors11 <- c("#84B699", "#EF8E45", "#BF876E", "#46A9B0", "lightblue", "#61E9F2", "azure", "#FFCAB1", "#FFBC5F", "tan")
 
 #color palette with gradient with 20 steps
 colors_ramp <- colorRampPalette(c("#84B699", "azure","#BF876E"))(25)
@@ -95,9 +99,14 @@ my_theme <- theme(text = element_text(#family = "Arial",
 ```{r labels, echo=FALSE}
 
 #Create an order of observations within a variable to override the default order for plots
-order_sites <- c("Bickershaw 1", "Bickershaw 2", "Amberswood", "Flashes")
+order_sites <- c("Bickershaw", "Amberswood", "Flashes")
+
+order_IDs <- c("BU", "BM", "AU", "AM", "FU", "FM")
 
 order_management <- c("Unmanaged", "4 Years", "15 Years", "23 Years")
+
+order_mgmt <- c("0 yrs", "4 yrs", "15 yrs", "23 yrs")
+
 
 ```
 
@@ -271,28 +280,28 @@ differences_function <- function(data, factors, continuous_vars) {
 ```{r load data 1, include=FALSE}
 
 #read in site data
-site_data <- read_csv("Wigan_sitechar.csv") %>%
+site_data <- read_csv("Wigan_sitedata2023.csv") %>%
   filter(!is.na(Site)) #remove rows with no site
 
 #calc means and standard error for site data
 site_means <- site_data %>%
   group_by(Site, Management) %>%
-    dplyr::select(!Mgmt_num) %>%
+    dplyr::select(!Mgmt_time) %>%
     dplyr::select(!Collar_Lat) %>%
     dplyr::select(!Collar_Long) %>%
     dplyr::select(!Plot_ID) %>%
-    dplyr::select(!BD_avg) %>%
+    dplyr::select(!BD_adj_avg) %>%
   summarise(across(where(is.numeric), summary_stats)) #run all summary stats
 
 #pivot metals with tidyr - increase rows / decrease columns
 soil_metals <- site_data %>%
 	pivot_longer(
-		  cols = c(10:13,15:26,28,29,31,32,34), #pick columns to pivot
+		  cols = c(13:37), #pick columns to pivot
 		  #cols = ppm_Al:ppm_Zn, #pick columns
 		  names_to = "nutrient", #name column to put original column names in
 		  names_prefix = "ppm_", #remove prefix from column names
 		  values_to = "ppm") %>% #name column to put values in
-  dplyr::select(Site, Management, nutrient, ppm) #select columns to keep
+  dplyr::select(Site_ID, Site, Management, nutrient, ppm) #select columns to keep
 
 #read in FTIR data
 FTIR <- read_csv("FTIR_Sam.csv")
@@ -426,6 +435,7 @@ plant_harvest_est <- plant_harvest %>%
   mutate(root =
            case_when(root > 0 ~ root,
                      TRUE ~ root_shoot * shoot))
+is.na(plant_harvest_est) <- sapply(plant_harvest_est, is.nan) #replace NaN with NA for better handling of missing data
 
 #summarize general roots amount by site
 general_roots <- plant_harvest_est %>%
@@ -441,7 +451,7 @@ total_pots <- plant_harvest_est %>%
   summarise(root = sum(root, na.rm=TRUE), shoot = sum(shoot, na.rm=TRUE), root_shoot = mean(root_shoot, na.rm=TRUE)) %>% #summarize
   mutate(root = #add some general roots to the estimated beginning biomass for incubation
            dplyr::case_when(harvesttime == "T0" ~ root,
-                     TRUE ~ root + general_roots$mean[match(site2, general_roots$site2)])) #+
+                     TRUE ~ root + general_roots$root_mean[match(site2, general_roots$site2)])) #+
                      #general_roots$sd[match(site2, general_roots$site2)]))
 
 #write csv for measured and estimated beginning biomass
@@ -492,188 +502,6 @@ diversity <- diversity %>%
 
 
 ```
-
-
-### Soil organic matter
-
-```{r load data 3.1, include=FALSE}
-
-#read in field soil C/N data
-SOM_fielddata <- read_csv("SOM_field.csv") 
-
-#Combine SOM, POM, and MAOM as one observation per plot
-SOM <- SOM_fielddata %>%
-  filter(Fraction == "SOM") %>%
-  rename("SOM_C" = "C_gkg") %>%
-  rename("SOM_N" = "N_gkg") %>%
-  rename("SOM_CN" = "C_N") %>%
-  rename("SOM_C_kgm2_7cm" = "C_kgm2_7cm")
-
-POM <- SOM_fielddata %>%
-  filter(Fraction == "POM") %>%
-  rename("POM_C" = "C_gkg") %>%
-  rename("POM_N" = "N_gkg") %>%
-  rename("POM_CN" = "C_N") %>%
-  rename("POM_C_kgm2_7cm" = "C_kgm2_7cm")
-  
-MAOM <- SOM_fielddata %>%
-  filter(Fraction == "MAOM") %>%
-  rename("MAOM_C" = "C_gkg") %>%
-  rename("MAOM_N" = "N_gkg") %>%
-  rename("MAOM_CN" = "C_N") %>%
-  rename("MAOM_C_kgm2_7cm" = "C_kgm2_7cm")
-
-SOM_fielddata2 <- merge(MAOM,POM, by=c("Site","Management", "Mgmt_num", "Plot_ID"), all.y=TRUE) %>%
-  merge(SOM, by=c("Site","Management", "Mgmt_num", "Plot_ID"), all.y=TRUE) %>%
-  dplyr::select(Site, Management, Mgmt_num, SOM_C, SOM_N, SOM_CN, POM_C, POM_N, POM_CN, MAOM_C, MAOM_N, MAOM_CN,
-                C_gcm3, C_Tha, SOM_C_kgm2_7cm, POM_C_kgm2_7cm, MAOM_C_kgm2_7cm) %>%
-  mutate(fMAOM_C = MAOM_C_kgm2_7cm / (POM_C_kgm2_7cm + MAOM_C_kgm2_7cm)) %>% #calculate fMAOM C
-  mutate(fMAOM_C_2 = MAOM_C_kgm2_7cm / SOM_C_kgm2_7cm) %>% #calculate fMAOM C
-  mutate(fMAOM_N = MAOM_N / (POM_N + MAOM_N)) %>% #calculate fMAOM N
-  mutate(fMAOM_N_2 = MAOM_N / SOM_N) #calculate fMAOM N
-
-#summarize SOM data for plots
-summary_SOM <- SOM_fielddata2 %>%
-  group_by(Site, Management, Mgmt_num) %>%
-  summarise(across(where(is.numeric), summary_stats)) #run all summary stats
-
-#order variables
-SOM_fielddata$Site <- factor(SOM_fielddata$Site, levels = order_sites)
-SOM_fielddata$Management <- factor(SOM_fielddata$Management, levels = order_management)
-SOM_fielddata2$Site <- factor(SOM_fielddata2$Site, levels = order_sites)
-summary_SOM$Site <- factor(summary_SOM$Site, levels = order_sites)
-summary_SOM$Management <- factor(summary_SOM$Management, levels = order_management)
-
-```
-
-```{r load data 3.2, include=FALSE}
-
-#read in soil C/N and 13C data
-soil_13C_calcs <- read_csv("soil_13C_calcs.csv") %>%
-  na.omit() %>%
-  mutate(C_gkg = perC_samplemean * 10) %>%
-  mutate(N_gkg = perN_samplemean * 10)
-
-#summarize SOM data for plots
-summary_soil13C <- soil_13C_calcs %>%
-  group_by(Site, Management, Mgmt_num) %>%
-  summarise(across(where(is.numeric), summary_stats)) #run all summary stats
-
-#make 
-TotalC <- soil_13C_calcs %>%
-  dplyr::select(Site, C_kgm2_7cm)
-
-#order variables
-soil_13C_calcs$Site <- factor(soil_13C_calcs$Site, levels = order_sites)
-summary_soil13C$Site <- factor(summary_soil13C$Site, levels = order_sites)
-
-```
-
-```{r load data 3.3 T0, include=FALSE}
-
-#read in soil C/N and 13C data
-SOM_13C <- read_csv("SOM_13C.csv")
-
-#Combine SOM, POM, and MAOM as one observation per plot for T0
-SOM_T0 <- SOM_13C %>%
-  filter(Fraction == "SOM") %>%
-  filter(Incubation_T == 0) %>%
-  dplyr::select(Site, Management, Mgmt_num, Plot_ID, Incubation_T, per_C, per_N, C_gkg, N_gkg, C_N, d13C, `13C_excess_per`, `15N`, per_POM, per_MAOM, C_kgm2_7cm, pot_C_g, pot_13C_mg) %>% #select columns to keep
-  rename("SOM_C_per" = "per_C") %>%
-  rename("SOM_N_per" = "per_N") %>%
-  rename("SOM_potC_g" = "pot_C_g") %>%
-  rename("SOM_C" = "C_gkg") %>%
-  rename("SOM_N" = "N_gkg") %>%
-  rename("SOM_CN" = "C_N") %>%
-  rename("SOM_d13C" = "d13C") %>%
-  rename("SOM_13C_excess" = "13C_excess_per") %>%
-  rename("SOM_pot13C_mg" = "pot_13C_mg") %>%
-  rename("SOM_15N" = "15N") %>%
-  rename("SOM_C_kgm2_7cm" = "C_kgm2_7cm")
-
-POM_T0 <- SOM_13C %>%
-  filter(Fraction == "POM") %>%
-  filter(Incubation_T == 0) %>%
-  dplyr::select(Site, Management, Mgmt_num, Plot_ID, Incubation_T, per_C, per_N, C_gkg, N_gkg, C_N, d13C, `13C_excess_per`, `15N`, per_POM, per_MAOM, C_kgm2_7cm, pot_C_g, pot_13C_mg) %>% #select columns to keep
-  rename("POM_C_per" = "per_C") %>%
-  rename("POM_N_per" = "per_N") %>%
-  rename("POM_potC_g" = "pot_C_g") %>%
-  rename("POM_C" = "C_gkg") %>%
-  rename("POM_N" = "N_gkg") %>%
-  rename("POM_CN" = "C_N") %>%
-  rename("POM_d13C" = "d13C") %>%
-  rename("POM_13C_excess" = "13C_excess_per") %>%
-  rename("POM_pot13C_mg" = "pot_13C_mg") %>%
-  rename("POM_15N" = "15N") %>%
-  rename("POM_C_kgm2_7cm" = "C_kgm2_7cm")
-  
-MAOM_T0 <- SOM_13C %>%
-  filter(Fraction == "MAOM") %>%
-  filter(Incubation_T == 0) %>%
-  dplyr::select(Site, Management, Mgmt_num, Plot_ID, Incubation_T, per_C, per_N, C_gkg, N_gkg, C_N, d13C, `13C_excess_per`, `15N`, per_POM, per_MAOM, C_kgm2_7cm, pot_C_g, pot_13C_mg) %>% #select columns to keep
-  rename("MAOM_C_per" = "per_C") %>%
-  rename("MAOM_N_per" = "per_N") %>%
-  rename("MAOM_potC_g" = "pot_C_g") %>%
-  rename("MAOM_C" = "C_gkg") %>%
-  rename("MAOM_N" = "N_gkg") %>%
-  rename("MAOM_CN" = "C_N")  %>%
-  rename("MAOM_d13C" = "d13C") %>%
-  rename("MAOM_13C_excess" = "13C_excess_per") %>%
-  rename("MAOM_pot13C_mg" = "pot_13C_mg") %>%
-  rename("MAOM_15N" = "15N") %>%
-  rename("MAOM_C_kgm2_7cm" = "C_kgm2_7cm")
-
-SOM_13C_T0 <- merge(SOM_T0, POM_T0, by=c("Site","Management", "Mgmt_num", "Plot_ID", "Incubation_T"), 
-                    all=TRUE) %>%
-  merge(MAOM_T0, by=c("Site","Management", "Mgmt_num", "Plot_ID", "Incubation_T"), all.y=TRUE) %>%
-  mutate(fMAOM_C = MAOM_C_kgm2_7cm / (POM_C_kgm2_7cm + MAOM_C_kgm2_7cm)) %>% #calculate fMAOM C
-  mutate(fMAOM_C_2 = MAOM_C_kgm2_7cm / SOM_C_kgm2_7cm) %>% #calculate fMAOM C
-  mutate(fMAOM_13C = MAOM_pot13C_mg / (MAOM_pot13C_mg + POM_pot13C_mg)) %>% #calculate fMAOM 13C
-  mutate(M13C_P13C = MAOM_pot13C_mg / POM_pot13C_mg) %>% #calculate ratio transfer to MAOM vs POM
-  mutate(fMAOM_N = MAOM_N / (POM_N + MAOM_N)) %>% #calculate fMAOM N
-  mutate(fMAOM_N_2 = MAOM_N / SOM_N) #calculate fMAOM N
-
-SOM_13C_T0 <- SOM_13C_T0 %>%
-  mutate(TotalC = soil_13C_calcs$C_kgm2_7cm[match(SOM_13C_T0$Plot_ID, soil_13C_calcs$Plot_ID)]) 
-
-#summarize SOM data for plots for T0
-summary_SOM_13C_T0 <- SOM_13C_T0 %>%
-  group_by(Site, Management, Mgmt_num) %>%
-  summarise(across(where(is.numeric), summary_stats)) #run all summary stats
-
-#summarize SOM data for plots and incubation
-summary_SOM_13C <- SOM_13C[-137,] %>%
-  group_by(Site, Management, Mgmt_num, Incubation_T, Fraction) %>%
-  summarise(across(where(is.numeric), summary_stats)) #run all summary stats
-
-
-SOM_13C_T0 <- SOM_13C_T0 %>%
-  mutate(AM_hyph_per = AMdata$hyph_percent[match(SOM_13C_T0$Plot_ID, AMdata$Sample)]) %>%
-  mutate(AM_hyph_ct = AMdata$Hyphae[match(SOM_13C_T0$Plot_ID, AMdata$Sample)]) %>%
-  mutate(AM_arb_per = AMdata$arbuscule_percent[match(SOM_13C_T0$Plot_ID, AMdata$Sample)]) %>%
-  mutate(AM_arb_ct = AMdata$Arbuscule[match(SOM_13C_T0$Plot_ID, AMdata$Sample)]) %>%
-  mutate(AM_ves_ct = AMdata$Vesicle[match(SOM_13C_T0$Plot_ID, AMdata$Sample)]) %>%
-  mutate(AM_absent = AMdata$Nothing[match(SOM_13C_T0$Plot_ID, AMdata$Sample)]) %>%
-  mutate(pH = SOM_13C_T0$pH <- site_data$pH[match(SOM_13C_T0$Plot_ID, site_data$Plot_ID)]) %>%
-  mutate(pH_range = case_when(pH <= 5 ~ "Very Strongly Acidic",
-                                pH > 5 & pH <= 5.5 ~ "Strongly Acidic",
-                                pH > 5.5 & pH <= 6 ~ "Moderately Acidic",
-                                pH > 6 & pH <= 6.5 ~ "Mildly Acidic",
-                                pH > 6.5 & pH <= 7.3 ~ "Neutral",
-                                pH > 7.3 ~ "Alkaline"))
-
-SOM_T6 <- SOM_13C %>%
-  filter(Incubation_T == 6)
-
-#order variables
-SOM_13C$Site <- factor(SOM_13C$Site, levels = order_sites)
-SOM_T6$Site <- factor(SOM_T6$Site, levels = order_sites)
-SOM_13C_T0$Site <- factor(SOM_13C_T0$Site, levels = order_sites)
-summary_SOM_13C$Site <- factor(summary_SOM_13C$Site, levels = order_sites)
-summary_SOM_13C_T0$Site <- factor(summary_SOM_13C_T0$Site, levels = order_sites)
-
-```
-
 
 ### 13C respiration and decomposition
 
@@ -737,6 +565,189 @@ summary_endbio$Site <- factor(summary_endbio$Site, levels = order_sites)
 
 ```
 
+
+
+### Soil organic matter
+
+```{r load data Sam, include=FALSE}
+
+#read in field soil C/N data
+SOM_Kimpton <- read_csv("SOM_Kimpton.csv") 
+
+#Combine SOM, POM, and MAOM as one observation per plot
+SOM <- SOM_Kimpton %>%
+  filter(Fraction == "SOM") %>%
+  rename("SOM_C" = "C_gkg") %>%
+  rename("SOM_N" = "N_gkg") %>%
+  rename("SOM_CN" = "C_N") %>%
+  rename("SOM_C_kgm2_7cm" = "C_kgm2_7cm")
+
+POM <- SOM_Kimpton %>%
+  filter(Fraction == "POM") %>%
+  rename("POM_C" = "C_gkg") %>%
+  rename("POM_N" = "N_gkg") %>%
+  rename("POM_CN" = "C_N") %>%
+  rename("POM_C_kgm2_7cm" = "C_kgm2_7cm")
+  
+MAOM <- SOM_Kimpton %>%
+  filter(Fraction == "MAOM") %>%
+  rename("MAOM_C" = "C_gkg") %>%
+  rename("MAOM_N" = "N_gkg") %>%
+  rename("MAOM_CN" = "C_N") %>%
+  rename("MAOM_C_kgm2_7cm" = "C_kgm2_7cm")
+
+SOM_Kimpton2 <- merge(MAOM,POM, by=c("Sample_year", "Site", "Site_ID", "Mgmt_year", "Plot_ID"), all.y=TRUE) %>%
+  merge(SOM, by=c("Sample_year", "Site", "Site_ID", "Mgmt_year", "Plot_ID"), all.y=TRUE) %>%
+  dplyr::select(Sample_year, Site_ID, Site, Mgmt_year, 
+                SOM_C, SOM_N, SOM_CN, POM_C, POM_N, POM_CN, MAOM_C, MAOM_N, MAOM_CN,
+                C_gcm3, C_Tha, SOM_C_kgm2_7cm, POM_C_kgm2_7cm, MAOM_C_kgm2_7cm) %>%
+  mutate(fMAOM_C = MAOM_C_kgm2_7cm / (POM_C_kgm2_7cm + MAOM_C_kgm2_7cm)) %>% #calculate fMAOM C
+  mutate(fMAOM_C_2 = MAOM_C_kgm2_7cm / SOM_C_kgm2_7cm) %>% #calculate fMAOM C
+  mutate(fMAOM_N = MAOM_N / (POM_N + MAOM_N)) %>% #calculate fMAOM N
+  mutate(fMAOM_N_2 = MAOM_N / SOM_N) #calculate fMAOM N
+
+#summarize SOM data for plots
+summary_SOM <- SOM_Kimpton2 %>%
+  group_by(Sample_year, Site, Site_ID, Mgmt_year) %>%
+  summarise(across(where(is.numeric), summary_stats)) #run all summary stats
+
+#order variables
+SOM_Kimpton$Site <- factor(SOM_Kimpton$Site, levels = order_sites)
+SOM_Kimpton2$Site <- factor(SOM_Kimpton2$Site, levels = order_sites)
+summary_SOM$Site <- factor(summary_SOM$Site, levels = order_sites)
+
+```
+
+```{r load data incubation, include=FALSE}
+
+#read in soil C/N and 13C data
+SOM_13C <- read_csv("SOM_13C.csv")
+
+#Combine SOM, POM, and MAOM as one observation per plot for T0
+SOM_T0 <- SOM_13C %>%
+  filter(Fraction == "SOM") %>%
+  filter(Incubation_T == 0) %>%
+  dplyr::select(Sample_year, Site_ID, Site, Mgmt_year, Mgmt_fct, Plot_ID, Incubation_T, per_C, per_N, C_gkg, N_gkg, C_N, d13C, `13C_excess_per`, `15N`, per_POM, per_MAOM, C_kgm2_7cm, pot_C_g, pot_13C_mg) %>% #select columns to keep
+  rename("SOM_perC" = "per_C") %>%
+  rename("SOM_perN" = "per_N") %>%
+  rename("SOM_potC_g" = "pot_C_g") %>%
+  rename("SOM_C" = "C_gkg") %>%
+  rename("SOM_N" = "N_gkg") %>%
+  rename("SOM_CN" = "C_N") %>%
+  rename("SOM_d13C" = "d13C") %>%
+  rename("SOM_13C_excess" = "13C_excess_per") %>%
+  rename("SOM_pot13C_mg" = "pot_13C_mg") %>%
+  rename("SOM_15N" = "15N") %>%
+  rename("SOM_C_kgm2_7cm" = "C_kgm2_7cm")
+
+POM_T0 <- SOM_13C %>%
+  filter(Fraction == "POM") %>%
+  filter(Incubation_T == 0) %>%
+  dplyr::select(Sample_year, Site_ID, Site, Mgmt_year, Mgmt_fct, Plot_ID, Incubation_T, per_C, per_N, C_gkg, N_gkg, C_N, d13C, `13C_excess_per`, `15N`, per_POM, per_MAOM, C_kgm2_7cm, pot_C_g, pot_13C_mg) %>% #select columns to keep
+  rename("POM_perC" = "per_C") %>%
+  rename("POM_perN" = "per_N") %>%
+  rename("POM_potC_g" = "pot_C_g") %>%
+  rename("POM_C" = "C_gkg") %>%
+  rename("POM_N" = "N_gkg") %>%
+  rename("POM_CN" = "C_N") %>%
+  rename("POM_d13C" = "d13C") %>%
+  rename("POM_13C_excess" = "13C_excess_per") %>%
+  rename("POM_pot13C_mg" = "pot_13C_mg") %>%
+  rename("POM_15N" = "15N") %>%
+  rename("POM_C_kgm2_7cm" = "C_kgm2_7cm")
+  
+MAOM_T0 <- SOM_13C %>%
+  filter(Fraction == "MAOM") %>%
+  filter(Incubation_T == 0) %>%
+  dplyr::select(Sample_year, Site_ID, Site, Mgmt_year, Mgmt_fct, Plot_ID, Incubation_T, per_C, per_N, C_gkg, N_gkg, C_N, d13C, `13C_excess_per`, `15N`, per_POM, per_MAOM, C_kgm2_7cm, pot_C_g, pot_13C_mg) %>% #select columns to keep
+  rename("MAOM_perC" = "per_C") %>%
+  rename("MAOM_perN" = "per_N") %>%
+  rename("MAOM_potC_g" = "pot_C_g") %>%
+  rename("MAOM_C" = "C_gkg") %>%
+  rename("MAOM_N" = "N_gkg") %>%
+  rename("MAOM_CN" = "C_N")  %>%
+  rename("MAOM_d13C" = "d13C") %>%
+  rename("MAOM_13C_excess" = "13C_excess_per") %>%
+  rename("MAOM_pot13C_mg" = "pot_13C_mg") %>%
+  rename("MAOM_15N" = "15N") %>%
+  rename("MAOM_C_kgm2_7cm" = "C_kgm2_7cm")
+
+SOM_13C_T0 <- merge(SOM_T0, POM_T0, by=c("Sample_year", "Site", "Site_ID", "Mgmt_year", "Mgmt_fct", "Plot_ID", "Incubation_T"), all=TRUE) %>%
+  merge(MAOM_T0, by=c("Sample_year", "Site", "Site_ID", "Mgmt_year", "Mgmt_fct", "Plot_ID", "Incubation_T"), all.y=TRUE) %>%
+  mutate(fMAOM_C = MAOM_C_kgm2_7cm / (POM_C_kgm2_7cm + MAOM_C_kgm2_7cm)) %>% #calculate fMAOM C
+  mutate(fMAOM_C_2 = MAOM_C_kgm2_7cm / SOM_C_kgm2_7cm) %>% #calculate fMAOM C
+  mutate(fMAOM_13C = MAOM_pot13C_mg / (MAOM_pot13C_mg + POM_pot13C_mg)) %>% #calculate fMAOM 13C
+  mutate(M13C_P13C = MAOM_pot13C_mg / POM_pot13C_mg) %>% #calculate ratio transfer to MAOM vs POM
+  mutate(fMAOM_N = MAOM_N / (POM_N + MAOM_N)) %>% #calculate fMAOM N
+  mutate(fMAOM_N_2 = MAOM_N / SOM_N) #calculate fMAOM N
+
+#summarize SOM data for plots for T0
+summary_SOM_13C_T0 <- SOM_13C_T0 %>%
+  group_by(Site, Site_ID, Mgmt_year, Mgmt_fct) %>%
+  summarise(across(where(is.numeric), summary_stats)) #run all summary stats
+
+#summarize SOM data for plots and incubation
+summary_SOM_13C <- SOM_13C[-137,] %>%
+  group_by(Site, Mgmt_year, Mgmt_fct, Incubation_T, Fraction) %>%
+  summarise(across(where(is.numeric), summary_stats)) #run all summary stats
+
+
+SOM_13C_T0 <- SOM_13C_T0 %>%
+  mutate(AM_hyph_per = AMdata$hyph_percent[match(SOM_13C_T0$Plot_ID, AMdata$Sample)]) %>%
+  mutate(AM_hyph_ct = AMdata$Hyphae[match(SOM_13C_T0$Plot_ID, AMdata$Sample)]) %>%
+  mutate(AM_arb_per = AMdata$arbuscule_percent[match(SOM_13C_T0$Plot_ID, AMdata$Sample)]) %>%
+  mutate(AM_arb_ct = AMdata$Arbuscule[match(SOM_13C_T0$Plot_ID, AMdata$Sample)]) %>%
+  mutate(AM_ves_ct = AMdata$Vesicle[match(SOM_13C_T0$Plot_ID, AMdata$Sample)]) %>%
+  mutate(AM_absent = AMdata$Nothing[match(SOM_13C_T0$Plot_ID, AMdata$Sample)]) %>%
+  mutate(pH = SOM_13C_T0$pH <- site_data$pH[match(SOM_13C_T0$Plot_ID, site_data$Plot_ID)]) %>%
+  mutate(pH_range = case_when(pH <= 5 ~ "Very Strongly Acidic",
+                                pH > 5 & pH <= 5.5 ~ "Strongly Acidic",
+                                pH > 5.5 & pH <= 6 ~ "Moderately Acidic",
+                                pH > 6 & pH <= 6.5 ~ "Mildly Acidic",
+                                pH > 6.5 & pH <= 7.3 ~ "Neutral",
+                                pH > 7.3 ~ "Alkaline"))
+
+SOM_T6 <- SOM_13C %>%
+  filter(Incubation_T == 6)
+
+#order variables
+SOM_13C$Site <- factor(SOM_13C$Site, levels = order_sites)
+SOM_13C$Site_ID <- factor(SOM_13C$Site_ID, levels = order_IDs)
+SOM_T6$Site <- factor(SOM_T6$Site, levels = order_sites)
+SOM_13C_T0$Site <- factor(SOM_13C_T0$Site, levels = order_sites)
+SOM_13C_T0$Site_ID <- factor(SOM_13C_T0$Site_ID, levels = order_IDs)
+summary_SOM_13C$Site <- factor(summary_SOM_13C$Site, levels = order_sites)
+summary_SOM_13C$Mgmt_fct <- factor(summary_SOM_13C$Mgmt_fct, levels = order_mgmt)
+summary_SOM_13C_T0$Site <- factor(summary_SOM_13C_T0$Site, levels = order_sites)
+
+
+
+```
+
+```{r load 2026 SOM data, include=FALSE}
+
+#read in field soil C/N data from 2026
+SOM_2026 <- read_csv("SOM_2026.csv") 
+
+#summarize SOM 2026 data 
+summary_SOM_2026 <- SOM_2026[c(2:6,10,14,30:32,35,36)] %>%
+  group_by(Site_ID, Site, Mgmt_year, Management) %>%
+  summarise(across(where(is.numeric), summary_stats)) #run all summary stats
+
+#combine with above data
+SOM_multiyr <- SOM_2026 %>%
+  dplyr::select(Sample_year, Site, Site_ID, Mgmt_year, adj_BD, SOM_perC, SOM_perN, SOM_CN, C_kgm2_7cm) %>%
+  rename("SOM_C_kgm2_7cm" = "C_kgm2_7cm") %>%
+  bind_rows(SOM_13C_T0[c(1:4,7,8,11,17,30,43,58)])
+
+SOM_2026$Site <- factor(SOM_2026$Site, levels = order_sites)
+SOM_2026$Site_ID <- factor(SOM_2026$Site_ID, levels = order_IDs)
+SOM_multiyr$Site <- factor(SOM_multiyr$Site, levels = order_sites)
+SOM_multiyr$Site_ID <- factor(SOM_multiyr$Site_ID, levels = order_IDs)
+
+```
+
+
 ### UK soil data to compare
 
 Manning, Peter; De Vries, Franciska T.; Tallowin, Jerry R. B. et al. (2016). Data from: Simple measures of climate, soil properties and plant traits predict national scale grassland soil carbon stocks [Dataset]. Dryad. https://doi.org/10.5061/dryad.s7867
@@ -751,7 +762,8 @@ UK_soil <- read_csv("Manning2015_dryad.csv") %>%
   rename("pH" = "PH") %>% #match case with Wigan data
   mutate(vegetation = str_replace(vegetation, "wet grassland", "Wet Grassland")) %>% #match naming with Wigan data
   mutate(vegetation = str_replace(vegetation, "Acid grass", "Acid Grass")) %>% #match naming with Wigan data
-  dplyr::select(vegetation, type, site, pH, TotalC, POM_C, MAOM_C) %>%
+  mutate(Sample_year = 2005) %>%
+  dplyr::select(Sample_year, vegetation, type, site, pH, TotalC, POM_C, MAOM_C) %>%
   mutate_at(vars(pH, TotalC, POM_C, MAOM_C), as.numeric) %>%
   na.omit() #only include complete
 
@@ -763,17 +775,20 @@ summary_UKsoils <- UK_soil %>%
                                  se = ~ std.error(., na.rm=TRUE))))
 
 
-soilC_compare <- SOM_13C_T0 %>%
-  dplyr::select(Site, TotalC, POM_C_kgm2_7cm, MAOM_C_kgm2_7cm, pH) %>%
-  rename("site" = "Site") %>%
+soilC_compare <- SOM_multiyr %>%
+  dplyr::select(Sample_year, Site_ID, SOM_C_kgm2_7cm, POM_C_kgm2_7cm, MAOM_C_kgm2_7cm, pH) %>%
+  rename("site" = "Site_ID") %>%
+  rename("TotalC" = "SOM_C_kgm2_7cm") %>%
   rename("POM_C" = "POM_C_kgm2_7cm") %>%
   rename("MAOM_C" = "MAOM_C_kgm2_7cm") %>%
   mutate(type = "R") %>% #R for restored
-  mutate(vegetation = case_when(grepl("Bickershaw 1", site) #use grepl to find a substring within a column
-															  ~ "Bickershaw Wet Grassland Uncut 4 Yrs", #set value in new column 
-															  grepl("Bickershaw 2", site) ~ "Bickershaw Wet Grassland 4 Yrs", 
-															  grepl("Amberswood", site) ~ "Amberswood Mesotrophic 15 Yrs", 
-															  grepl("Flashes", site) ~ "Flashes Mesotrophic 23 Yrs")) %>% 
+  mutate(vegetation = case_when(grepl("BU", site) #use grepl to find a substring within a column
+															  ~ "BU Wet Grassland", #set value in new column 
+															  grepl("BM", site) ~ "BM Wet Grassland", 
+															  grepl("AU", site) ~ "AU Mesotrophic", 
+															  grepl("AM", site) ~ "AM Mesotrophic",
+															  grepl("FU", site) ~ "FU Mesotrophic",
+															  grepl("FM", site) ~ "FM Mesotrophic")) %>% 
   bind_rows(UK_soil) %>%
   mutate(pH_range = case_when(pH <= 5 ~ "Very Strongly Acidic",
                                 pH > 5 & pH <= 5.5 ~ "Strongly Acidic",
@@ -788,10 +803,12 @@ soilC_compare <- SOM_13C_T0 %>%
 #order variables
 soilC_compare$vegetation <- factor(soilC_compare$vegetation, 
                                    levels = c("Acid Grass", "Calcicolous", "Mesotrophic", "Wet Grassland", 
-                                              "Bickershaw Wet Grassland Uncut 4 Yrs",
-                                              "Bickershaw Wet Grassland 4 Yrs",
-                                              "Amberswood Mesotrophic 15 Yrs",
-                                              "Flashes Mesotrophic 23 Yrs"))
+                                              "BU Wet Grassland", 
+                                              "BM Wet Grassland", 
+                                              "AU Mesotrophic",
+                                              "AM Mesotrophic",
+                                              "FU Mesotrophic",
+                                              "FM Mesotrophic"))
 soilC_compare$pH_range <- factor(soilC_compare$pH_range, 
                                    levels = c("Very Strongly Acidic", "Strongly Acidic", "Moderately Acidic",
                                               "Mildly Acidic", "Neutral", "Alkaline"))
@@ -825,7 +842,7 @@ summary(aov(BD ~ Management, data = site_data)) #ANOVA - not significant
 #function2 differences_function
 
 # Define what to analyze
-factors <- "Site" #predictor variable
+factors <- "Site_ID" #predictor variable
 continuous_vars <- c("ppm_Al", "ppm_B", "ppm_Ba", "ppm_Ca1", "ppm_Ca2", "ppm_Cd", "ppm_Co", "ppm_Cr", "ppm_Cu",
                      "ppm_Fe", "ppm_K", "ppm_Li", "ppm_Mg", "ppm_Mn", "ppm_Na", "ppm_Ni", "ppm_P1", "ppm_P2",
                      "ppm_Pb", "ppm_S1", "ppm_S2", "ppm_Si", "ppm_Sr1", "ppm_Sr2", "ppm_Zn") #response variables
@@ -843,23 +860,27 @@ metals_diff <- differences_function(data, factors, continuous_vars)
 ```{r metals chart}
 
 soil_metals$Site <- factor(soil_metals$Site, levels = order_sites)
+soil_metals$Site_ID <- factor(soil_metals$Site_ID, levels = order_IDs)
 soil_metals$Management <- factor(soil_metals$Management, levels = order_management)
 
 #plot metals
-ggplot(data = soil_metals, aes(x=nutrient, y=ppm, fill=nutrient)) + 
+soil_metals %>%
+  filter(nutrient != "Ca2" & nutrient != "P2" & nutrient != "S2" & nutrient != "Sr2") %>% #filter out doubles
+  #filter(nutrient == "Cd" | nutrient == "Cr" | nutrient == "Ni" | nutrient == "Pb") %>% #filter for heavy metals with health concerns
+ggplot(aes(x=nutrient, y=ppm, fill=nutrient)) + 
   geom_boxplot() +
-  facet_wrap(~Site, scales = "free_x") + #create a separate plot for each site
-  scale_fill_manual(values=colors_ramp) + #define colors to use
-  ggtitle("Soil Metals per site") + #add a graph title
-  xlab("Site") + ylab("ppm") + #define/change X and Y labels
+  facet_wrap(~Site_ID, scales = "free_x", nrow=1) + #create a separate plot for each site
+  scale_fill_manual(values=colors) + #define colors to use
+  #ggtitle("Soil Metals per site") + #add a graph title
+  xlab("") + ylab("ppm") + #define/change X and Y labels
   theme(axis.text.x = element_text(angle=90), #set angle of variable labels
         panel.grid.major.y = element_line(color = "grey40", size = 0.25)) + 
   my_theme
 
 #save figure
-ggsave('metals_all.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+ggsave('metals_all_130426.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
 	path = "Figures", #save to folder within working directory
-	width = 6, height = 4, units = "in", #set dimensions for figure
+	width = 10, height = 4, units = "in", #set dimensions for figure
 	dpi = 300, #set resolution
 	bg=NULL) #background from plot specifications
 
@@ -891,8 +912,34 @@ ggsave('metals_sig.svg', #save plot name and type - can be "eps", "pdf", "jpeg",
 
 ```
 
-
 ```{r metals chart 3}
+
+#plot metals
+soil_metals %>%
+  filter(nutrient == "Cd" | nutrient == "Cr" | nutrient == "Ni" | nutrient == "Pb") %>% #filter for heavy metals with health concerns
+ggplot(aes(x=Site, y=ppm, fill=Site_ID)) + 
+  geom_boxplot(width=2) +
+  facet_wrap(~nutrient, scales = "free_y", nrow=1) + #create a separate plot for each site
+  scale_fill_manual(values=colors5) + #define colors to use
+  #ggtitle("Soil Metals per site") + #add a graph title
+  xlab("Site") + ylab("Nutrient (ppm)") + #define/change X and Y labels
+  theme(axis.text.x = element_text(angle=90), #set angle of variable labels
+        panel.grid.major.y = element_line(color = "grey40", size = 0.25)) + 
+  scale_x_discrete(labels = "", "", "", "") + #remove x axis labels
+  my_theme +
+  theme(legend.position='bottom') #remove legend
+
+#save figure
+ggsave('metals_health_130426.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 8, height = 4, units = "in", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
+```
+
+
+```{r metals chart 4}
 
 #plot metals
 soil_metals %>%
@@ -1027,7 +1074,7 @@ ggsave('FTIR_PCA.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "
 ggplot(data = summary_SOM, aes(x=Site, y=SOM_C_mean, fill=Site)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
   scale_fill_manual(values=colors) + #define colors to use
-  geom_errorbar(aes(ymin=SOM_C_mean-SOM_C_std.error, ymax=SOM_C_mean+SOM_C_std.error),
+  geom_errorbar(aes(ymin=SOM_C_mean-SOM_C_se, ymax=SOM_C_mean+SOM_C_se),
   color = "grey10", width = 0.7, position = "dodge") + 
   ggtitle("Soil Organic Matter C per site") + #add a graph title
   xlab("Site") + ylab("C (g/kg)") + #define/change X and Y labels
@@ -1048,7 +1095,7 @@ ggsave('SOC_Kimpton.svg', #save plot name and type - can be "eps", "pdf", "jpeg"
 ggplot(data = summary_SOM, aes(x=Site, y=C_Tha_mean, fill=Site)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
   scale_fill_manual(values=colors) + #define colors to use
-  geom_errorbar(aes(ymin=(C_Tha_mean-C_Tha_std.error), ymax=(C_Tha_mean+C_Tha_std.error)),
+  geom_errorbar(aes(ymin=(C_Tha_mean-C_Tha_se), ymax=(C_Tha_mean+C_Tha_se)),
   color = "grey10", width = 0.7, position = "dodge") + 
   scale_y_continuous(breaks = pretty(c(0,300), n = 6)) + #set limits and change number of tick marks on y axis
   ggtitle("Soil Organic Matter C per hectare") + #add a graph title
@@ -1070,7 +1117,7 @@ ggsave('SOC_ha_Kimpton.svg', #save plot name and type - can be "eps", "pdf", "jp
 ggplot(data = summary_SOM, aes(x=Site, y=SOM_N_mean, fill=Site)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
   scale_fill_manual(values=colors) + #define colors to use
-  geom_errorbar(aes(ymin=SOM_N_mean-SOM_N_std.error, ymax=SOM_N_mean+SOM_N_std.error),
+  geom_errorbar(aes(ymin=SOM_N_mean-SOM_N_se, ymax=SOM_N_mean+SOM_N_se),
   color = "grey10", width = 0.7, position = "dodge") + 
   ggtitle("Soil Organic Matter N per site") + #add a graph title
   xlab("Site") + ylab("N (g/kg)") + #define/change X and Y labels
@@ -1088,7 +1135,7 @@ ggsave('SOM_N_Kimpton.svg', #save plot name and type - can be "eps", "pdf", "jpe
 ```{r SOM-CN - Kimpton}
 
 #SOM CN boxplot
-ggplot(data = SOM_fielddata2) + 
+ggplot(data = SOM_Kimpton2) + 
 	geom_boxplot(aes(x=Site, y=SOM_CN, fill=Site)) +
   scale_fill_manual(values=colors) + #define colors to use
   ggtitle("Soil Organic Matter C:N per site") + #add a graph title
@@ -1107,7 +1154,7 @@ ggsave('SOM_CN_Kimpton.svg', #save plot name and type - can be "eps", "pdf", "jp
 ```{r combined C plots - Kimpton}
 
 #combined boxplots with error bars
-ggplot(data = SOM_fielddata) + 
+ggplot(data = SOM_Kimpton) + 
 	geom_boxplot(aes(x=Site, y=C_gkg, fill=Fraction)) +
   scale_fill_manual(values=colors) + #define colors to use
   ggtitle("Soil Organic Matter C per site") + #add a graph title
@@ -1126,7 +1173,7 @@ ggsave('SOMC_all_Kimpton.svg', #save plot name and type - can be "eps", "pdf", "
 ```{r combined N plots - Kimpton}
 
 #combined boxplots with error bars
-ggplot(data = SOM_fielddata) + 
+ggplot(data = SOM_Kimpton) + 
 	geom_boxplot(aes(x=Site, y=N_gkg, fill=Fraction)) +
   scale_fill_manual(values=colors) + #define colors to use
   ggtitle("Soil Organic Matter N per site") + #add a graph title
@@ -1148,7 +1195,7 @@ ggsave('SOM_N_all_Kimpton.svg', #save plot name and type - can be "eps", "pdf", 
 ggplot(data = summary_SOM, aes(x=Site, y=POM_C_mean, fill=Site)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
   scale_fill_manual(values=colors) + #define colors to use
-  geom_errorbar(aes(ymin=POM_C_mean-POM_C_std.error, ymax=POM_C_mean+POM_C_std.error),
+  geom_errorbar(aes(ymin=POM_C_mean-POM_C_se, ymax=POM_C_mean+POM_C_se),
   color = "grey10", width = 0.7, position = "dodge") + 
   ggtitle("Particulate Organic Matter C per site") + #add a graph title
   xlab("Site") + ylab("C (g/kg)") + #define/change X and Y labels
@@ -1169,7 +1216,7 @@ ggsave('POM_Cbar_Kimpton.svg', #save plot name and type - can be "eps", "pdf", "
 ggplot(data = summary_SOM, aes(x=Site, y=POM_N_mean, fill=Site)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
   scale_fill_manual(values=colors) + #define colors to use
-  geom_errorbar(aes(ymin=POM_N_mean-POM_N_std.error, ymax=POM_N_mean+POM_N_std.error),
+  geom_errorbar(aes(ymin=POM_N_mean-POM_N_se, ymax=POM_N_mean+POM_N_se),
   color = "grey10", width = 0.7, position = "dodge") + 
   ggtitle("Particulate Organic Matter N per site") + #add a graph title
   xlab("Site") + ylab("N (g/kg)") + #define/change X and Y labels
@@ -1190,7 +1237,7 @@ ggsave('POM_Nbar_Kimpton.svg', #save plot name and type - can be "eps", "pdf", "
 ggplot(data = summary_SOM, aes(x=Site, y=MAOM_C_mean, fill=Site)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
   scale_fill_manual(values=colors) + #define colors to use
-  geom_errorbar(aes(ymin=MAOM_C_mean-MAOM_C_std.error, ymax=MAOM_C_mean+MAOM_C_std.error),
+  geom_errorbar(aes(ymin=MAOM_C_mean-MAOM_C_se, ymax=MAOM_C_mean+MAOM_C_se),
   color = "grey10", width = 0.7, position = "dodge") + 
   ggtitle("Mineral Associated Organic Matter C per site") + #add a graph title
   xlab("Site") + ylab("C (g/kg)") + #define/change X and Y labels
@@ -1211,7 +1258,7 @@ ggsave('MAOM_Cbar_Kimpton.svg', #save plot name and type - can be "eps", "pdf", 
 ggplot(data = summary_SOM, aes(x=Site, y=MAOM_N_mean, fill=Site)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
   scale_fill_manual(values=colors) + #define colors to use
-  geom_errorbar(aes(ymin=MAOM_N_mean-MAOM_N_std.error, ymax=MAOM_N_mean+MAOM_N_std.error),
+  geom_errorbar(aes(ymin=MAOM_N_mean-MAOM_N_se, ymax=MAOM_N_mean+MAOM_N_se),
   color = "grey10", width = 0.7, position = "dodge") + 
   ggtitle("Mineral Associated Organic Matter N per site") + #add a graph title
   xlab("Site") + ylab("N (g/kg)") + #define/change X and Y labels
@@ -1229,7 +1276,7 @@ ggsave('MAOM_Nbar_Kimpton.svg', #save plot name and type - can be "eps", "pdf", 
 ```{r fMAOM-C - Kimpton}
 
 #fMAOM C box chart
-ggplot(data = SOM_fielddata2, aes(x=Site, y=fMAOM_C, fill=Site)) + 
+ggplot(data = SOM_Kimpton2, aes(x=Site, y=fMAOM_C, fill=Site)) + 
 	geom_boxplot() +
   scale_fill_manual(values=colors) + #define colors to use
   ggtitle("fMAOM C per site") + #add a graph title
@@ -1249,7 +1296,7 @@ ggsave('fMAOM_C_Kimpton.svg', #save plot name and type - can be "eps", "pdf", "j
 ```{r fMAOM-N - Kimpton}
 
 #fMAOM N box chart
-ggplot(data = SOM_fielddata2, aes(x=Site, y=fMAOM_N, fill=Site)) + 
+ggplot(data = SOM_Kimpton2, aes(x=Site, y=fMAOM_N, fill=Site)) + 
 	geom_boxplot() +
   scale_fill_manual(values=colors) + #define colors to use
   ggtitle("fMAOM N per site") + #add a graph title
@@ -1275,7 +1322,7 @@ summary_soil13C %>%
 ggplot(aes(x=Site, y=C_gkg_mean, fill=Site)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
   scale_fill_manual(values=colors) + #define colors to use
-  geom_errorbar(aes(ymin=C_gkg_mean-C_gkg_std.error, ymax=C_gkg_mean+C_gkg_std.error),
+  geom_errorbar(aes(ymin=C_gkg_mean-C_gkg_se, ymax=C_gkg_mean+C_gkg_se),
   color = "grey10", width = 0.7, position = "dodge") + 
   ggtitle("Soil Organic Matter C per site") + #add a graph title
   xlab("") + ylab("C (g/kg)") + #define/change X and Y labels
@@ -1297,8 +1344,8 @@ summary_soil13C %>%
 ggplot(aes(x=Site, y=C_kgm2_7cm_mean, fill=Site)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
   scale_fill_manual(values=colors) + #define colors to use
-  geom_errorbar(aes(ymin=C_kgm2_7cm_mean-C_kgm2_7cm_std.error, 
-                    ymax=C_kgm2_7cm_mean+C_kgm2_7cm_std.error),
+  geom_errorbar(aes(ymin=C_kgm2_7cm_mean-C_kgm2_7cm_se, 
+                    ymax=C_kgm2_7cm_mean+C_kgm2_7cm_se),
   color = "grey10", width = 0.7, position = "dodge") + 
   ggtitle("Soil Organic Matter C per site") + #add a graph title
   xlab("") + ylab("SOC (kg/m2 in top 7cm)") + #define/change X and Y labels
@@ -1320,7 +1367,7 @@ summary_soil13C %>%
 ggplot(aes(x=Site, y=N_gkg_mean, fill=Site)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
   scale_fill_manual(values=colors) + #define colors to use
-  geom_errorbar(aes(ymin=N_gkg_mean-N_gkg_std.error, ymax=N_gkg_mean+N_gkg_std.error),
+  geom_errorbar(aes(ymin=N_gkg_mean-N_gkg_se, ymax=N_gkg_mean+N_gkg_se),
   color = "grey10", width = 0.7, position = "dodge") + 
   ggtitle("Soil Organic Matter N per site") + #add a graph title
   xlab("") + ylab("N (g/kg)") + #define/change X and Y labels
@@ -1355,18 +1402,65 @@ ggsave('SOM_CN_KB.svg', #save plot name and type - can be "eps", "pdf", "jpeg", 
 
 ```
 
+#### Compare Years
+
+```{r compare SOC years site}
+
+SOM_multiyr %>%
+  #filter(Sample_year != 2023) %>%
+ggplot() + 
+	geom_boxplot(aes(x=factor(Sample_year), y=SOM_C_kgm2_7cm, fill=Site)) +
+  scale_fill_manual(values=colors9) + #define colors to use
+  #ggtitle("Soil Organic Matter C across the UK") + #add a graph title
+  xlab("") + ylab(expression("SOC (kg/m"^2*" in top 7cm)")) + #define/change X and Y labels
+  scale_x_discrete(labels = c("2023", "2026")) + #change labels
+  my_theme 
+
+#save figure
+ggsave('SOC_years_site.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 2000, height = 1000, units = "px", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
+```
+
+```{r compare SOC years show unmanaged}
+
+SOM_multiyr %>%
+  #filter(Sample_year != 2023) %>%
+ggplot() + 
+	geom_boxplot(aes(x=factor(Sample_year), y=SOM_C_kgm2_7cm, fill=Site_ID)) +
+  scale_fill_manual(values=colors9) + #define colors to use
+  #ggtitle("Soil Organic Matter C across the UK") + #add a graph title
+  xlab("") + ylab(expression("SOC (kg/m"^2*" in top 7cm)")) + #define/change X and Y labels
+  scale_x_discrete(labels = c("2023", "2026")) + #change labels
+  my_theme 
+
+#save figure
+ggsave('SOC_years.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 2000, height = 1000, units = "px", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
+```
+
+#### Fractions
+
 ```{r combined C plots - Barker}
 
 #combined boxplots with error bars
-ggplot(data = SOM_13C) + 
-	geom_boxplot(aes(x=Site, y=C_gkg, fill=Fraction)) +
+SOM_13C %>%
+ggplot() + 
+	geom_boxplot(aes(x=Site_ID, y=C_gkg, fill=Fraction)) +
   scale_fill_manual(values=colors) + #define colors to use
   ggtitle("Soil Organic Matter C per site") + #add a graph title
   xlab("Site") + ylab("C (g/kg)") + #define/change X and Y labels
   my_theme
 
 #save figure
-ggsave('SOMC_all_KB.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+ggsave('SOMC_all_KB_adjustedBD.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
 	path = "Figures", #save to folder within working directory
 	width = 6, height = 4, units = "in", #set dimensions for figure
 	dpi = 300, #set resolution
@@ -1377,15 +1471,16 @@ ggsave('SOMC_all_KB.svg', #save plot name and type - can be "eps", "pdf", "jpeg"
 ```{r combined N plots - Barker}
 
 #combined boxplots with error bars
-ggplot(data = SOM_13C) + 
-	geom_boxplot(aes(x=Site, y=N_gkg, fill=Fraction)) +
+SOM_13C %>%
+ggplot() + 
+	geom_boxplot(aes(x=Site_ID, y=N_gkg, fill=Fraction)) +
   scale_fill_manual(values=colors) + #define colors to use
   ggtitle("Soil Organic Matter N per site") + #add a graph title
   xlab("Site") + ylab("N (g/kg)") + #define/change X and Y labels
   my_theme
 
 #save figure
-ggsave('SOM_N_all_KB.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+ggsave('SOM_N_all_KB_adjustedBD.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
 	path = "Figures", #save to folder within working directory
 	width = 6, height = 4, units = "in", #set dimensions for figure
 	dpi = 300, #set resolution
@@ -1399,7 +1494,7 @@ ggsave('SOM_N_all_KB.svg', #save plot name and type - can be "eps", "pdf", "jpeg
 ggplot(data = summary_SOM_13C_T0, aes(x=Site, y=POM_C_mean, fill=Site)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
   scale_fill_manual(values=colors) + #define colors to use
-  geom_errorbar(aes(ymin=POM_C_mean-POM_C_std.error, ymax=POM_C_mean+POM_C_std.error),
+  geom_errorbar(aes(ymin=POM_C_mean-POM_C_se, ymax=POM_C_mean+POM_C_se),
   color = "grey10", width = 0.7, position = "dodge") + 
   ggtitle("Particulate Organic Matter C per site") + #add a graph title
   xlab("") + ylab("POM-C (g C/kg soil)") + #define/change X and Y labels
@@ -1420,7 +1515,7 @@ ggsave('POM_Cbar_KB.svg', #save plot name and type - can be "eps", "pdf", "jpeg"
 ggplot(data = summary_SOM_13C_T0, aes(x=Site, y=POM_N_mean, fill=Site)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
   scale_fill_manual(values=colors) + #define colors to use
-  geom_errorbar(aes(ymin=POM_N_mean-POM_N_std.error, ymax=POM_N_mean+POM_N_std.error),
+  geom_errorbar(aes(ymin=POM_N_mean-POM_N_se, ymax=POM_N_mean+POM_N_se),
   color = "grey10", width = 0.7, position = "dodge") + 
   ggtitle("Particulate Organic Matter N per site") + #add a graph title
   xlab("Site") + ylab("POM-N (g N/kg soil)") + #define/change X and Y labels
@@ -1441,7 +1536,7 @@ ggsave('POM_Nbar_KB.svg', #save plot name and type - can be "eps", "pdf", "jpeg"
 ggplot(data = summary_SOM_13C_T0, aes(x=Site, y=MAOM_C_mean, fill=Site)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
   scale_fill_manual(values=colors) + #define colors to use
-  geom_errorbar(aes(ymin=MAOM_C_mean-MAOM_C_std.error, ymax=MAOM_C_mean+MAOM_C_std.error),
+  geom_errorbar(aes(ymin=MAOM_C_mean-MAOM_C_se, ymax=MAOM_C_mean+MAOM_C_se),
   color = "grey10", width = 0.7, position = "dodge") + 
   ggtitle("Mineral Associated Organic Matter C per site") + #add a graph title
   xlab("Site") + ylab("MAOM-C (g C/kg soil)") + #define/change X and Y labels
@@ -1462,7 +1557,7 @@ ggsave('MAOM_Cbar_KB.svg', #save plot name and type - can be "eps", "pdf", "jpeg
 ggplot(data = summary_SOM_13C_T0, aes(x=Site, y=MAOM_N_mean, fill=Site)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
   scale_fill_manual(values=colors) + #define colors to use
-  geom_errorbar(aes(ymin=MAOM_N_mean-MAOM_N_std.error, ymax=MAOM_N_mean+MAOM_N_std.error),
+  geom_errorbar(aes(ymin=MAOM_N_mean-MAOM_N_se, ymax=MAOM_N_mean+MAOM_N_se),
   color = "grey10", width = 0.7, position = "dodge") + 
   ggtitle("Mineral Associated Organic Matter N per site") + #add a graph title
   xlab("Site") + ylab("MAOM-N (g N/kg soil)") + #define/change X and Y labels
@@ -1544,16 +1639,18 @@ ggsave('SOC_Manning.svg', #save plot name and type - can be "eps", "pdf", "jpeg"
 
 ```{r compare soil C 1}
 
-ggplot(data = soilC_compare) + 
+soilC_compare %>%
+  filter(Sample_year != 2023) %>%
+ggplot() + 
 	geom_boxplot(aes(x=vegetation, y=TotalC, fill=vegetation)) +
-  scale_fill_manual(values=colors9) + #define colors to use
+  scale_fill_manual(values=colors11) + #define colors to use
   ggtitle("Soil Organic Matter C across the UK") + #add a graph title
   xlab("") + ylab(expression("SOC (kg/m"^2*" in top 7cm)")) + #define/change X and Y labels
-  scale_x_discrete(labels = c("", "", "", "", "", "", "", "")) + #remove vegetation labels from x axis
+  scale_x_discrete(labels = c("", "", "", "", "", "", "", "","","","")) + #remove vegetation labels from x axis
   my_theme 
 
 #save figure
-ggsave('SOC_comparison.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+ggsave('SOC_comparison_2026.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
 	path = "Figures", #save to folder within working directory
 	width = 2000, height = 1000, units = "px", #set dimensions for figure
 	dpi = 300, #set resolution
@@ -1563,16 +1660,18 @@ ggsave('SOC_comparison.svg', #save plot name and type - can be "eps", "pdf", "jp
 
 ```{r compare soil C 2}
 
-ggplot(data = soilC_compare) + 
+soilC_compare %>%
+  filter(Sample_year != 2023) %>%
+ggplot() + 
 	geom_boxplot(aes(x=type, y=TotalC, fill=vegetation)) +
-  scale_fill_manual(values=colors9) + #define colors to use
+  scale_fill_manual(values=colors11) + #define colors to use
   ggtitle("Soil Organic Matter C across the UK") + #add a graph title
   xlab("") + ylab(expression("SOC (kg/m"^2*" in top 7cm)")) + #define/change X and Y labels
   scale_x_discrete(labels = c("Unimproved Grasslands", "Restored Grasslands")) + #remove vegetation labels from x axis
   my_theme 
 
 #save figure
-ggsave('SOC_comparison2.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+ggsave('SOC_comparison2_2026.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
 	path = "Figures", #save to folder within working directory
 	width = 2000, height = 1000, units = "px", #set dimensions for figure
 	dpi = 300, #set resolution
@@ -1592,7 +1691,7 @@ ggplot(data = soilC_compare) +
   my_theme 
 
 #save figure
-ggsave('POM-C_comparison.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+ggsave('POM-C_comparison_adjustedBD.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
 	path = "Figures", #save to folder within working directory
 	width = 2000, height = 800, units = "px", #set dimensions for figure
 	dpi = 300, #set resolution
@@ -1611,7 +1710,7 @@ ggplot(data = soilC_compare) +
   my_theme 
 
 #save figure
-ggsave('MAOM-C_comparison.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+ggsave('MAOM-C_comparison_adjBD.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
 	path = "Figures", #save to folder within working directory
 	width = 2000, height = 800, units = "px", #set dimensions for figure
 	dpi = 300, #set resolution
@@ -1620,6 +1719,113 @@ ggsave('MAOM-C_comparison.svg', #save plot name and type - can be "eps", "pdf", 
 ```
 
 ## SOM Stats
+
+### Compare years
+```{r SOM years}
+
+shapiro.test(resid(lm(SOM_perC ~ Sample_year, data = SOM_multiyr))) #check normality of residuals - not normal
+shapiro.test(resid(lm(log(SOM_perC) ~ Sample_year, data = SOM_multiyr))) #check normality of residuals - not normal but closer
+summary(aov(log(SOM_perC) ~ Sample_year, data = SOM_multiyr)) #not sig
+
+shapiro.test(resid(lm(SOM_C_kgm2_7cm ~ Sample_year, data = SOM_multiyr))) #check normality of residuals - not normal
+shapiro.test(resid(lm(log(SOM_C_kgm2_7cm) ~ Sample_year, data = SOM_multiyr))) #check normality of residuals - not normal but closer
+summary(aov(log(SOM_C_kgm2_7cm) ~ Sample_year, data = SOM_multiyr)) #not sig
+
+SOM_multiyr_diff <- SOM_multiyr %>%
+  dplyr::select(Sample_year, Site_ID, SOM_C_kgm2_7cm) %>%
+  group_by(Sample_year, Site_ID) %>%
+  summarise(across(where(is.numeric), summary_stats)) #run all summary stats
+  
+
+
+```
+
+### Log response ratio cutting
+
+```{r hay cutting SOM}
+
+#unmanaged only means
+avg_unmg_SOM <- SOM_2026 %>%
+  filter(Management == "Unmanaged") %>%
+  group_by(Site) %>%
+  summarise(across(where(is.numeric), mean)) #get mean
+
+
+#log response ratio of soil C
+LRR_SOM_C <- SOM_2026 %>%
+  dplyr::select(Site, Management, SOM_perC, SOM_C_Tha) %>%
+  filter(Management == "Hay cutting") %>%
+  mutate(SOM_perC_unmg = #add column for unmanaged means
+           case_when(Site == "Bickershaw"
+                     ~ avg_unmg_SOM$SOM_perC[avg_unmg_SOM$Site == "Bickershaw"],
+                     Site == "Amberswood"
+                     ~ avg_unmg_SOM$SOM_perC[avg_unmg_SOM$Site == "Amberswood"],
+                     Site == "Flashes" 
+                     ~ avg_unmg_SOM$SOM_perC[avg_unmg_SOM$Site == "Flashes"])) %>%
+  mutate(LRR_SOM_perC = 
+           log(SOM_perC/SOM_perC_unmg)) %>% #calculate log response ratio percent C
+  mutate(SOM_CTha_unmg = #add column for unmanaged means
+           case_when(Site == "Bickershaw"
+                     ~ avg_unmg_SOM$SOM_C_Tha[avg_unmg_SOM$Site == "Bickershaw"],
+                     Site == "Amberswood"
+                     ~ avg_unmg_SOM$SOM_C_Tha[avg_unmg_SOM$Site == "Amberswood"],
+                     Site == "Flashes" 
+                     ~ avg_unmg_SOM$SOM_C_Tha[avg_unmg_SOM$Site == "Flashes"])) %>%
+  mutate(LRR_SOM_CTha = 
+           log(SOM_C_Tha/SOM_CTha_unmg)) #calculate log response ratio percent C
+
+#calculate confidence intervals for log response ratios
+predict(lm(LRR_SOM_perC ~ Site, data = LRR_SOM_C), interval = "confidence") #calculate confidence intervals for log response ratio of percent C
+predict(lm(LRR_SOM_CTha ~ Site, data = LRR_SOM_C), interval = "confidence") #calculate confidence intervals for log response ratio of C in T ha
+
+#plot log response ratios with confidence intervals in ggplot
+ggplot(LRR_SOM_C, aes(y=Site, x=LRR_SOM_perC, fill=Site, color=Site)) +
+  geom_point(size=2) +
+  #geom_violin(alpha=0.2) +
+  geom_errorbar(aes(xmin=predict(lm(LRR_SOM_perC ~ Site, data = LRR_SOM_C), 
+                                 interval = "confidence")[,2],
+                    xmax=predict(lm(LRR_SOM_perC ~ Site, data = LRR_SOM_C), 
+                                 interval = "confidence")[,3]),
+                width=0.2) +
+  scale_color_manual(values = colors) + scale_fill_manual(values = colors) +
+  #ggtitle("Log Response Ratio of SOM %C for Hay Cutting vs Unmanaged") +
+  ylab("") + xlab("Log Response Ratio of SOM %C") +
+  my_theme
+
+#save plot
+ggsave('LRR_SOM_perC.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 6, height = 3, units = "in", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
+
+```
+
+```{r Tha LRR plot}
+
+#plot log response ratios with confidence intervals in ggplot
+ggplot(LRR_SOM_C, aes(y=Site, x=LRR_SOM_CTha, fill=Site, color=Site)) +
+  geom_point(size=2) +
+  #geom_violin(alpha=0.2) +
+  geom_errorbar(aes(xmin=predict(lm(LRR_SOM_CTha ~ Site, data = LRR_SOM_C), 
+                                 interval = "confidence")[,2],
+                    xmax=predict(lm(LRR_SOM_CTha ~ Site, data = LRR_SOM_C), 
+                                 interval = "confidence")[,3]),
+                width=0.2) +
+  scale_color_manual(values = colors) + scale_fill_manual(values = colors) +
+  #ggtitle("Log Response Ratio of SOM C in T ha for Hay Cutting vs Unmanaged") +
+  ylab("") + xlab("Log Response Ratio of SOM C in T ha") +
+  my_theme
+
+#save plot
+ggsave('LRR_SOMC_Tha.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 6, height = 4, units = "in", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
+```
 
 ### Compare with UK-wide unimproved grasslands soil C
 ```{r SOC compare}
@@ -1631,41 +1837,96 @@ summary(aov(log(TotalC) ~ type, data = soilC_compare)) #very sig
 shapiro.test(resid(lm(TotalC ~ vegetation, data = soilC_compare))) #check normality of residuals - not normal
 shapiro.test(resid(lm(log(TotalC) ~ vegetation, data = soilC_compare))) #not normal
 summary(aov(log(TotalC) ~ vegetation, data = soilC_compare)) #very sig
-TukeyHSD(aov(log(TotalC) ~ vegetation, data = soilC_compare)) #all restored > acid, Amber & Flashes > Calc, all rest > Meso, all rest > wet
+TukeyHSD(aov(log(TotalC) ~ vegetation, data = soilC_compare)) #
 
 shapiro.test(resid(lm(POM_C ~ type, data = soilC_compare))) #check normality of residuals - not normal
-shapiro.test(resid(lm(log(POM_C) ~ type, data = soilC_compare))) #not normal, closer
-summary(aov(log(POM_C) ~ type, data = soilC_compare)) #sig
+shapiro.test(resid(lm(log(POM_C) ~ type, data = soilC_compare))) #normal
+summary(aov(log(POM_C) ~ type, data = soilC_compare)) #not sig
 
 shapiro.test(resid(lm(POM_C ~ vegetation, data = soilC_compare))) #check normality of residuals - not normal
 shapiro.test(resid(lm(log(POM_C) ~ vegetation, data = soilC_compare))) #normal
 summary(aov(log(POM_C) ~ vegetation, data = soilC_compare)) #very sig
-TukeyHSD(aov(log(POM_C) ~ vegetation, data = soilC_compare)) #Flashes > all, Bick 1 < calc, Amber > Meso
+TukeyHSD(aov(log(POM_C) ~ vegetation, data = soilC_compare)) #
 
 shapiro.test(resid(lm(MAOM_C ~ type, data = soilC_compare))) #check normality of residuals - not normal
 shapiro.test(resid(lm(log(MAOM_C) ~ type, data = soilC_compare))) #not normal, closer
 summary(aov(log(MAOM_C) ~ type, data = soilC_compare)) #sig
 
-shapiro.test(resid(lm(MAOM_C ~ vegetation, data = soilC_compare))) #check normality of residuals - not normal but close
-shapiro.test(resid(lm(log(MAOM_C) ~ vegetation, data = soilC_compare))) #worse - might use another transform or keep raw
+shapiro.test(resid(lm(MAOM_C ~ vegetation, data = soilC_compare))) #normal
 summary(aov(MAOM_C ~ vegetation, data = soilC_compare)) #very sig
-TukeyHSD(aov(MAOM_C ~ vegetation, data = soilC_compare)) #all rest > all non
+TukeyHSD(aov(MAOM_C ~ vegetation, data = soilC_compare)) #
   
 ```
 
-### Compare sites at Wigan
+### Compare sites at Wigan 2026
 ```{r SOM stats Wigan}
 
-#Note this is redundant from above across all UK, but just uses Wigan dataset. Keep for now.
+#Carbon
 
-shapiro.test(resid(lm(SOM_C ~ Site, data = SOM_13C_T0))) #check normality of residuals - not normal
-shapiro.test(resid(lm(log(SOM_C) ~ Site, data = SOM_13C_T0))) 
-summary(aov(log(SOM_C) ~ Site, data = SOM_13C_T0)) #sig
-TukeyHSD(aov(log(SOM_C) ~ Site, data = SOM_13C_T0)) #Flashes vs. all, Bick 1 vs. Amber
+#Management
+shapiro.test(resid(lm(SOM_perC ~ Management, data = SOM_2026))) #not normal
+shapiro.test(resid(lm(log(SOM_perC) ~ Management, data = SOM_2026))) #not normal, marginally better
+summary(aov(log(SOM_perC) ~ Management, data = SOM_2026)) #not sig
 
-shapiro.test(resid(lm(SOM_N ~ Site, data = SOM_13C_T0))) #normal
-summary(aov(SOM_N ~ Site, data = SOM_13C_T0)) #sig
-TukeyHSD(aov(SOM_N ~ Site, data = SOM_13C_T0)) #Flashes vs. all
+shapiro.test(resid(lm(SOM_C_Tha ~ Management, data = SOM_2026))) #not normal
+shapiro.test(resid(lm(log(SOM_C_Tha) ~ Management, data = SOM_2026))) #not normal, marginally better
+summary(aov(log(SOM_C_Tha) ~ Management, data = SOM_2026)) #not sig
+
+#Management as time
+shapiro.test(resid(lm(SOM_perC ~ Mgmt_time, data = SOM_2026))) #normal
+summary(aov(SOM_perC ~ Mgmt_time, data = SOM_2026)) #sig
+TukeyHSD(aov(SOM_perC ~ factor(Mgmt_time), data = SOM_2026)) #26 years > 0, 7, 18 years
+
+shapiro.test(resid(lm(SOM_C_Tha ~ Mgmt_time, data = SOM_2026))) #normal
+summary(aov(SOM_C_Tha ~ Mgmt_time, data = SOM_2026)) #sig
+TukeyHSD(aov(SOM_C_Tha ~ factor(Mgmt_time), data = SOM_2026)) #26 years > 0, 7, 18 years
+
+#Or interaction site x management
+shapiro.test(resid(lm(SOM_perC ~ Management * Site, data = SOM_2026))) #normal
+summary(aov(SOM_perC ~ Management * Site, data = SOM_2026)) #site, interaction
+TukeyHSD(aov(SOM_perC ~ Management * Site, data = SOM_2026)) #none are different at the same site
+
+shapiro.test(resid(lm(SOM_C_Tha ~ Management * Site, data = SOM_2026))) #not normal
+shapiro.test(resid(lm(log(SOM_C_Tha) ~ Management * Site, data = SOM_2026))) #normal
+summary(aov(log(SOM_C_Tha) ~ Management * Site, data = SOM_2026)) #management, site, interaction
+TukeyHSD(aov(log(SOM_C_Tha) ~ Management * Site, data = SOM_2026)) #almost Flashes
+
+#By Site alone
+shapiro.test(resid(lm(SOM_perC ~ Site, data = SOM_2026))) #not normal
+shapiro.test(resid(lm(log(SOM_perC) ~ Site, data = SOM_2026))) #not normal, worse
+summary(aov(SOM_perC ~ Site, data = SOM_2026)) #sig
+TukeyHSD(aov(SOM_perC ~ Site, data = SOM_2026)) #Bick < Flashes and Amber
+
+shapiro.test(resid(lm(SOM_C_Tha ~ Site, data = SOM_2026))) #normal
+summary(aov(SOM_C_Tha ~ Site, data = SOM_2026)) #sig
+TukeyHSD(aov(SOM_C_Tha ~ Site, data = SOM_2026)) #Bick < Flashes and Amber
+
+#Nitrogen
+
+#Management
+shapiro.test(resid(lm(SOM_perN ~ Management, data = SOM_2026))) #not normal
+shapiro.test(resid(lm(log(SOM_perN) ~ Management, data = SOM_2026))) #normal
+summary(aov(log(SOM_perN) ~ Management, data = SOM_2026)) #not sig
+
+#Management as time
+shapiro.test(resid(lm(SOM_perN ~ Mgmt_time, data = SOM_2026))) #not normal
+shapiro.test(resid(lm(log(SOM_perN) ~ Mgmt_time, data = SOM_2026))) #normal
+summary(aov(log(SOM_perN) ~ Mgmt_time, data = SOM_2026)) #not sig
+
+#Interaction site x management
+shapiro.test(resid(lm(SOM_perN ~ Management * Site, data = SOM_2026))) #not normal
+shapiro.test(resid(lm(log(SOM_perN) ~ Management * Site, data = SOM_2026))) #normal
+summary(aov(log(SOM_perN) ~ Management * Site, data = SOM_2026)) #site, interaction
+TukeyHSD(aov(log(SOM_perN) ~ Management * Site, data = SOM_2026)) #none are different at the same site
+
+#Site alone
+shapiro.test(resid(lm(SOM_perN ~ Site, data = SOM_2026))) #not normal
+shapiro.test(resid(lm(log(SOM_perN) ~ Site, data = SOM_2026))) #normal
+summary(aov(log(SOM_perN) ~ Site, data = SOM_2026)) #sig
+TukeyHSD(aov(log(SOM_perN) ~ Site, data = SOM_2026)) #Bick < Amber
+
+
+#Fractions
 
 shapiro.test(resid(lm(POM_C ~ Site, data = SOM_13C_T0))) #normal
 summary(aov(POM_C ~ Site, data = SOM_13C_T0)) #sig
@@ -1694,15 +1955,20 @@ TukeyHSD(aov(fMAOM_N ~ Site, data = SOM_13C_T0)) #Flashes vs. Bick 1 & 2, Amber 
 
 ```
 
+```{r SOM log response ratios}
+
+
+
+
+```
+
 ```{r SOM vs pH}
 
-shapiro.test(resid(lm(SOM_C ~ Site * site_data$pH, data = SOM_13C_T0))) #check normality of residuals - not normal
-shapiro.test(resid(lm(log(SOM_C) ~ Site * site_data$pH, data = SOM_13C_T0))) #check normality of residuals - normal
-summary(aov(log(SOM_C) ~ Site * site_data$pH, data = SOM_13C_T0)) #Site only
+shapiro.test(resid(lm(SOM_C ~ Site * site_data$pH, data = SOM_13C_T0))) #check normality of residuals - normal
+summary(aov(SOM_C ~ Site * site_data$pH, data = SOM_13C_T0)) #Site only
 
-shapiro.test(resid(lm(SOM_C_kgm2_7cm ~ Site * site_data$pH, data = SOM_13C_T0))) #not normal
-shapiro.test(resid(lm(log(SOM_C_kgm2_7cm) ~ Site * site_data$pH, data = SOM_13C_T0))) #normal
-summary(aov(log(SOM_C_kgm2_7cm) ~ Site * site_data$pH, data = SOM_13C_T0)) #Site only
+shapiro.test(resid(lm(SOM_C_kgm2_7cm ~ Site * site_data$pH, data = SOM_13C_T0))) #normal
+summary(aov(SOM_C_kgm2_7cm ~ Site * site_data$pH, data = SOM_13C_T0)) #Site only
 
 shapiro.test(resid(lm(SOM_N ~ Site * site_data$pH, data = SOM_13C_T0))) #check normality of residuals - normal
 summary(aov(SOM_N ~ Site * site_data$pH, data = SOM_13C_T0)) #Site only
@@ -1886,6 +2152,7 @@ shapiro.test(resid(AM_POM_N_lme)) #normal
 check_collinearity(AM_POM_N_lme) #no collinearity
 performance::r2(AM_POM_N_lme, multivariate=TRUE) #calculate R-squared for model fit
 MuMIn::AICc(AM_POM_N_lme, k=2) #calculate AICc for for model comparison with small sample sizes
+
 
 shapiro.test(resid(lm(MAOM_C ~ AM_hyph_per + AM_arb_per + AM_ves_ct, data = SOM_13C_T0))) #check normality of residuals - not normal
 shapiro.test(resid(lm(log(MAOM_C) ~ AM_hyph_per + AM_arb_per + AM_ves_ct, data = SOM_13C_T0))) #normal
@@ -2118,7 +2385,7 @@ ggplot(aes(x=site, y=excess13C_mg_mean, fill=site)) +
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
   scale_fill_manual(values=colors) + #define colors to use
   scale_y_continuous(breaks = pretty) +
-  geom_errorbar(aes(ymin=excess13C_mg_mean-excess13C_mg_std.error, ymax=excess13C_mg_mean+excess13C_mg_std.error), 
+  geom_errorbar(aes(ymin=excess13C_mg_mean-excess13C_mg_se, ymax=excess13C_mg_mean+excess13C_mg_se), 
                 color = "grey10", width = 0.7, position = "dodge") + 
   #ggtitle("") + #add a graph title
   xlab("") + ylab(expression(""^13*"C in Shoots (mg/pot)")) + #define/change X and Y labels
@@ -2145,7 +2412,7 @@ ggplot(aes(x=site, y=excess13C_mg_mean, fill=site)) +
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
   scale_fill_manual(values=colors) + #define colors to use
   #scale_y_continuous(limits = c(0, 150), breaks = seq(0, 150, by = 50)) + #set y axis ticks
-  geom_errorbar(aes(ymin=excess13C_mg_mean-excess13C_mg_std.error, ymax=excess13C_mg_mean+excess13C_mg_std.error), 
+  geom_errorbar(aes(ymin=excess13C_mg_mean-excess13C_mg_se, ymax=excess13C_mg_mean+excess13C_mg_se), 
                 color = "grey10", width = 0.7, position = "dodge") + 
   #ggtitle("") + #add a graph title
   xlab("") + ylab(expression(""^13*"C in Roots (mg/pot)")) + #define/change X and Y labels
@@ -2185,10 +2452,10 @@ TukeyHSD(aov(SOM_pot13C_mg ~ Site, data = SOM_13C_T0)) #Flashes > Bick 1, Ambers
 #plot excess 13C in pots
 summary_SOM_13C %>%
   filter(Fraction == "SOM" & Incubation_T == 0) %>%
-ggplot(aes(x=Site, y=pot_13C_mg_mean, fill=Site)) + 
+ggplot(aes(x=interaction(Site, Mgmt_fct), y=pot_13C_mg_mean, fill=Mgmt_fct)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
   scale_fill_manual(values=colors) + #define colors to use
-  geom_errorbar(aes(ymin=pot_13C_mg_mean-pot_13C_mg_std.error, ymax=pot_13C_mg_mean+pot_13C_mg_std.error),
+  geom_errorbar(aes(ymin=pot_13C_mg_mean-pot_13C_mg_se, ymax=pot_13C_mg_mean+pot_13C_mg_se),
   color = "grey10", width = 0.7, position = "dodge") + 
   #scale_y_continuous(labels = scales::number_format(scale=1*1000, accuracy=1), breaks = pretty) + #change y axis to mg
   #ggtitle("Rocks and Debris per site") + #add a graph title
@@ -2197,7 +2464,7 @@ ggplot(aes(x=Site, y=pot_13C_mg_mean, fill=Site)) +
   theme(legend.position = "none")
 
 #save figure
-ggsave('excess13C_soil_050126.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+ggsave('excess13C_soil_130426.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
 	path = "Figures", #save to folder within working directory
 	width = 6, height = 4, units = "in", #set dimensions for figure
 	dpi = 300, #set resolution
@@ -2210,11 +2477,11 @@ ggsave('excess13C_soil_050126.svg', #save plot name and type - can be "eps", "pd
 #bar plot of POM 13C with error bars
 summary_SOM_13C %>%
   filter(Fraction == "POM" & Incubation_T == 0) %>%
-ggplot(aes(x=Site, y=pot_13C_mg_mean, fill=Site)) + 
+ggplot(aes(x=interaction(Site, Mgmt_fct), y=pot_13C_mg_mean, fill=Mgmt_fct)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
   scale_fill_manual(values=colors) + #define colors to use
   scale_y_continuous(breaks = pretty) + #set y axis ticks
-  geom_errorbar(aes(ymin=pot_13C_mg_mean-pot_13C_mg_std.error, ymax=pot_13C_mg_mean+pot_13C_mg_std.error), 
+  geom_errorbar(aes(ymin=pot_13C_mg_mean-pot_13C_mg_se, ymax=pot_13C_mg_mean+pot_13C_mg_se), 
                 color = "grey10", width = 0.7, position = "dodge") + 
   #ggtitle("") + #add a graph title
   xlab("") + ylab(expression(""^13*"C in POM (mg/pot)")) + #define/change X and Y labels
@@ -2222,7 +2489,7 @@ ggplot(aes(x=Site, y=pot_13C_mg_mean, fill=Site)) +
   theme(legend.position = "none")
 
 #save figure
-ggsave('excess13C_POM_050126.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+ggsave('excess13C_POM_130426.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
 	path = "Figures", #save to folder within working directory
 	width = 6, height = 4, units = "in", #set dimensions for figure
 	dpi = 300, #set resolution
@@ -2240,11 +2507,11 @@ TukeyHSD(aov(log(POM_pot13C_mg) ~ Site, data = SOM_13C_T0)) #Flashes > Bick 1, A
 #bar plot of POM 13C with error bars
 summary_SOM_13C %>%
   filter(Fraction == "MAOM" & Incubation_T == 0) %>%
-ggplot(aes(x=Site, y=pot_13C_mg_mean, fill=Site)) + 
+ggplot(aes(x=interaction(Site, Mgmt_fct), y=pot_13C_mg_mean, fill=Mgmt_fct)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
   scale_fill_manual(values=colors) + #define colors to use
   #scale_y_continuous(limits = c(0, 40), breaks = seq(0, 40, by = 10)) + #set y axis ticks
-  geom_errorbar(aes(ymin=pot_13C_mg_mean-pot_13C_mg_std.error, ymax=pot_13C_mg_mean+pot_13C_mg_std.error), 
+  geom_errorbar(aes(ymin=pot_13C_mg_mean-pot_13C_mg_se, ymax=pot_13C_mg_mean+pot_13C_mg_se), 
                 color = "grey10", width = 0.7, position = "dodge") + 
   #ggtitle("") + #add a graph title
   xlab("") + ylab(expression(""^13*"C in MAOM (mg/pot)")) + #define/change X and Y labels
@@ -2252,7 +2519,7 @@ ggplot(aes(x=Site, y=pot_13C_mg_mean, fill=Site)) +
   theme(legend.position = "none")
 
 #save figure
-ggsave('excess13C_MAOM_050126.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+ggsave('excess13C_MAOM_130426.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
 	path = "Figures", #save to folder within working directory
 	width = 6, height = 4, units = "in", #set dimensions for figure
 	dpi = 300, #set resolution
@@ -2268,7 +2535,7 @@ TukeyHSD(aov(log(MAOM_pot13C_mg) ~ Site, data = SOM_13C_T0)) #Flashes > Bick 1, 
 ```{r fMAOM-13C - Barker}
 
 #fMAOM C box chart
-ggplot(data = SOM_13C_T0, aes(x=Site, y=fMAOM_13C, fill=Site)) + 
+ggplot(data = SOM_13C_T0, aes(x=interaction(Site, Mgmt_fct), y=fMAOM_13C, fill=Mgmt_fct)) + 
 	geom_boxplot() +
   scale_fill_manual(values=colors) + #define colors to use
   #ggtitle(expression("fMAOM "^13*"C per site")) + #add a graph title
@@ -2278,14 +2545,16 @@ ggplot(data = SOM_13C_T0, aes(x=Site, y=fMAOM_13C, fill=Site)) +
   my_theme
 
 #save figure
-ggsave('fMAOM_13C_KB_050126.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+ggsave('fMAOM_13C_KB_130426.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
 	path = "Figures", #save to folder within working directory
 	width = 6, height = 4, units = "in", #set dimensions for figure
 	dpi = 300, #set resolution
 	bg=NULL) #background from plot specifications
 
 shapiro.test(resid(lm(fMAOM_13C ~ Site, data = SOM_13C_T0))) #check normality of residuals - normal
-summary(aov(fMAOM_13C ~ Site, data = SOM_13C_T0)) #almost but not
+summary(aov(fMAOM_13C ~ Site, data = SOM_13C_T0)) #sig
+TukeyHSD(aov(fMAOM_13C ~ Site, data = SOM_13C_T0)) #Flashes > Bick 1
+
 
 ```
 
@@ -2313,11 +2582,11 @@ TukeyHSD(aov(log(MAOM_15N) ~ Site, data = SOM_13C_T0)) #Bick 1 < Amber & Flashes
 #bar plot of POM 13C with error bars
 summary_SOM_13C %>%
   filter(Fraction == "SOM" & Incubation_T == 6) %>%
-ggplot(aes(x=Site, y=pot_13C_mg_mean, fill=Site)) + 
+ggplot(aes(x=interaction(Site, Mgmt_fct), y=pot_13C_mg_mean, fill=Mgmt_fct)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
   scale_fill_manual(values=colors) + #define colors to use
   scale_y_continuous(breaks = pretty) + #set y axis ticks
-  geom_errorbar(aes(ymin=pot_13C_mg_mean-pot_13C_mg_std.error, ymax=pot_13C_mg_mean+pot_13C_mg_std.error), 
+  geom_errorbar(aes(ymin=pot_13C_mg_mean-pot_13C_mg_se, ymax=pot_13C_mg_mean+pot_13C_mg_se), 
                 color = "grey10", width = 0.7, position = "dodge") + 
   #ggtitle("") + #add a graph title
   xlab("") + ylab(expression(""^13*"C in SOM (mg/pot)")) + #define/change X and Y labels
@@ -2325,7 +2594,7 @@ ggplot(aes(x=Site, y=pot_13C_mg_mean, fill=Site)) +
   theme(legend.position = "none")
 
 #save figure
-ggsave('excess13C_6mos.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+ggsave('excess13C_6mos_130426.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
 	path = "Figures", #save to folder within working directory
 	width = 6, height = 4, units = "in", #set dimensions for figure
 	dpi = 300, #set resolution
@@ -2337,6 +2606,133 @@ TukeyHSD(aov(pot_13C_mg ~ Site, data = SOM_T6[-17,])) #Flashes > all
 
 ```
 
+### Linear Mixed Models explaining 13C
+
+#### Soil 13C by soil pH
+
+```{r soil 13C compare pH}
+
+shapiro.test(resid(lm(SOM_13C_excess ~ pH_range, data = SOM_13C_T0))) #check normality of residuals - not normal
+shapiro.test(resid(lm(log(SOM_13C_excess) ~ pH_range, data = SOM_13C_T0))) #normal
+summary(aov(log(SOM_13C_excess) ~ pH_range, data = SOM_13C_T0)) #sig
+summary(aov(log(SOM_13C_excess) ~ pH, data = SOM_13C_T0)) #not sig
+
+Anova(lmer(log(SOM_13C_excess) ~ pH_range +
+             (1|Site), #site random
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0, #choose dataframe
+    na.action = na.omit), type=3) #sig
+
+SOM_excess_pH_lme <- lmer(log(SOM_13C_excess) ~ pH_range + (1|Site), 
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0, #choose dataframe
+    na.action = na.omit)
+summary(SOM_excess_pH_lme) #random accounts for less
+shapiro.test(resid(SOM_excess_pH_lme)) #normal
+performance::r2(SOM_excess_pH_lme, multivariate=TRUE) #calculate R-squared for model fit
+MuMIn::AICc(SOM_excess_pH_lme, k=2) #calculate AICc for for model comparison with small sample sizes
+TukeyHSD(aov(log(SOM_13C_excess) ~ pH_range + Site, data = SOM_13C_T0)) #none quite significantly different
+
+shapiro.test(resid(lm(SOM_pot13C_mg ~ pH_range, data = SOM_13C_T0))) #check normality of residuals - not normal
+shapiro.test(resid(lm(log(SOM_pot13C_mg) ~ pH_range, data = SOM_13C_T0))) #normal
+summary(aov(log(SOM_pot13C_mg) ~ pH_range, data = SOM_13C_T0)) #sig
+
+Anova(lmer(log(SOM_pot13C_mg) ~ pH_range +
+             (1|Site), #site random
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0, #choose dataframe
+    na.action = na.omit), type=3) #sig
+
+SOM_13Cmg_pH_lme <- lmer(log(SOM_pot13C_mg) ~ pH_range + (1|Site), 
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0, #choose dataframe
+    na.action = na.omit)
+summary(SOM_13Cmg_pH_lme) #random accounts for less
+shapiro.test(resid(SOM_13Cmg_pH_lme)) #normal
+performance::r2(SOM_13Cmg_pH_lme, multivariate=TRUE) #calculate R-squared for model fit
+MuMIn::AICc(SOM_13Cmg_pH_lme, k=2) #calculate AICc for for model comparison with small sample sizes
+TukeyHSD(aov(log(SOM_pot13C_mg) ~ pH_range + Site, data = SOM_13C_T0)) #mildly acidic vs alkaline & neutral, mod acidic vs alkaline
+
+shapiro.test(resid(lm(POM_13C_excess ~ pH_range, data = SOM_13C_T0))) #check normality of residuals - not normal
+shapiro.test(resid(lm(log(POM_13C_excess) ~ pH_range, data = SOM_13C_T0))) #normal
+summary(aov(log(POM_13C_excess) ~ pH_range, data = SOM_13C_T0)) #sig
+
+Anova(lmer(log(POM_13C_excess) ~ pH_range +
+             (1|Site), #site random
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0, #choose dataframe
+    na.action = na.omit), type=3) #sig
+
+POM_excess_pH_lme <- lmer(log(POM_13C_excess) ~ pH_range + (1|Site), 
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0, #choose dataframe
+    na.action = na.omit)
+summary(SOM_excess_pH_lme) #random accounts for less
+shapiro.test(resid(SOM_excess_pH_lme)) #normal
+performance::r2(SOM_excess_pH_lme, multivariate=TRUE) #calculate R-squared for model fit
+MuMIn::AICc(SOM_excess_pH_lme, k=2) #calculate AICc for for model comparison with small sample sizes
+TukeyHSD(aov(log(SOM_13C_excess) ~ pH_range + Site, data = SOM_13C_T0)) #none quite significantly different
+
+
+```
+
+#### Soil 13C by mycorrhizal association
+```{r soil 13C vs AM}
+
+shapiro.test(resid(lm(SOM_13C_excess ~ AM_hyph_per + AM_arb_per + AM_ves_ct, data = SOM_13C_T0))) #not normal
+shapiro.test(resid(lm(log(SOM_13C_excess) ~ AM_hyph_per + AM_arb_per + AM_ves_ct, data = SOM_13C_T0))) #not but closer
+summary(aov(log(SOM_13C_excess) ~ AM_hyph_per + AM_arb_per + AM_ves_ct, data = SOM_13C_T0)) #vesicles
+
+Anova(lmer(log(SOM_13C_excess) ~ AM_hyph_per + AM_arb_per + AM_ves_ct + (1|Site), 
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0, #choose dataframe
+    na.action = na.omit), type=3) #vesicles
+
+shapiro.test(resid(lm(SOM_pot13C_mg ~ AM_hyph_per + AM_arb_per + AM_ves_ct, data = SOM_13C_T0))) #not normal
+shapiro.test(resid(lm(log(SOM_pot13C_mg) ~ AM_hyph_per + AM_arb_per + AM_ves_ct, data = SOM_13C_T0))) #normal
+summary(aov(log(SOM_pot13C_mg) ~ AM_hyph_per + AM_arb_per + AM_ves_ct, data = SOM_13C_T0)) #not sig
+
+shapiro.test(resid(lm(POM_13C_excess ~ AM_hyph_per + AM_arb_per + AM_absent, data = SOM_13C_T0))) #not normal
+shapiro.test(resid(lm(log(POM_13C_excess) ~ AM_hyph_per + AM_arb_per + AM_absent, data = SOM_13C_T0))) #normal
+summary(aov(log(POM_13C_excess) ~ AM_hyph_per + AM_arb_per + AM_ves_ct, data = SOM_13C_T0)) #hyph
+
+Anova(lmer(log(POM_13C_excess) ~ AM_hyph_per + AM_arb_per + AM_ves_ct + (1|Site), 
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0, #choose dataframe
+    na.action = na.omit), type=3) #none
+
+SOM_excess_AM_lme <- lmer(log(MAOM_13C_excess) ~ AM_hyph_per + AM_arb_per + AM_ves_ct + (1|Site), 
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0, #choose dataframe
+    na.action = na.omit)
+summary(SOM_excess_AM_lme) #random accounts for less
+shapiro.test(resid(SOM_excess_AM_lme)) #normal
+performance::r2(SOM_excess_AM_lme, multivariate=TRUE) #calculate R-squared for model fit
+MuMIn::AICc(SOM_excess_AM_lme, k=2) #calculate AICc for for model comparison with small sample sizes
+
+shapiro.test(resid(lm(POM_pot13C_mg ~ AM_hyph_per + AM_arb_per + AM_ves_ct, data = SOM_13C_T0))) #not normal
+shapiro.test(resid(lm(log(POM_pot13C_mg) ~ AM_hyph_per + AM_arb_per + AM_ves_ct, data = SOM_13C_T0))) #normal
+summary(aov(log(POM_pot13C_mg) ~ AM_hyph_per + AM_arb_per + AM_ves_ct, data = SOM_13C_T0)) #not sig
+
+shapiro.test(resid(lm(MAOM_13C_excess ~ AM_hyph_per + AM_arb_per + AM_absent, data = SOM_13C_T0))) #not normal
+shapiro.test(resid(lm(log(MAOM_13C_excess) ~ AM_hyph_per + AM_arb_per + AM_absent, data = SOM_13C_T0))) #normal
+summary(aov(log(MAOM_13C_excess) ~ AM_hyph_per + AM_arb_per + AM_ves_ct, data = SOM_13C_T0)) #vesicles, almost hyphae
+
+Anova(lmer(log(MAOM_13C_excess) ~ AM_hyph_per + AM_arb_per + AM_ves_ct + (1|Site), 
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0, #choose dataframe
+    na.action = na.omit), type=3) #vesicles
+
+MAOM_excess_AM_lme <- lmer(log(MAOM_13C_excess) ~ AM_hyph_per + AM_arb_per + AM_ves_ct + (1|Site), 
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0, #choose dataframe
+    na.action = na.omit)
+summary(MAOM_excess_AM_lme) #random accounts for less
+shapiro.test(resid(MAOM_excess_AM_lme)) #normal
+performance::r2(MAOM_excess_AM_lme, multivariate=TRUE) #calculate R-squared for model fit
+MuMIn::AICc(MAOM_excess_AM_lme, k=2) #calculate AICc for for model comparison with small sample sizes
+
+```
 
 ## Respiration Data
 
@@ -2605,7 +3001,7 @@ ggplot(data = plant_harvest_est[-c(118,153),], #species data minus major outlier
 ggplot(data = summary_endbio, aes(x=Site, y=est_beg_drymass_mean, fill=Site)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
   scale_fill_manual(values=colors) + #define colors to use
-  geom_errorbar(aes(ymin=est_beg_drymass_mean-est_beg_drymass_std.error, ymax=est_beg_drymass_mean+est_beg_drymass_std.error),
+  geom_errorbar(aes(ymin=est_beg_drymass_mean-est_beg_drymass_se, ymax=est_beg_drymass_mean+est_beg_drymass_se),
   color = "grey10", width = 0.7, position = "dodge") + 
   ggtitle("Beginning biomass per site") + #add a graph title
   xlab("Site") + ylab("Root dry mass (g)") + #define/change X and Y labels
@@ -2630,7 +3026,7 @@ TukeyHSD(aov(est_beg_drymass ~ factor(Site), data = endbiomass)) #Flashes < Ambe
 ggplot(data = summary_endbio, aes(x=Site, y=end_drymass_clean_mean, fill=Site)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
   scale_fill_manual(values=colors) + #define colors to use
-  geom_errorbar(aes(ymin=end_drymass_clean_mean-end_drymass_clean_std.error, ymax=end_drymass_clean_mean+end_drymass_clean_std.error),
+  geom_errorbar(aes(ymin=end_drymass_clean_mean-end_drymass_clean_se, ymax=end_drymass_clean_mean+end_drymass_clean_se),
   color = "grey10", width = 0.7, position = "dodge") + 
   ggtitle("Ending biomass per site") + #add a graph title
   xlab("Site") + ylab("Root dry mass (g)") + #define/change X and Y labels
@@ -2718,8 +3114,8 @@ kruskal.test(decomp_per_adj ~ factor(Site), data = endbiomass[-1,]) #Kruskal-Wal
 dunn.test(endbiomass[-1,]$decomp_per_adj, endbiomass[-1,]$Site, method="bonferroni", kw=TRUE) #KW P=0.01, Flashes > Bick 1 & 2 only
 
 #AM association
-shapiro.test(resid(lm(decomp_per_adj ~ AM_hyph_per + AM_arb_per + AM_ves_ct + AM_absent, data = endbiomass))) #check normality of residuals - normal
-summary(aov(decomp_per_adj ~ AM_hyph_per + AM_arb_per + AM_ves_ct + AM_absent, data = endbiomass)) #none
+shapiro.test(resid(lm(decomp_per_adj ~ AM_hyph_per + AM_arb_per + AM_ves_ct, data = endbiomass))) #check normality of residuals - normal
+summary(aov(decomp_per_adj ~ AM_hyph_per + AM_arb_per + AM_ves_ct, data = endbiomass)) #none
 
 #pH
 shapiro.test(resid(lm(decomp_per_adj ~ pH, data = endbiomass))) #check normality of residuals - normal
@@ -2750,7 +3146,7 @@ MuMIn::AICc(decomp_pH_lme, k=2) #calculate AICc for for model comparison with sm
 ggplot(data = summary_endbio, aes(x=Site, y=rocks_debris_mean, fill=Site)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
   scale_fill_manual(values=colors) + #define colors to use
-  geom_errorbar(aes(ymin=rocks_debris_mean-rocks_debris_std.error, ymax=rocks_debris_mean+rocks_debris_std.error),
+  geom_errorbar(aes(ymin=rocks_debris_mean-rocks_debris_se, ymax=rocks_debris_mean+rocks_debris_se),
   color = "grey10", width = 0.7, position = "dodge") + 
   #ggtitle("Rocks and Debris per site") + #add a graph title
   xlab("") + ylab("Mass of Coal Debris in 20 cm (g)") + #define/change X and Y labels
@@ -2767,6 +3163,27 @@ ggsave('debris.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "ti
 rmass_aov <- aov(rocks_debris ~ factor(Management), data = endbiomass)
 summary(rmass_aov) #P=2.3e-6
 TukeyHSD(rmass_aov) #Unmanaged-23 yr P=0.0000012, Unmanaged-15 yr P=0.0057, 4 yr-23 yr P=0.00013, 15 yr-23 yr P=0.0013
+
+```
+
+## Coal boxplot
+
+```{r worms, warning=FALSE}
+
+#worms box plot
+ggplot(data = SOM_2026, aes(x=Site, y=coal_2mm_g, fill=Management)) + 
+	geom_boxplot() +
+  scale_fill_manual(values=colors) + #define colors to use
+  #ggtitle("Coal in BD cores") + #add a graph title
+  xlab("") + ylab("Coal >2mm in topsoil BD cores (g)") + #define/change X and Y labels
+  my_theme
+
+#save figure
+ggsave('coal.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 6, height = 4, units = "in", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
 
 ```
 
