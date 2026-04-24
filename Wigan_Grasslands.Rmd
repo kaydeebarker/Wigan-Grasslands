@@ -541,14 +541,14 @@ endbiomass <- endbiomass %>%
   mutate(AM_arb_per = AMdata$arbuscule_percent[match(endbiomass$Pot, AMdata$Sample)]) %>%
   mutate(AM_arb_ct = AMdata$Arbuscule[match(endbiomass$Pot, AMdata$Sample)]) %>%
   mutate(AM_ves_ct = AMdata$Vesicle[match(endbiomass$Pot, AMdata$Sample)]) %>%
-  mutate(AM_absent = AMdata$Nothing[match(endbiomass$Pot, AMdata$Sample)]) %>%
-  mutate(pH = SOM_13C_T0$pH <- site_data$pH[match(endbiomass$Pot, site_data$Plot_ID)]) %>%
-  mutate(pH_range = case_when(pH <= 5 ~ "Very Strongly Acidic",
-                                pH > 5 & pH <= 5.5 ~ "Strongly Acidic",
-                                pH > 5.5 & pH <= 6 ~ "Moderately Acidic",
-                                pH > 6 & pH <= 6.5 ~ "Mildly Acidic",
-                                pH > 6.5 & pH <= 7.3 ~ "Neutral",
-                                pH > 7.3 ~ "Alkaline"))
+  mutate(AM_absent = AMdata$Nothing[match(endbiomass$Pot, AMdata$Sample)]) #%>%
+  #mutate(pH = SOM_13C_T0$pH <- site_data$pH[match(endbiomass$Pot, site_data$Plot_ID)]) %>%
+  #mutate(pH_range = case_when(pH <= 5 ~ "Very Strongly Acidic",
+   #                             pH > 5 & pH <= 5.5 ~ "Strongly Acidic",
+    #                            pH > 5.5 & pH <= 6 ~ "Moderately Acidic",
+     #                           pH > 6 & pH <= 6.5 ~ "Mildly Acidic",
+      #                          pH > 6.5 & pH <= 7.3 ~ "Neutral",
+       #                         pH > 7.3 ~ "Alkaline"))
 
 
 #summarise
@@ -569,7 +569,7 @@ summary_endbio$Site <- factor(summary_endbio$Site, levels = order_sites)
 
 ### Soil organic matter
 
-```{r load data Sam, include=FALSE}
+```{r load data Sam, eval=FALSE}
 
 #read in field soil C/N data
 SOM_Kimpton <- read_csv("SOM_Kimpton.csv") 
@@ -606,15 +606,18 @@ SOM_Kimpton2 <- merge(MAOM,POM, by=c("Sample_year", "Site", "Site_ID", "Mgmt_yea
   mutate(fMAOM_N = MAOM_N / (POM_N + MAOM_N)) %>% #calculate fMAOM N
   mutate(fMAOM_N_2 = MAOM_N / SOM_N) #calculate fMAOM N
 
+#remove SOM, POM, and MAOM dataframes to clean up environment
+rm(SOM, POM, MAOM)
+
 #summarize SOM data for plots
-summary_SOM <- SOM_Kimpton2 %>%
+summary_SOM_Kimpton <- SOM_Kimpton2 %>%
   group_by(Sample_year, Site, Site_ID, Mgmt_year) %>%
   summarise(across(where(is.numeric), summary_stats)) #run all summary stats
 
 #order variables
 SOM_Kimpton$Site <- factor(SOM_Kimpton$Site, levels = order_sites)
 SOM_Kimpton2$Site <- factor(SOM_Kimpton2$Site, levels = order_sites)
-summary_SOM$Site <- factor(summary_SOM$Site, levels = order_sites)
+summary_SOM_Kimpton$Site <- factor(summary_SOM_Kimpton$Site, levels = order_sites)
 
 ```
 
@@ -681,6 +684,9 @@ SOM_13C_T0 <- merge(SOM_T0, POM_T0, by=c("Sample_year", "Site", "Site_ID", "Mgmt
   mutate(fMAOM_N = MAOM_N / (POM_N + MAOM_N)) %>% #calculate fMAOM N
   mutate(fMAOM_N_2 = MAOM_N / SOM_N) #calculate fMAOM N
 
+#remove SOM, POM, and MAOM dataframes to clean up environment
+rm(SOM_T0, POM_T0, MAOM_T0)
+
 #summarize SOM data for plots for T0
 summary_SOM_13C_T0 <- SOM_13C_T0 %>%
   group_by(Site, Site_ID, Mgmt_year, Mgmt_fct) %>%
@@ -690,7 +696,6 @@ summary_SOM_13C_T0 <- SOM_13C_T0 %>%
 summary_SOM_13C <- SOM_13C[-137,] %>%
   group_by(Site, Mgmt_year, Mgmt_fct, Incubation_T, Fraction) %>%
   summarise(across(where(is.numeric), summary_stats)) #run all summary stats
-
 
 SOM_13C_T0 <- SOM_13C_T0 %>%
   mutate(AM_hyph_per = AMdata$hyph_percent[match(SOM_13C_T0$Plot_ID, AMdata$Sample)]) %>%
@@ -726,11 +731,20 @@ summary_SOM_13C_T0$Site <- factor(summary_SOM_13C_T0$Site, levels = order_sites)
 
 ```{r load 2026 SOM data, include=FALSE}
 
-#read in field soil C/N data from 2026
-SOM_2026 <- read_csv("SOM_2026.csv") 
+#read in field soil C/N data from 2026 and calculate additional
+SOM_2026 <- read_csv("SOM_2026.csv") %>%
+  mutate(MAOM_perC = MAOM53_perC + MAOM45_perC) %>% #calculate total MAOM per C
+  mutate(MAOM_perN = MAOM53_perN + MAOM45_perN) %>% #calculate total MAOM per N
+  mutate(MAOM_CN = MAOM_perC / MAOM_perN) %>% #calculate total MAOM C/N
+  mutate(MAOM45_C_kgm2_7cm = ((MAOM45_perC/100) * per_45 * adj_BD * (10/1000) * 10000 * 0.7)) %>% #calculate MAOM45 C per km2 to 7cm depth
+  mutate(MAOM_C_kgm2_7cm = ((MAOM_perC/100) * per_MAOM * adj_BD * (10/1000) * 10000 * 0.7)) %>%
+  mutate(POM_C_kgm2_7cm = ((POM_perC/100) * per_POM * adj_BD * (10/1000) * 10000 * 0.7)) %>%
+  mutate(POM53_perC = POM_perC + MAOM53_perC) %>% #calculate POM C including the <53>45 um fraction
+  mutate(per_POM53 = per_POM + per_53) %>% #calculate percentage of POM including the <53>45 um fraction
+  mutate(POM53_C_kgm2_7cm = ((POM53_perC/100) * per_POM53 * adj_BD * (10/1000) * 10000 * 0.7))
 
 #summarize SOM 2026 data 
-summary_SOM_2026 <- SOM_2026[c(2:6,10,14,30:32,35,36)] %>%
+summary_SOM_2026 <- SOM_2026[c(3:7,10,14,26,29,30:32,35:53)] %>%
   group_by(Site_ID, Site, Mgmt_year, Management) %>%
   summarise(across(where(is.numeric), summary_stats)) #run all summary stats
 
@@ -775,12 +789,12 @@ summary_UKsoils <- UK_soil %>%
                                  se = ~ std.error(., na.rm=TRUE))))
 
 
-soilC_compare <- SOM_multiyr %>%
-  dplyr::select(Sample_year, Site_ID, SOM_C_kgm2_7cm, POM_C_kgm2_7cm, MAOM_C_kgm2_7cm, pH) %>%
+soilC_compare <- SOM_2026 %>%
+  dplyr::select(Sample_year, Site_ID, C_kgm2_7cm, POM53_C_kgm2_7cm, MAOM45_C_kgm2_7cm) %>%
   rename("site" = "Site_ID") %>%
-  rename("TotalC" = "SOM_C_kgm2_7cm") %>%
-  rename("POM_C" = "POM_C_kgm2_7cm") %>%
-  rename("MAOM_C" = "MAOM_C_kgm2_7cm") %>%
+  rename("TotalC" = "C_kgm2_7cm") %>%
+  rename("POM_C" = "POM53_C_kgm2_7cm") %>%
+  rename("MAOM_C" = "MAOM45_C_kgm2_7cm") %>%
   mutate(type = "R") %>% #R for restored
   mutate(vegetation = case_when(grepl("BU", site) #use grepl to find a substring within a column
 															  ~ "BU Wet Grassland", #set value in new column 
@@ -789,7 +803,9 @@ soilC_compare <- SOM_multiyr %>%
 															  grepl("AM", site) ~ "AM Mesotrophic",
 															  grepl("FU", site) ~ "FU Mesotrophic",
 															  grepl("FM", site) ~ "FM Mesotrophic")) %>% 
-  bind_rows(UK_soil) %>%
+  bind_rows(UK_soil) #%>%
+
+#Ignore for now - will measure new pH
   mutate(pH_range = case_when(pH <= 5 ~ "Very Strongly Acidic",
                                 pH > 5 & pH <= 5.5 ~ "Strongly Acidic",
                                 pH > 5.5 & pH <= 6 ~ "Moderately Acidic",
@@ -810,8 +826,9 @@ soilC_compare$vegetation <- factor(soilC_compare$vegetation,
                                               "FU Mesotrophic",
                                               "FM Mesotrophic"))
 soilC_compare$pH_range <- factor(soilC_compare$pH_range, 
-                                   levels = c("Very Strongly Acidic", "Strongly Acidic", "Moderately Acidic",
-                                              "Mildly Acidic", "Neutral", "Alkaline"))
+                                   levels = c("Very Strongly Acidic", "Strongly Acidic",
+                                              "Moderately Acidic", "Mildly Acidic", 
+                                              "Neutral", "Alkaline"))
 soilC_compare$type <- factor(soilC_compare$type, levels = c("U", "R")) 
 
 ```
@@ -1703,14 +1720,14 @@ ggsave('POM-C_comparison_adjustedBD.svg', #save plot name and type - can be "eps
 
 ggplot(data = soilC_compare) + 
 	geom_boxplot(aes(x=type, y=MAOM_C, fill=vegetation)) +
-  scale_fill_manual(values=colors9) + #define colors to use
+  scale_fill_manual(values=colors11) + #define colors to use
   #ggtitle("Mineral Associated Organic Matter C across the UK") + #add a graph title
-  xlab("") + ylab(expression("MAOM-C (kg/m"^2*" in top 7cm)")) + #define/change X and Y labels
+  xlab("") + ylab(expression("C in the <45um fraction (kg/m"^2*" in top 7cm)")) + #define/change X and Y labels
   scale_x_discrete(labels = c("Unimproved Grasslands", "Restored Grasslands")) + #remove vegetation labels from x axis
   my_theme 
 
 #save figure
-ggsave('MAOM-C_comparison_adjBD.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+ggsave('MAOM-C_comparison_adjBD_2026.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
 	path = "Figures", #save to folder within working directory
 	width = 2000, height = 800, units = "px", #set dimensions for figure
 	dpi = 300, #set resolution
@@ -1848,11 +1865,12 @@ shapiro.test(resid(lm(log(POM_C) ~ vegetation, data = soilC_compare))) #normal
 summary(aov(log(POM_C) ~ vegetation, data = soilC_compare)) #very sig
 TukeyHSD(aov(log(POM_C) ~ vegetation, data = soilC_compare)) #
 
-shapiro.test(resid(lm(MAOM_C ~ type, data = soilC_compare))) #check normality of residuals - not normal
-shapiro.test(resid(lm(log(MAOM_C) ~ type, data = soilC_compare))) #not normal, closer
-summary(aov(log(MAOM_C) ~ type, data = soilC_compare)) #sig
+shapiro.test(resid(lm(MAOM_C ~ type, data = soilC_compare))) #not normal but W close to 1
+shapiro.test(resid(lm(log(MAOM_C) ~ type, data = soilC_compare))) #not normal, worse
+summary(aov(MAOM_C ~ type, data = soilC_compare)) #sig
 
-shapiro.test(resid(lm(MAOM_C ~ vegetation, data = soilC_compare))) #normal
+shapiro.test(resid(lm(MAOM_C ~ vegetation, data = soilC_compare))) #not normal but W close to 1
+shapiro.test(resid(lm(log(MAOM_C) ~ vegetation, data = soilC_compare))) #not normal, worse
 summary(aov(MAOM_C ~ vegetation, data = soilC_compare)) #very sig
 TukeyHSD(aov(MAOM_C ~ vegetation, data = soilC_compare)) #
   
@@ -1926,7 +1944,7 @@ summary(aov(log(SOM_perN) ~ Site, data = SOM_2026)) #sig
 TukeyHSD(aov(log(SOM_perN) ~ Site, data = SOM_2026)) #Bick < Amber
 
 
-#Fractions
+#Fractions - 2023
 
 shapiro.test(resid(lm(POM_C ~ Site, data = SOM_13C_T0))) #normal
 summary(aov(POM_C ~ Site, data = SOM_13C_T0)) #sig
@@ -1953,12 +1971,12 @@ shapiro.test(resid(lm(fMAOM_N ~ Site, data = SOM_13C_T0))) #normal
 summary(aov(fMAOM_N ~ Site, data = SOM_13C_T0)) #sig
 TukeyHSD(aov(fMAOM_N ~ Site, data = SOM_13C_T0)) #Flashes vs. Bick 1 & 2, Amber vs. Bick 1
 
-```
+#Fractions - 2026
 
-```{r SOM log response ratios}
-
-
-
+shapiro.test(resid(lm(MAOM45_perC ~ Site_ID, data = SOM_2026))) #not normal
+shapiro.test(resid(lm(log(MAOM45_perC) ~ Site_ID, data = SOM_2026))) #normal
+summary(aov(log(MAOM45_perC) ~ Site_ID, data = SOM_2026)) #sig
+TukeyHSD(aov(log(MAOM45_perC) ~ Site_ID, data = SOM_2026)) #AU vs BM
 
 ```
 
