@@ -50,7 +50,7 @@ rm(datalib, vislib, statlib)
 
 #Create list of descriptive statistics to run across multiple variables with one function - will use in summarise with across
 summary_stats <- list(
-  n = ~length(.), #sample size
+  #n = ~length(.), #sample size
 	mean = ~mean(., na.rm=TRUE), #mean
 	sd = ~sd(., na.rm=TRUE), #standard deviation
 	var = ~var(., na.rm=TRUE), #variance
@@ -733,26 +733,31 @@ summary_SOM_13C_T0$Site <- factor(summary_SOM_13C_T0$Site, levels = order_sites)
 
 #read in field soil C/N data from 2026 and calculate additional
 SOM_2026 <- read_csv("SOM_2026.csv") %>%
-  mutate(MAOM_perC = MAOM53_perC + MAOM45_perC) %>% #calculate total MAOM per C
-  mutate(MAOM_perN = MAOM53_perN + MAOM45_perN) %>% #calculate total MAOM per N
+  mutate(MAOM_perC = 
+           MAOM53_perC*(per_53/(per_53+per_45)) + MAOM45_perC*(per_45/(per_53+per_45))) %>% #calculate total MAOM per C
+  mutate(MAOM_perN = 
+           MAOM53_perN*(per_53/(per_53+per_45)) + MAOM45_perN*(per_45/(per_53+per_45))) %>% #calculate total MAOM per N
   mutate(MAOM_CN = MAOM_perC / MAOM_perN) %>% #calculate total MAOM C/N
   mutate(MAOM45_C_kgm2_7cm = ((MAOM45_perC/100) * per_45 * adj_BD * (10/1000) * 10000 * 0.7)) %>% #calculate MAOM45 C per km2 to 7cm depth
+  mutate(MAOM53_C_kgm2_7cm = ((MAOM53_perC/100) * per_53 * adj_BD * (10/1000) * 10000 * 0.7)) %>% #calculate MAOM53 C per km2 to 7cm depth
   mutate(MAOM_C_kgm2_7cm = ((MAOM_perC/100) * per_MAOM * adj_BD * (10/1000) * 10000 * 0.7)) %>%
   mutate(POM_C_kgm2_7cm = ((POM_perC/100) * per_POM * adj_BD * (10/1000) * 10000 * 0.7)) %>%
-  mutate(POM53_perC = POM_perC + MAOM53_perC) %>% #calculate POM C including the <53>45 um fraction
+  mutate(POM53_perC = 
+           POM_perC*(per_POM/(per_53+per_POM)) + MAOM53_perC*(per_53/(per_53+per_POM))) %>% #calculate POM C including the <53>45 um fraction
   mutate(per_POM53 = per_POM + per_53) %>% #calculate percentage of POM including the <53>45 um fraction
-  mutate(POM53_C_kgm2_7cm = ((POM53_perC/100) * per_POM53 * adj_BD * (10/1000) * 10000 * 0.7))
+  mutate(POM53_C_kgm2_7cm = ((POM53_perC/100) * per_POM53 * adj_BD * (10/1000) * 10000 * 0.7)) %>%
+  mutate(fMAOM_C = MAOM_C_kgm2_7cm / (POM_C_kgm2_7cm + MAOM_C_kgm2_7cm)) #calculate fMAOM C
 
 #summarize SOM 2026 data 
-summary_SOM_2026 <- SOM_2026[c(3:7,10,14,26,29,30:32,35:53)] %>%
+summary_SOM_2026 <- SOM_2026[c(3:7,10,14,26,29,30:32,35:56)] %>%
   group_by(Site_ID, Site, Mgmt_year, Management) %>%
   summarise(across(where(is.numeric), summary_stats)) #run all summary stats
 
 #combine with above data
 SOM_multiyr <- SOM_2026 %>%
-  dplyr::select(Sample_year, Site, Site_ID, Mgmt_year, adj_BD, SOM_perC, SOM_perN, SOM_CN, C_kgm2_7cm) %>%
+  dplyr::select(Sample_year, Site, Site_ID, Mgmt_year, adj_BD, SOM_perC, SOM_perN, SOM_CN, C_kgm2_7cm, POM_perC, POM_perN, POM_C_kgm2_7cm, MAOM_perC, MAOM_perN, MAOM_C_kgm2_7cm, fMAOM_C) %>%
   rename("SOM_C_kgm2_7cm" = "C_kgm2_7cm") %>%
-  bind_rows(SOM_13C_T0[c(1:4,7,8,11,17,30,43,58)])
+  bind_rows(SOM_13C_T0[c(1:4,8,9,12,18,21,22,31,34,35,44,47,59,60)])
 
 SOM_2026$Site <- factor(SOM_2026$Site, levels = order_sites)
 SOM_2026$Site_ID <- factor(SOM_2026$Site_ID, levels = order_IDs)
@@ -1330,7 +1335,7 @@ ggsave('fMAOM_N_Kimpton.svg', #save plot name and type - can be "eps", "pdf", "j
 
 ```
 
-### Updated data
+### Data from 13C experiment
 
 ```{r SOC chart - sample means}
 
@@ -1414,50 +1419,6 @@ ggplot(data = soil_13C_calcs) +
 ggsave('SOM_CN_KB.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
 	path = "Figures", #save to folder within working directory
 	width = 6, height = 4, units = "in", #set dimensions for figure
-	dpi = 300, #set resolution
-	bg=NULL) #background from plot specifications
-
-```
-
-#### Compare Years
-
-```{r compare SOC years site}
-
-SOM_multiyr %>%
-  #filter(Sample_year != 2023) %>%
-ggplot() + 
-	geom_boxplot(aes(x=factor(Sample_year), y=SOM_C_kgm2_7cm, fill=Site)) +
-  scale_fill_manual(values=colors9) + #define colors to use
-  #ggtitle("Soil Organic Matter C across the UK") + #add a graph title
-  xlab("") + ylab(expression("SOC (kg/m"^2*" in top 7cm)")) + #define/change X and Y labels
-  scale_x_discrete(labels = c("2023", "2026")) + #change labels
-  my_theme 
-
-#save figure
-ggsave('SOC_years_site.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
-	path = "Figures", #save to folder within working directory
-	width = 2000, height = 1000, units = "px", #set dimensions for figure
-	dpi = 300, #set resolution
-	bg=NULL) #background from plot specifications
-
-```
-
-```{r compare SOC years show unmanaged}
-
-SOM_multiyr %>%
-  #filter(Sample_year != 2023) %>%
-ggplot() + 
-	geom_boxplot(aes(x=factor(Sample_year), y=SOM_C_kgm2_7cm, fill=Site_ID)) +
-  scale_fill_manual(values=colors9) + #define colors to use
-  #ggtitle("Soil Organic Matter C across the UK") + #add a graph title
-  xlab("") + ylab(expression("SOC (kg/m"^2*" in top 7cm)")) + #define/change X and Y labels
-  scale_x_discrete(labels = c("2023", "2026")) + #change labels
-  my_theme 
-
-#save figure
-ggsave('SOC_years.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
-	path = "Figures", #save to folder within working directory
-	width = 2000, height = 1000, units = "px", #set dimensions for figure
 	dpi = 300, #set resolution
 	bg=NULL) #background from plot specifications
 
@@ -1629,6 +1590,153 @@ ggsave('fMAOM_N_KB.svg', #save plot name and type - can be "eps", "pdf", "jpeg",
 
 ```
 
+### Compare Years
+
+```{r compare SOC years site}
+
+SOM_multiyr %>%
+ggplot() + 
+	geom_boxplot(aes(x=factor(Sample_year), y=SOM_C_kgm2_7cm, fill=Site)) +
+  scale_fill_manual(values=colors9) + #define colors to use
+  #ggtitle("Soil Organic Matter C across the UK") + #add a graph title
+  xlab("") + ylab(expression("SOC (kg/m"^2*" in top 7cm)")) + #define/change X and Y labels
+  scale_x_discrete(labels = c("2023", "2026")) + #change labels
+  my_theme 
+
+#save figure
+ggsave('SOC_years_site.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 2000, height = 1000, units = "px", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
+```
+
+```{r compare SOC years show unmanaged}
+
+SOM_multiyr %>%
+ggplot() + 
+	geom_boxplot(aes(x=factor(Sample_year), y=SOM_C_kgm2_7cm, fill=Site_ID)) +
+  scale_fill_manual(values=colors9) + #define colors to use
+  #ggtitle("Soil Organic Matter C across the UK") + #add a graph title
+  xlab("") + ylab(expression("SOC (kg/m"^2*" in top 7cm)")) + #define/change X and Y labels
+  scale_x_discrete(labels = c("2023", "2026")) + #change labels
+  my_theme 
+
+#save figure
+ggsave('SOC_years.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 2000, height = 1000, units = "px", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
+```
+
+```{r compare SOC years perC}
+
+SOM_multiyr %>%
+ggplot() + 
+	geom_boxplot(aes(x=factor(Sample_year), y=SOM_perC, fill=Site_ID)) +
+  scale_fill_manual(values=colors9) + #define colors to use
+  #ggtitle("Soil Organic Matter C across the UK") + #add a graph title
+  xlab("") + ylab(expression("SOM % C")) + #define/change X and Y labels
+  scale_x_discrete(labels = c("2023", "2026")) + #change labels
+  scale_y_continuous(breaks = c(0,5,10,15,20,25,30)) + #set specific tick marks on y axis
+  my_theme 
+
+#save figure
+ggsave('SOC_per_years.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 2000, height = 1000, units = "px", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
+```
+
+```{r compare POMC years show unmanaged}
+
+SOM_multiyr %>%
+ggplot() + 
+	geom_boxplot(aes(x=factor(Sample_year), y=POM_C_kgm2_7cm, fill=Site_ID)) +
+  scale_fill_manual(values=colors9) + #define colors to use
+  #ggtitle("Soil Organic Matter C across the UK") + #add a graph title
+  xlab("") + ylab(expression("POM-C (kg/m"^2*" in top 7cm)")) + #define/change X and Y labels
+  scale_x_discrete(labels = c("2023", "2026")) + #change labels
+  my_theme 
+
+#save figure
+ggsave('POMC_years.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 2000, height = 1000, units = "px", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
+```
+
+```{r compare POMC years perC}
+
+SOM_multiyr %>%
+ggplot() + 
+	geom_boxplot(aes(x=factor(Sample_year), y=POM_perC, fill=Site_ID)) +
+  scale_fill_manual(values=colors9) + #define colors to use
+  #ggtitle("Soil Organic Matter C across the UK") + #add a graph title
+  xlab("") + ylab(expression("POM % C")) + #define/change X and Y labels
+  scale_x_discrete(labels = c("2023", "2026")) + #change labels
+  scale_y_continuous(breaks = c(0,10,20,30,40,50)) + #set specific tick marks on y axis
+  my_theme 
+
+#save figure
+ggsave('POMC_per_years.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 2000, height = 1000, units = "px", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
+```
+
+
+```{r compare MAOMC years show unmanaged}
+
+SOM_multiyr %>%
+ggplot() + 
+	geom_boxplot(aes(x=factor(Sample_year), y=MAOM_C_kgm2_7cm, fill=Site_ID)) +
+  scale_fill_manual(values=colors9) + #define colors to use
+  #ggtitle("Soil Organic Matter C across the UK") + #add a graph title
+  xlab("") + ylab(expression("MAOM-C (kg/m"^2*" in top 7cm)")) + #define/change X and Y labels
+  scale_x_discrete(labels = c("2023", "2026")) + #change labels
+  my_theme 
+
+#save figure
+ggsave('MAOMC_years.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 2000, height = 1000, units = "px", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
+```
+
+```{r compare SOC years perC}
+
+SOM_multiyr %>%
+ggplot() + 
+	geom_boxplot(aes(x=factor(Sample_year), y=MAOM_perC, fill=Site_ID)) +
+  scale_fill_manual(values=colors9) + #define colors to use
+  #ggtitle("Soil Organic Matter C across the UK") + #add a graph title
+  xlab("") + ylab(expression("MAOM % C")) + #define/change X and Y labels
+  scale_x_discrete(labels = c("2023", "2026")) + #change labels
+  #scale_y_continuous(breaks = c(0,5,10,15,20)) + #set specific tick marks on y axis
+  my_theme 
+
+#save figure
+ggsave('MAOMC_per_years.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 2000, height = 1000, units = "px", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
+```
+
+
 ### UK unimproved grassland soils C
 ```{r SOC UK}
 
@@ -1654,7 +1762,7 @@ ggsave('SOC_Manning.svg', #save plot name and type - can be "eps", "pdf", "jpeg"
 
 ```
 
-```{r compare soil C 1}
+```{r compare soil C 1, eval=FALSE}
 
 soilC_compare %>%
   filter(Sample_year != 2023) %>%
@@ -1678,7 +1786,7 @@ ggsave('SOC_comparison_2026.svg', #save plot name and type - can be "eps", "pdf"
 ```{r compare soil C 2}
 
 soilC_compare %>%
-  filter(Sample_year != 2023) %>%
+  #filter(Sample_year != 2023) %>%
 ggplot() + 
 	geom_boxplot(aes(x=type, y=TotalC, fill=vegetation)) +
   scale_fill_manual(values=colors11) + #define colors to use
@@ -1701,14 +1809,15 @@ ggsave('SOC_comparison2_2026.svg', #save plot name and type - can be "eps", "pdf
 
 ggplot(data = soilC_compare) + 
 	geom_boxplot(aes(x=type, y=POM_C, fill=vegetation)) +
-  scale_fill_manual(values=colors9) + #define colors to use
+  scale_fill_manual(values=colors11) + #define colors to use
   #ggtitle("Particulate Organic Matter C across the UK") + #add a graph title
   xlab("") + ylab(expression("POM-C (kg/m"^2*" in top 7cm)")) + #define/change X and Y labels
   scale_x_discrete(labels = c("Unimproved Grasslands", "Restored Grasslands")) + #remove vegetation labels from x axis
+  scale_y_continuous(breaks = c(0,2,4,6,8,10)) + #set limits and change number of tick marks on y axis
   my_theme 
 
 #save figure
-ggsave('POM-C_comparison_adjustedBD.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+ggsave('POM-C_comparison_2026.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
 	path = "Figures", #save to folder within working directory
 	width = 2000, height = 800, units = "px", #set dimensions for figure
 	dpi = 300, #set resolution
@@ -1740,6 +1849,7 @@ ggsave('MAOM-C_comparison_adjBD_2026.svg', #save plot name and type - can be "ep
 ### Compare years
 ```{r SOM years}
 
+#SOM-C
 shapiro.test(resid(lm(SOM_perC ~ Sample_year, data = SOM_multiyr))) #check normality of residuals - not normal
 shapiro.test(resid(lm(log(SOM_perC) ~ Sample_year, data = SOM_multiyr))) #check normality of residuals - not normal but closer
 summary(aov(log(SOM_perC) ~ Sample_year, data = SOM_multiyr)) #not sig
@@ -1748,14 +1858,58 @@ shapiro.test(resid(lm(SOM_C_kgm2_7cm ~ Sample_year, data = SOM_multiyr))) #check
 shapiro.test(resid(lm(log(SOM_C_kgm2_7cm) ~ Sample_year, data = SOM_multiyr))) #check normality of residuals - not normal but closer
 summary(aov(log(SOM_C_kgm2_7cm) ~ Sample_year, data = SOM_multiyr)) #not sig
 
+#POM-C
+shapiro.test(resid(lm(POM_perC ~ Sample_year, data = SOM_multiyr))) #check normality of residuals - not normal
+shapiro.test(resid(lm(log(POM_perC) ~ Sample_year, data = SOM_multiyr))) #check normality of residuals - not normal but closer
+summary(aov(log(POM_perC) ~ Sample_year, data = SOM_multiyr)) #not sig
+
+shapiro.test(resid(lm(POM_perC ~ Sample_year * Site_ID, data = SOM_multiyr))) #almost normal
+summary(aov(POM_perC ~ Sample_year * Site_ID, data = SOM_multiyr)) #site sig, interaction not
+TukeyHSD(aov(POM_perC ~ factor(Sample_year) * Site_ID, data = SOM_multiyr)) #none are different between years at the same site
+
+shapiro.test(resid(lm(POM_C_kgm2_7cm ~ Sample_year, data = SOM_multiyr))) #check normality of residuals - not normal
+shapiro.test(resid(lm(log(POM_C_kgm2_7cm) ~ Sample_year, data = SOM_multiyr))) #check normality of residuals - not normal but closer
+summary(aov(log(POM_C_kgm2_7cm) ~ Sample_year, data = SOM_multiyr)) #not sig
+
+shapiro.test(resid(lm(POM_C_kgm2_7cm ~ Sample_year * Site_ID, data = SOM_multiyr))) #check normality of residuals - not normal
+shapiro.test(resid(lm(log(POM_C_kgm2_7cm) ~ Sample_year * Site_ID, data = SOM_multiyr))) #normal
+summary(aov(log(POM_C_kgm2_7cm) ~ Sample_year * Site_ID, data = SOM_multiyr)) #site sig, interaction not
+TukeyHSD(aov(POM_C_kgm2_7cm ~ factor(Sample_year) * Site_ID, data = SOM_multiyr)) #none are different between years at the same site
+
+#MAOM-C
+shapiro.test(resid(lm(MAOM_perC ~ Sample_year, data = SOM_multiyr))) #check normality of residuals - not normal
+shapiro.test(resid(lm(log(MAOM_perC) ~ Sample_year, data = SOM_multiyr))) #not normal but closer
+summary(aov(log(MAOM_perC) ~ Sample_year, data = SOM_multiyr)) #significant
+
+shapiro.test(resid(lm(MAOM_perC ~ Sample_year * Site_ID, data = SOM_multiyr))) #normal
+summary(aov(MAOM_perC ~ Sample_year * Site_ID, data = SOM_multiyr)) #year & site sig, interaction sig
+TukeyHSD(aov(MAOM_perC ~ factor(Sample_year) * Site_ID, data = SOM_multiyr)) #Tukey HSD test for pairwise comparisons -> FM less in 2026 than 2023
+
+shapiro.test(resid(lm(MAOM_C_kgm2_7cm ~ Sample_year, data = SOM_multiyr))) #check normality of residuals - not normal
+shapiro.test(resid(lm(log(MAOM_C_kgm2_7cm) ~ Sample_year, data = SOM_multiyr))) #normal
+summary(aov(log(MAOM_C_kgm2_7cm) ~ Sample_year, data = SOM_multiyr)) #sig
+
+shapiro.test(resid(lm(MAOM_C_kgm2_7cm ~ Sample_year * Site_ID, data = SOM_multiyr))) #normal
+summary(aov(MAOM_C_kgm2_7cm ~ Sample_year * Site_ID, data = SOM_multiyr)) #year & site sig, interaction sig
+TukeyHSD(aov(MAOM_C_kgm2_7cm ~ factor(Sample_year) * Site_ID, data = SOM_multiyr)) #Tukey HSD test for pairwise comparisons -> FM less in 2026 than 2023
+
+
+#Calculate means to compare differences between years
 SOM_multiyr_diff <- SOM_multiyr %>%
-  dplyr::select(Sample_year, Site_ID, SOM_C_kgm2_7cm) %>%
+  dplyr::select(Sample_year, Site_ID, SOM_perC, POM_perC, MAOM_perC, SOM_C_kgm2_7cm, POM_C_kgm2_7cm, MAOM_C_kgm2_7cm) %>%
   group_by(Sample_year, Site_ID) %>%
-  summarise(across(where(is.numeric), summary_stats)) #run all summary stats
-  
+  summarise(across(where(is.numeric), list(mean = ~mean(., na.rm=TRUE)))) #run all summary stats
+
+#Calculate differences between years for each site and fraction
+SOM_multiyr_diff <- SOM_multiyr_diff %>%
+  group_by(Sample_year, Site_ID) %>%
+  pivot_longer(cols = c(SOM_perC_mean, POM_perC_mean, MAOM_perC_mean, SOM_C_kgm2_7cm_mean, POM_C_kgm2_7cm_mean, MAOM_C_kgm2_7cm_mean), names_to = "Fraction", values_to = "Value") %>%
+  pivot_wider(names_from = Sample_year, values_from = Value) %>%
+  mutate(Diff = `2026` - `2023`) 
 
 
 ```
+
 
 ### Log response ratio cutting
 
