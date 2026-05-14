@@ -311,15 +311,17 @@ soil_metals$Site_ID <- factor(soil_metals$Site_ID, levels = order_IDs)
 #read in FTIR data
 FTIR <- read_csv("FTIR_Sam.csv")
 FTIR$Site <- as.factor(FTIR$Site)
-FTIR <- FTIR[,-1]
+FTIR$Site_ID <- as.factor(FTIR$Site_ID)
+FTIR <- FTIR[,-1] #remove column with row numbers
 
 #order variable
 FTIR$Site <- factor(FTIR$Site, levels = order_sites)
+FTIR$Site_ID <- factor(FTIR$Site_ID, levels = order_IDs)
 
 #pivot
 FTIR_long <- FTIR %>%
   pivot_longer(
-    cols = c(2:ncol(FTIR)), #pick columns to pivot
+    cols = c(3:ncol(FTIR)), #pick columns to pivot
     names_to = "wavelength", #name column to put original column names in
     values_to = "absorbance") #name column to put values in
 
@@ -328,9 +330,10 @@ FTIR_standardized <- FTIR %>%
   mutate_if(is.numeric,scale)
 
 FTIR_standardized$Site <- factor(FTIR_standardized$Site, levels = order_sites)
+FTIR_standardized$Site_ID <- factor(FTIR_standardized$Site_ID, levels = order_IDs)
 
 #numeric values only for prcomp
-FTIR_standardized_num <- FTIR_standardized[,-1]
+FTIR_standardized_num <- FTIR_standardized[,-c(1,2)] #remove non-numeric columns for PCA
 
 
 ```
@@ -345,10 +348,10 @@ harvest <- read_csv("Stagg_harvest.csv") %>% #load
 
 #pivot and calculate root:shoot ratio
 plant_harvest <- harvest %>%
-  mutate(across(c(7:16), as.numeric)) %>% #convert columns to numeric
-  dplyr::select(site, management, pot, species, functional_group, sample_type, biomass_g) %>%
+  mutate(across(c(8:17), as.numeric)) %>% #convert columns to numeric
+  dplyr::select(site, site_id, management, pot, species, functional_group, sample_type, biomass_g) %>%
   filter(biomass_g >= 0) %>% #remove non-plant data
-  group_by(site, management, pot, species, functional_group, sample_type) %>%
+  group_by(site, site_id, management, pot, species, functional_group, sample_type) %>%
   summarise(biomass_g = mean(biomass_g, na.rm = TRUE), .groups = 'drop') %>% #summarize duplicate entries for groups
   pivot_wider(names_from = sample_type, values_from = biomass_g) %>% #determines observation name and value columns
   mutate(root_shoot = #calculate root:shoot ratio
@@ -364,7 +367,7 @@ plant_harvest <- harvest %>%
 
 #summarize biomass for plots
 summary_harvest <- plant_harvest %>%
-  dplyr::select(site, management, species, functional_group, shoot, root, root_shoot) %>%
+  dplyr::select(site, site_id, management, species, functional_group, shoot, root, root_shoot) %>%
   group_by(site, management, species, functional_group) %>%
   summarise(across(where(is.numeric), summary_stats)) #run all summary stats
 
@@ -377,7 +380,7 @@ summary_species <- plant_harvest %>%
 #13C calculations
 nat_abun <- harvest %>%
   filter(grepl("pre", sample_type)) %>% #keep only pre-labelling data
-  dplyr::select(site, sample_type, adjusted_delta, per_atom13c, per_c) %>%
+  dplyr::select(site, site_id, sample_type, adjusted_delta, per_atom13c, per_c) %>%
   mutate(sample_type = str_replace(sample_type, "leaf pre sample", "shoot")) %>% #match naming
   mutate(sample_type = str_replace(sample_type, "root pre sample", "root")) %>% #match naming
   mutate(sample_type = str_replace(sample_type, "soil pre sample", "soil")) #match naming)
@@ -386,7 +389,7 @@ nat_abun <- harvest %>%
 
 plant13C <- harvest %>%
   filter(biomass_g >= 0) %>% #remove non-plant data
-  dplyr::select(site, pot, species, functional_group, sample_type, biomass_g, adjusted_delta, per_atom13c, per_c) %>%
+  dplyr::select(site, site_id, pot, species, functional_group, sample_type, biomass_g, adjusted_delta, per_atom13c, per_c) %>%
   mutate(total_c_mg = biomass_g * (per_c / 100) * 1000) %>% #calculate total C in mg
   mutate(excess_per13C = case_when(sample_type == "shoot" | sample_type == "root"
                      ~ per_atom13c - nat_abun$per_atom13c #calculate excess 13C
@@ -399,15 +402,15 @@ plant13C <- harvest %>%
 
 #summarize means 13C for plots - by species
 summary_plant13C_sp <- plant13C %>%
-  group_by(site, sample_type, species, functional_group) %>%
+  group_by(site, site_id, sample_type, species, functional_group) %>%
   summarise(across(where(is.numeric), summary_stats)) #run all summary stats
 
 #summarize 13C for plots add up - by site and type only
 summary_plant13C <- plant13C %>%
-  dplyr::select(site, sample_type, pot, biomass_g, total_c_mg, excess13C_mg) %>%
-  group_by(site, sample_type, pot) %>%
+  dplyr::select(site, site_id, sample_type, pot, biomass_g, total_c_mg, excess13C_mg) %>%
+  group_by(site, site_id, sample_type, pot) %>%
   summarise_all(funs(sum(., na.rm=TRUE))) %>% #first add up per pot
-  group_by(site, sample_type) %>%
+  group_by(site, site_id, sample_type) %>%
   summarise(across(where(is.numeric), summary_stats)) #run all summary stats #then summarize per site
 
 #add mean data to harvest data for estimates
@@ -465,9 +468,13 @@ total_pots <- plant_harvest_est %>%
 
 #order variables
 plant_harvest$site <- factor(plant_harvest$site, levels = order_sites)
+plant_harvest$site_id <- factor(plant_harvest$site_id, levels = order_IDs)
 plant_harvest_est$site <- factor(plant_harvest_est$site, levels = order_sites)
+plant_harvest_est$site_id <- factor(plant_harvest_est$site_id, levels = order_IDs)
 plant13C$site <- factor(plant13C$site, levels = order_sites)
+plant13C$site_id <- factor(plant13C$site_id, levels = order_IDs)
 summary_plant13C$site <- factor(summary_plant13C$site, levels = order_sites)
+summary_plant13C$site_id <- factor(summary_plant13C$site_id, levels = order_IDs)
 
 ```
 
@@ -496,7 +503,8 @@ diversity <- data.frame(
 ) 
 
 diversity <- diversity %>%
-  mutate(site = plant_harvest$site[match(diversity$pot, plant_harvest$pot)]) #add site information back in
+  mutate(site_id = plant_harvest$site_id[match(diversity$pot, plant_harvest$pot)]) %>% #add site information back in
+  mutate(site = plant_harvest$site[match(diversity$pot, plant_harvest$pot)])
 
 ```
 
@@ -537,55 +545,6 @@ resp_min$Site <- factor(resp_min$Site, levels = order_sites)
 resp_full$Site <- factor(resp_full$Site, levels = order_sites)
 
 ``` 
-
-### Incubation biomass decomposition
-
-```{r load incubation biomass data}
-
-#read in incubation data, add beginning, calculate change in biomass
-endbiomass <- read_csv("End_incubation_biomass.csv") %>% #load
-  mutate(est_beg_drymass = total_pots$root[match(Pot, total_pots$pot)]) %>% #add estimated beginning biomass
-  mutate(beg_drymass_perL = est_beg_drymass / 6.1) %>% #calculate dry mass per liter
-  mutate(dmass_dT = est_beg_drymass - end_drymass_clean) %>% #calculate change in dry mass
-  mutate(dmass_dT_perL = beg_drymass_perL - end_drymass_perL_clean) %>% #calculate change in dry mass per liter
-  mutate(decomp_per_unadj = dmass_dT / est_beg_drymass) %>% #calculate decomposition percentage - not adjusting volume
-  mutate(decomp_per_adj = dmass_dT_perL / beg_drymass_perL) %>% #calculate decomposition percentage - adjusting volume
-  mutate(years =
-           case_when(Management == "Unmanaged" ~ 0,
-                     Management == "4 Years" ~ 4,
-                     Management == "15 Years" ~ 15,
-                     Management == "23 Years" ~ 23))
-
-#Add data
-endbiomass <- endbiomass %>%
-  mutate(AM_hyph_per = AMdata$hyph_percent[match(endbiomass$Pot, AMdata$Sample)]) %>%
-  mutate(AM_hyph_ct = AMdata$Hyphae[match(endbiomass$Pot, AMdata$Sample)]) %>%
-  mutate(AM_arb_per = AMdata$arbuscule_percent[match(endbiomass$Pot, AMdata$Sample)]) %>%
-  mutate(AM_arb_ct = AMdata$Arbuscule[match(endbiomass$Pot, AMdata$Sample)]) %>%
-  mutate(AM_ves_ct = AMdata$Vesicle[match(endbiomass$Pot, AMdata$Sample)]) %>%
-  mutate(AM_absent = AMdata$Nothing[match(endbiomass$Pot, AMdata$Sample)]) #%>%
-  #mutate(pH = SOM_13C_T0$pH <- site_data$pH[match(endbiomass$Pot, site_data$Plot_ID)]) %>%
-  #mutate(pH_range = case_when(pH <= 5 ~ "Very Strongly Acidic",
-   #                             pH > 5 & pH <= 5.5 ~ "Strongly Acidic",
-    #                            pH > 5.5 & pH <= 6 ~ "Moderately Acidic",
-     #                           pH > 6 & pH <= 6.5 ~ "Mildly Acidic",
-      #                          pH > 6.5 & pH <= 7.3 ~ "Neutral",
-       #                         pH > 7.3 ~ "Alkaline"))
-
-
-#summarise
-summary_endbio <- endbiomass %>%
-  dplyr::select(Site, Management, years, rocks_debris, end_drymass_clean, end_drymass_perL_clean, est_beg_drymass, beg_drymass_perL, decomp_per_adj) %>%
-  group_by(Site, Management, years) %>%
-  summarise(across(where(is.numeric), summary_stats)) #run all summary stats
-
-#order variables
-endbiomass$Site <- factor(endbiomass$Site, levels = order_sites)
-summary_endbio$Site <- factor(summary_endbio$Site, levels = order_sites)
-
-```
-
-
 
 ### Soil organic matter
 
@@ -718,12 +677,12 @@ summary_SOM_13C <- SOM_13C %>%
   summarise(across(where(is.numeric), summary_stats)) #run all summary stats
 
 SOM_13C_T0 <- SOM_13C_T0 %>%
-  mutate(AM_hyph_per = AMdata$hyph_percent[match(SOM_13C_T0$Plot_ID, AMdata$Sample)]) %>%
-  mutate(AM_hyph_ct = AMdata$Hyphae[match(SOM_13C_T0$Plot_ID, AMdata$Sample)]) %>%
-  mutate(AM_arb_per = AMdata$arbuscule_percent[match(SOM_13C_T0$Plot_ID, AMdata$Sample)]) %>%
-  mutate(AM_arb_ct = AMdata$Arbuscule[match(SOM_13C_T0$Plot_ID, AMdata$Sample)]) %>%
-  mutate(AM_ves_ct = AMdata$Vesicle[match(SOM_13C_T0$Plot_ID, AMdata$Sample)]) %>%
-  mutate(AM_absent = AMdata$Nothing[match(SOM_13C_T0$Plot_ID, AMdata$Sample)]) %>%
+  mutate(AM_hyph_per = AMdata$hyph_percent[match(SOM_13C_T0$Plot_ID, AMdata$Plot_ID)]) %>%
+  mutate(AM_hyph_ct = AMdata$Hyphae[match(SOM_13C_T0$Plot_ID, AMdata$Plot_ID)]) %>%
+  mutate(AM_arb_per = AMdata$arbuscule_percent[match(SOM_13C_T0$Plot_ID, AMdata$Plot_ID)]) %>%
+  mutate(AM_arb_ct = AMdata$Arbuscule[match(SOM_13C_T0$Plot_ID, AMdata$Plot_ID)]) %>%
+  mutate(AM_ves_ct = AMdata$Vesicle[match(SOM_13C_T0$Plot_ID, AMdata$Plot_ID)]) %>%
+  mutate(AM_absent = AMdata$Nothing[match(SOM_13C_T0$Plot_ID, AMdata$Plot_ID)]) %>%
   mutate(pH = SOM_13C_T0$pH <- site_data$pH[match(SOM_13C_T0$Plot_ID, site_data$Plot_ID)]) %>%
   mutate(pH_range = case_when(pH <= 5 ~ "Very Strongly Acidic",
                                 pH > 5 & pH <= 5.5 ~ "Strongly Acidic",
@@ -861,6 +820,57 @@ soilC_compare$vegetation <- factor(soilC_compare$vegetation,
 
 
 ```
+
+### Incubation biomass decomposition
+
+```{r load incubation biomass data}
+
+#read in incubation data, add beginning, calculate change in biomass
+endbiomass <- read_csv("End_incubation_biomass.csv") %>% #load
+  mutate(est_beg_drymass = total_pots$root[match(Pot, total_pots$pot)]) %>% #add estimated beginning biomass
+  mutate(beg_drymass_perL = est_beg_drymass / 6.1) %>% #calculate dry mass per liter
+  mutate(dmass_dT = est_beg_drymass - end_drymass_clean) %>% #calculate change in dry mass
+  mutate(dmass_dT_perL = beg_drymass_perL - end_drymass_perL_clean) %>% #calculate change in dry mass per liter
+  mutate(decomp_per_unadj = dmass_dT / est_beg_drymass) %>% #calculate decomposition percentage - not adjusting volume
+  mutate(decomp_per_adj = dmass_dT_perL / beg_drymass_perL) %>% #calculate decomposition percentage - adjusting volume
+  mutate(years =
+           case_when(Management == "Unmanaged" ~ 0,
+                     Management == "4 Years" ~ 4,
+                     Management == "15 Years" ~ 15,
+                     Management == "23 Years" ~ 23))
+
+#Add data
+endbiomass <- endbiomass %>%
+  mutate(AM_hyph_per = AMdata$hyph_percent[match(endbiomass$Pot, AMdata$Plot_ID)]) %>%
+  mutate(AM_hyph_ct = AMdata$Hyphae[match(endbiomass$Pot, AMdata$Plot_ID)]) %>%
+  mutate(AM_arb_per = AMdata$arbuscule_percent[match(endbiomass$Pot, AMdata$Plot_ID)]) %>%
+  mutate(AM_arb_ct = AMdata$Arbuscule[match(endbiomass$Pot, AMdata$Plot_ID)]) %>%
+  mutate(AM_ves_ct = AMdata$Vesicle[match(endbiomass$Pot, AMdata$Plot_ID)]) %>%
+  mutate(AM_absent = AMdata$Nothing[match(endbiomass$Pot, AMdata$Plot_ID)]) %>%
+  mutate(pH = SOM_13C_T0$pH <- site_data$pH[match(endbiomass$Pot, site_data$Plot_ID)]) %>%
+  mutate(pH_range = case_when(pH <= 5 ~ "Very Strongly Acidic",
+                                pH > 5 & pH <= 5.5 ~ "Strongly Acidic",
+                                pH > 5.5 & pH <= 6 ~ "Moderately Acidic",
+                                pH > 6 & pH <= 6.5 ~ "Mildly Acidic",
+                                pH > 6.5 & pH <= 7.3 ~ "Neutral",
+                                pH > 7.3 ~ "Alkaline"))
+
+
+#summarise
+summary_endbio <- endbiomass %>%
+  dplyr::select(Site, Site_ID, Management, years, rocks_debris, end_drymass_clean, end_drymass_perL_clean, est_beg_drymass, beg_drymass_perL, decomp_per_adj) %>%
+  group_by(Site, Site_ID, Management, years) %>%
+  summarise(across(where(is.numeric), summary_stats)) #run all summary stats
+
+#order variables
+endbiomass$Site <- factor(endbiomass$Site, levels = order_sites)
+endbiomass$Site_ID <- factor(endbiomass$Site_ID, levels = order_IDs)
+summary_endbio$Site <- factor(summary_endbio$Site, levels = order_sites)
+summary_endbio$Site_ID <- factor(summary_endbio$Site_ID, levels = order_IDs)
+
+```
+
+
 
 # Stats and Charts
 
@@ -1018,7 +1028,7 @@ ggsave('metals_sig2_240426.svg', #save plot name and type - can be "eps", "pdf",
 ```{r FTIR stats}
 
 #define what to analyze for differences
-factors <- "site" #predictor variable
+factors <- "site_id" #predictor variable
 continuous_vars <- c("x907", "x1002", "x1402", "x1630", "x794", "x2846", "x2937", "x3620") #response variables
 data <- FTIR %>%
   clean_names()
@@ -1041,9 +1051,9 @@ FTIR_summary <- FTIR_stbl_lbl %>%
                                  sd = ~ sd(., na.rm=TRUE),
                                  se = ~ std.error(., na.rm=TRUE))))
 
-shapiro.test(resid(lm(ar_al ~ site, data = FTIR_stbl_lbl))) #check normality of residuals - normal
-summary(aov(ar_al ~ site, data = FTIR_stbl_lbl)) #ANOVA - significant
-TukeyHSD(aov(ar_al ~ site, data = FTIR_stbl_lbl)) #Flashes vs. all, Amberswood vs. Bickershaw 1
+shapiro.test(resid(lm(ar_al ~ site_id, data = FTIR_stbl_lbl))) #check normality of residuals - normal
+summary(aov(ar_al ~ site_id, data = FTIR_stbl_lbl)) #ANOVA - significant
+TukeyHSD(aov(ar_al ~ site_id, data = FTIR_stbl_lbl)) #Flashes vs. all, Amberswood vs. Bickershaw 1
 
 ```
 
@@ -1054,7 +1064,7 @@ FTIR_long$wavelength <- factor(FTIR_long$wavelength,
                              levels = c("907", "1002", "1402", "1630", "794", "2846", "2937", "3620"))
 #facet_wrap plot
 FTIR_long %>%
-ggplot(aes(x=Site, y=absorbance, fill=Site)) + 
+ggplot(aes(x=Site, y=absorbance, fill=Site_ID)) + 
   geom_boxplot() +
   facet_wrap(~wavelength, scales = "free", nrow=2) + #create a separate plot for each site
   scale_fill_manual(values=colors9) + #define colors to use
@@ -1090,10 +1100,10 @@ screeplot(FTIR_pca) # diagnostic plot to make sure principal components are in o
 biplot(FTIR_pca)
 
 #customized plot
-autoplot(FTIR_pca, data = FTIR_standardized, colour = 'Site', fill = 'Site',
+autoplot(FTIR_pca, data = FTIR_standardized, colour = 'Site_ID', fill = 'Site_ID',
          loadings = TRUE, loadings.colour = 'black',
          loadings.label = TRUE, loadings.label.size = 3,
-         frame = TRUE, frame.type = 'norm', frame.colour = 'Site', frame.fill = 'Site',
+         frame = TRUE, frame.type = 'norm', frame.colour = 'Site_ID', frame.fill = 'Site_ID',
          shape = 21) +
   scale_color_manual(values = colors) +
   scale_fill_manual(values = colors) +
@@ -2392,7 +2402,7 @@ TukeyHSD(aov(MAOM_C ~ pH_range + Site, data = SOM_13C_T0)) #acidic lower
 
 #SOM-C plot
 ggplot(data = SOM_13C_T0, aes(x=pH, y=SOM_C)) + 
-  geom_point(aes(color = factor(Site))) + #add points to plot
+  geom_point(aes(color = factor(Site_ID))) + #add points to plot
   geom_smooth(method="lm", se=TRUE, color=plotline_color, fill=fill_color) +
   scale_color_manual(values = colors) + #define colors to use
   my_theme +
@@ -2410,7 +2420,7 @@ ggsave('SOM_C_bypH.svg', #save plot name and type - can be "eps", "pdf", "jpeg",
 
 #POM-C plot
 ggplot(data = SOM_13C_T0, aes(x=pH, y=POM_C)) + 
-  geom_point(aes(color = factor(Site))) + #add points to plot
+  geom_point(aes(color = factor(Site_ID))) + #add points to plot
   geom_smooth(method="lm", se=TRUE, color=plotline_color, fill=fill_color) +
   scale_color_manual(values = colors) + #define colors to use
   my_theme +
@@ -2428,7 +2438,7 @@ ggsave('POM_C_bypH.svg', #save plot name and type - can be "eps", "pdf", "jpeg",
 
 #SOM-C plot
 ggplot(data = SOM_13C_T0, aes(x=pH, y=MAOM_C)) + 
-  geom_point(aes(color = factor(Site))) + #add points to plot
+  geom_point(aes(color = factor(Site_ID))) + #add points to plot
   geom_smooth(method="lm", se=TRUE, color=plotline_color, fill=fill_color) +
   scale_color_manual(values = colors) + #define colors to use
   my_theme +
@@ -2517,7 +2527,7 @@ summary(aov(log(MAOM_C) ~ AM_hyph_per + AM_arb_per + AM_ves_ct, data = SOM_13C_T
 
 #AM POM-C plot
 ggplot(data = SOM_13C_T0, aes(x=AM_ves_ct, y=POM_C)) + 
-  geom_point(aes(color = factor(Site))) + #add points to plot
+  geom_point(aes(color = factor(Site_ID))) + #add points to plot
   geom_smooth(method="lm", se=TRUE, color=plotline_color, fill=fill_color) +
   scale_color_manual(values = colors) + #define colors to use
   my_theme +
@@ -2536,7 +2546,7 @@ ggsave('POM_C_byAMvesicles.svg', #save plot name and type - can be "eps", "pdf",
 
 #Hyphal presence boxplot
 ggplot(data = SOM_13C_T0, aes(x=AM_hyph_per, y=POM_N)) + 
-  geom_point(aes(color = factor(Site))) + #add points to plot
+  geom_point(aes(color = factor(Site_ID))) + #add points to plot
   geom_smooth(method="lm", se=TRUE, color=plotline_color, fill=fill_color) +
   scale_color_manual(values = colors) + #define colors to use
   scale_x_continuous(labels = scales::percent_format(accuracy = 1)) + #change to %
@@ -2614,7 +2624,7 @@ plant_harvest$functional_group <- factor(plant_harvest$functional_group,
 plant_harvest %>%
   filter(functional_group != "moss") %>% #remove mosses
   filter(functional_group != "unknown") %>% #remove unknown
-ggplot(aes(x=site, y=shoot, fill=functional_group)) + 
+ggplot(aes(x=site_id, y=shoot, fill=functional_group)) + 
 	geom_boxplot() + 
   geom_jitter(position=position_jitterdodge(jitter.width=0.2, dodge.width=0.75), #add points with jitter
               alpha=0.5, size=0.8, color="black") + #point appearance
@@ -2631,14 +2641,14 @@ ggsave('plant_groups.svg', #save plot name and type - can be "eps", "pdf", "jpeg
        dpi = 300, #set resolution
        bg=NULL) #background from plot specifications
 
-shapiro.test(resid(lm(shoot ~ functional_group * site, data = plant_harvest[ #check normality of residuals - not normal
-                          !is.na(plant_harvest$shoot), c(1,5,6)]))) #subset only columns of interest, remove na
-shapiro.test(resid(lm(log(shoot) ~ functional_group * site, data = plant_harvest[ #normal
-                          !is.na(plant_harvest$shoot), c(1,5,6)]))) #subset only columns of interest, remove na
-summary(aov(log(shoot) ~ functional_group * site, data = plant_harvest[ 
-                          !is.na(plant_harvest$shoot), c(1,5,6)])) #sig for all terms
-TukeyHSD(aov(log(shoot) ~ functional_group * site, data = plant_harvest[ #normal
-                          !is.na(plant_harvest$shoot), c(1,5,6)])) 
+shapiro.test(resid(lm(shoot ~ functional_group * site_id, data = plant_harvest[ #check normality of residuals - not normal
+                          !is.na(plant_harvest$shoot), c(2,6,7)]))) #subset only columns of interest, remove na
+shapiro.test(resid(lm(log(shoot) ~ functional_group * site_id, data = plant_harvest[ #normal
+                          !is.na(plant_harvest$shoot), c(2,6,7)]))) #subset only columns of interest, remove na
+summary(aov(log(shoot) ~ functional_group * site_id, data = plant_harvest[ 
+                          !is.na(plant_harvest$shoot), c(2,6,7)])) #sig for all terms
+TukeyHSD(aov(log(shoot) ~ functional_group * site_id, data = plant_harvest[ #normal
+                          !is.na(plant_harvest$shoot), c(2,6,7)])) 
 #grass:Bickershaw 2-forb:Bickershaw 1       0.0051386
 #legume:Amberswood-grass:Bickershaw 2       0.0241997
 
@@ -2648,7 +2658,7 @@ TukeyHSD(aov(log(shoot) ~ functional_group * site, data = plant_harvest[ #normal
 ```{r plant species richness}
 
 #box plots of plant biodiversity metrics
-ggplot(diversity, aes(x=site, y=species_richness, fill=site)) + 
+ggplot(diversity, aes(x=site_id, y=species_richness, fill=site_id)) + 
   geom_boxplot() +
   scale_fill_manual(values=colors9) + #define colors to use
   scale_y_continuous(breaks = pretty) +
@@ -2666,16 +2676,16 @@ ggsave('plant_species.svg', #save plot name and type - can be "eps", "pdf", "jpe
        bg=NULL) #background from plot specifications
 
 #stats
-shapiro.test(resid(lm(species_richness ~ site, data = diversity))) #check normality of residuals - normal
-summary(aov(species_richness ~ site, data = diversity)) #sig
-TukeyHSD(aov(species_richness ~ site, data = diversity)) #Ambers > Bick 1 & 2
+shapiro.test(resid(lm(species_richness ~ site_id, data = diversity))) #check normality of residuals - normal
+summary(aov(species_richness ~ site_id, data = diversity)) #sig
+TukeyHSD(aov(species_richness ~ site_id, data = diversity)) #Ambers > Bick 1 & 2
 
 ```
 
 ```{r plant shannon}
 
 #box plots of plant biodiversity metrics
-ggplot(diversity, aes(x=site, y=shannon, fill=site)) + 
+ggplot(diversity, aes(x=site_id, y=shannon, fill=site_id)) + 
   geom_boxplot() +
   scale_fill_manual(values=colors9) + #define colors to use
   scale_y_continuous(breaks = pretty) +
@@ -2693,15 +2703,15 @@ ggsave('plant_shannon.svg', #save plot name and type - can be "eps", "pdf", "jpe
        bg=NULL) #background from plot specifications
 
 #stats
-shapiro.test(resid(lm(shannon ~ site, data = diversity))) #check normality of residuals - normal
-summary(aov(shannon ~ site, data = diversity)) #not sig
+shapiro.test(resid(lm(shannon ~ site_id, data = diversity))) #check normality of residuals - normal
+summary(aov(shannon ~ site_id, data = diversity)) #not sig
 
 ```
 
 ```{r plant simpson}
 
 #box plots of plant biodiversity metrics
-ggplot(diversity, aes(x=site, y=simpson, fill=site)) + 
+ggplot(diversity, aes(x=site_id, y=simpson, fill=site_id)) + 
   geom_boxplot() +
   scale_fill_manual(values=colors9) + #define colors to use
   scale_y_continuous(breaks = pretty) +
@@ -2719,9 +2729,9 @@ ggsave('plant_simpson.svg', #save plot name and type - can be "eps", "pdf", "jpe
        bg=NULL) #background from plot specifications
 
 #stats
-shapiro.test(resid(lm(simpson ~ site, data = diversity))) #check normality of residuals - normal
-summary(aov(simpson ~ site, data = diversity)) #sig
-TukeyHSD(aov(simpson ~ site, data = diversity)) #Flashes > Bick 1
+shapiro.test(resid(lm(simpson ~ site_id, data = diversity))) #check normality of residuals - normal
+summary(aov(simpson ~ site_id, data = diversity)) #sig
+TukeyHSD(aov(simpson ~ site_id, data = diversity)) #Flashes > Bick 1
 
 ```
 
@@ -2734,7 +2744,7 @@ TukeyHSD(aov(simpson ~ site, data = diversity)) #Flashes > Bick 1
 #bar plot of plant excess 13C with error bars - shoot
 summary_plant13C %>%
   filter(sample_type == "shoot") %>%
-ggplot(aes(x=site, y=excess13C_mg_mean, fill=site)) + 
+ggplot(aes(x=site_id, y=excess13C_mg_mean, fill=site_id)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
   scale_fill_manual(values=colors) + #define colors to use
   scale_y_continuous(breaks = pretty) +
@@ -2761,7 +2771,7 @@ ggsave('excess13C_shoots.svg', #save plot name and type - can be "eps", "pdf", "
 
 summary_plant13C %>%
   filter(sample_type == "root") %>%
-ggplot(aes(x=site, y=excess13C_mg_mean, fill=site)) + 
+ggplot(aes(x=site_id, y=excess13C_mg_mean, fill=site_id)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
   scale_fill_manual(values=colors) + #define colors to use
   #scale_y_continuous(limits = c(0, 150), breaks = seq(0, 150, by = 50)) + #set y axis ticks
@@ -2792,17 +2802,21 @@ ggsave('excess13C_roots.svg', #save plot name and type - can be "eps", "pdf", "j
 ```{r soil 13C}
 
 #test differences in pre-label soils (natural abundance) 13C
-shapiro.test(resid(lm(d13C_MS_pre ~ Site, data = soil_13C_calcs))) #check normality of residuals - normal
-summary(aov(d13C_MS_pre ~ Site, data = soil_13C_calcs)) #not sig
+shapiro.test(resid(lm(d13C ~ Site_ID, data = SOM_13C[c(1:39),]))) #check normality of residuals - normal
+summary(aov(d13C ~ Site_ID, data = SOM_13C[c(1:39),])) #sig
+TukeyHSD(aov(d13C ~ Site_ID, data = SOM_13C[c(1:39),])) #Flashes > Ambers
 
 #test differences in post-label soils 13C
-shapiro.test(resid(lm(T0_d13C_m ~ Site, data = soil_13C_calcs))) #check normality of residuals - normal
-summary(aov(T0_d13C_m ~ Site, data = soil_13C_calcs)) #not sig
+shapiro.test(resid(lm(SOM_d13C ~ Site_ID, data = SOM_13C_T0))) #check normality of residuals - not normal
+shapiro.test(resid(lm(SOM_13C_excess ~ Site_ID, data = SOM_13C_T0))) #check normality of residuals - not normal
+shapiro.test(resid(lm(log(SOM_13C_excess) ~ Site_ID, data = SOM_13C_T0))) #check normality of residuals - normal
+summary(aov(log(SOM_13C_excess) ~ Site_ID, data = SOM_13C_T0)) #not sig
 
 #test differences in excess 13C in pots at T0
-shapiro.test(resid(lm(SOM_pot13C_mg ~ Site, data = SOM_13C_T0))) #check normality of residuals - normal
-summary(aov(SOM_pot13C_mg ~ Site, data = SOM_13C_T0)) #sig
-TukeyHSD(aov(SOM_pot13C_mg ~ Site, data = SOM_13C_T0)) #Flashes > Bick 1, Ambers
+shapiro.test(resid(lm(SOM_pot13C_mg ~ Site_ID, data = SOM_13C_T0))) #check normality of residuals - not normal
+shapiro.test(resid(lm(log(SOM_pot13C_mg) ~ Site_ID, data = SOM_13C_T0))) #check normality of residuals - normal
+summary(aov(log(SOM_pot13C_mg) ~ Site_ID, data = SOM_13C_T0)) #sig
+TukeyHSD(aov(log(SOM_pot13C_mg) ~ Site_ID, data = SOM_13C_T0)) #Flashes > Bick 1 & Ambers, Bick 2 > Bick 1
 
 #plot excess 13C in pots
 summary_SOM_13C %>%
@@ -2850,10 +2864,10 @@ ggsave('excess13C_POM_130426.svg', #save plot name and type - can be "eps", "pdf
 	dpi = 300, #set resolution
 	bg=NULL) #background from plot specifications
 
-shapiro.test(resid(lm(POM_pot13C_mg ~ Site, data = SOM_13C_T0))) #check normality of residuals - not normal
-shapiro.test(resid(lm(log(POM_pot13C_mg) ~ Site, data = SOM_13C_T0))) #normal
-summary(aov(log(POM_pot13C_mg) ~ Site, data = SOM_13C_T0)) #sig
-TukeyHSD(aov(log(POM_pot13C_mg) ~ Site, data = SOM_13C_T0)) #Flashes > Bick 1, Ambers
+shapiro.test(resid(lm(POM_pot13C_mg ~ Site_ID, data = SOM_13C_T0))) #check normality of residuals - not normal
+shapiro.test(resid(lm(log(POM_pot13C_mg) ~ Site_ID, data = SOM_13C_T0))) #normal
+summary(aov(log(POM_pot13C_mg) ~ Site_ID, data = SOM_13C_T0)) #sig
+TukeyHSD(aov(log(POM_pot13C_mg) ~ Site_ID, data = SOM_13C_T0)) #Flashes > Bick 1, Ambers
 
 ```
 
@@ -2880,10 +2894,10 @@ ggsave('excess13C_MAOM_130426.svg', #save plot name and type - can be "eps", "pd
 	dpi = 300, #set resolution
 	bg=NULL) #background from plot specifications
 
-shapiro.test(resid(lm(MAOM_pot13C_mg ~ Site, data = SOM_13C_T0))) #check normality of residuals - not normal
-shapiro.test(resid(lm(log(MAOM_pot13C_mg) ~ Site, data = SOM_13C_T0))) #normal
-summary(aov(log(MAOM_pot13C_mg) ~ Site, data = SOM_13C_T0)) #sig
-TukeyHSD(aov(log(MAOM_pot13C_mg) ~ Site, data = SOM_13C_T0)) #Flashes > Bick 1, Ambers
+shapiro.test(resid(lm(MAOM_pot13C_mg ~ Site_ID, data = SOM_13C_T0))) #check normality of residuals - not normal
+shapiro.test(resid(lm(log(MAOM_pot13C_mg) ~ Site_ID, data = SOM_13C_T0))) #normal
+summary(aov(log(MAOM_pot13C_mg) ~ Site_ID, data = SOM_13C_T0)) #sig
+TukeyHSD(aov(log(MAOM_pot13C_mg) ~ Site_ID, data = SOM_13C_T0)) #Flashes > Bick 1, Ambers
 
 ```
 
@@ -2906,9 +2920,9 @@ ggsave('fMAOM_13C_KB_130426.svg', #save plot name and type - can be "eps", "pdf"
 	dpi = 300, #set resolution
 	bg=NULL) #background from plot specifications
 
-shapiro.test(resid(lm(fMAOM_13C ~ Site, data = SOM_13C_T0))) #check normality of residuals - normal
-summary(aov(fMAOM_13C ~ Site, data = SOM_13C_T0)) #sig
-TukeyHSD(aov(fMAOM_13C ~ Site, data = SOM_13C_T0)) #Flashes > Bick 1
+shapiro.test(resid(lm(fMAOM_13C ~ Site_ID, data = SOM_13C_T0))) #check normality of residuals - normal
+summary(aov(fMAOM_13C ~ Site_ID, data = SOM_13C_T0)) #sig
+TukeyHSD(aov(fMAOM_13C ~ Site_ID, data = SOM_13C_T0)) #Flashes > Bick 1
 
 
 ```
@@ -3020,9 +3034,9 @@ ggsave('excess13C_6mos_130426.svg', #save plot name and type - can be "eps", "pd
 	dpi = 300, #set resolution
 	bg=NULL) #background from plot specifications
 
-shapiro.test(resid(lm(pot_13C_mg ~ Site, data = SOM_T6[-17,]))) #check normality of residuals - normal
-summary(aov(pot_13C_mg ~ Site, data = SOM_T6[-17,])) #sig
-TukeyHSD(aov(pot_13C_mg ~ Site, data = SOM_T6[-17,])) #Flashes > all
+shapiro.test(resid(lm(pot_13C_mg ~ Site_ID, data = SOM_T6[-17,]))) #check normality of residuals - normal
+summary(aov(pot_13C_mg ~ Site_ID, data = SOM_T6[-17,])) #sig
+TukeyHSD(aov(pot_13C_mg ~ Site_ID, data = SOM_T6[-17,])) #Flashes > all
 
 ```
 
@@ -3038,12 +3052,12 @@ summary(aov(log(SOM_13C_excess) ~ pH_range, data = SOM_13C_T0)) #sig
 summary(aov(log(SOM_13C_excess) ~ pH, data = SOM_13C_T0)) #not sig
 
 Anova(lmer(log(SOM_13C_excess) ~ pH_range +
-             (1|Site), #site random
+             (1|Site_ID), #site random
     REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
     data = SOM_13C_T0, #choose dataframe
     na.action = na.omit), type=3) #sig
 
-SOM_excess_pH_lme <- lmer(log(SOM_13C_excess) ~ pH_range + (1|Site), 
+SOM_excess_pH_lme <- lmer(log(SOM_13C_excess) ~ pH_range + (1|Site_ID), 
     REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
     data = SOM_13C_T0, #choose dataframe
     na.action = na.omit)
@@ -3051,19 +3065,19 @@ summary(SOM_excess_pH_lme) #random accounts for less
 shapiro.test(resid(SOM_excess_pH_lme)) #normal
 performance::r2(SOM_excess_pH_lme, multivariate=TRUE) #calculate R-squared for model fit
 MuMIn::AICc(SOM_excess_pH_lme, k=2) #calculate AICc for for model comparison with small sample sizes
-TukeyHSD(aov(log(SOM_13C_excess) ~ pH_range + Site, data = SOM_13C_T0)) #none quite significantly different
+TukeyHSD(aov(log(SOM_13C_excess) ~ pH_range + Site_ID, data = SOM_13C_T0)) #none significantly different
 
 shapiro.test(resid(lm(SOM_pot13C_mg ~ pH_range, data = SOM_13C_T0))) #check normality of residuals - not normal
 shapiro.test(resid(lm(log(SOM_pot13C_mg) ~ pH_range, data = SOM_13C_T0))) #normal
 summary(aov(log(SOM_pot13C_mg) ~ pH_range, data = SOM_13C_T0)) #sig
 
 Anova(lmer(log(SOM_pot13C_mg) ~ pH_range +
-             (1|Site), #site random
+             (1|Site_ID), #site random
     REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
     data = SOM_13C_T0, #choose dataframe
     na.action = na.omit), type=3) #sig
 
-SOM_13Cmg_pH_lme <- lmer(log(SOM_pot13C_mg) ~ pH_range + (1|Site), 
+SOM_13Cmg_pH_lme <- lmer(log(SOM_pot13C_mg) ~ pH_range + (1|Site_ID), 
     REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
     data = SOM_13C_T0, #choose dataframe
     na.action = na.omit)
@@ -3071,19 +3085,19 @@ summary(SOM_13Cmg_pH_lme) #random accounts for less
 shapiro.test(resid(SOM_13Cmg_pH_lme)) #normal
 performance::r2(SOM_13Cmg_pH_lme, multivariate=TRUE) #calculate R-squared for model fit
 MuMIn::AICc(SOM_13Cmg_pH_lme, k=2) #calculate AICc for for model comparison with small sample sizes
-TukeyHSD(aov(log(SOM_pot13C_mg) ~ pH_range + Site, data = SOM_13C_T0)) #mildly acidic vs alkaline & neutral, mod acidic vs alkaline
+TukeyHSD(aov(log(SOM_pot13C_mg) ~ pH_range + Site_ID, data = SOM_13C_T0)) #mildly acidic vs alkaline & neutral, mod acidic vs alkaline
 
 shapiro.test(resid(lm(POM_13C_excess ~ pH_range, data = SOM_13C_T0))) #check normality of residuals - not normal
 shapiro.test(resid(lm(log(POM_13C_excess) ~ pH_range, data = SOM_13C_T0))) #normal
 summary(aov(log(POM_13C_excess) ~ pH_range, data = SOM_13C_T0)) #sig
 
 Anova(lmer(log(POM_13C_excess) ~ pH_range +
-             (1|Site), #site random
+             (1|Site_ID), #site random
     REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
     data = SOM_13C_T0, #choose dataframe
     na.action = na.omit), type=3) #sig
 
-POM_excess_pH_lme <- lmer(log(POM_13C_excess) ~ pH_range + (1|Site), 
+POM_excess_pH_lme <- lmer(log(POM_13C_excess) ~ pH_range + (1|Site_ID), 
     REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
     data = SOM_13C_T0, #choose dataframe
     na.action = na.omit)
@@ -3091,7 +3105,7 @@ summary(SOM_excess_pH_lme) #random accounts for less
 shapiro.test(resid(SOM_excess_pH_lme)) #normal
 performance::r2(SOM_excess_pH_lme, multivariate=TRUE) #calculate R-squared for model fit
 MuMIn::AICc(SOM_excess_pH_lme, k=2) #calculate AICc for for model comparison with small sample sizes
-TukeyHSD(aov(log(SOM_13C_excess) ~ pH_range + Site, data = SOM_13C_T0)) #none quite significantly different
+TukeyHSD(aov(log(SOM_13C_excess) ~ pH_range + Site_ID, data = SOM_13C_T0)) #none quite significantly different
 
 
 ```
@@ -3116,12 +3130,12 @@ shapiro.test(resid(lm(POM_13C_excess ~ AM_hyph_per + AM_arb_per + AM_absent, dat
 shapiro.test(resid(lm(log(POM_13C_excess) ~ AM_hyph_per + AM_arb_per + AM_absent, data = SOM_13C_T0))) #normal
 summary(aov(log(POM_13C_excess) ~ AM_hyph_per + AM_arb_per + AM_ves_ct, data = SOM_13C_T0)) #hyph
 
-Anova(lmer(log(POM_13C_excess) ~ AM_hyph_per + AM_arb_per + AM_ves_ct + (1|Site), 
+Anova(lmer(log(POM_13C_excess) ~ AM_hyph_per + AM_arb_per + AM_ves_ct + (1|Site_ID), 
     REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
     data = SOM_13C_T0, #choose dataframe
     na.action = na.omit), type=3) #none
 
-SOM_excess_AM_lme <- lmer(log(MAOM_13C_excess) ~ AM_hyph_per + AM_arb_per + AM_ves_ct + (1|Site), 
+SOM_excess_AM_lme <- lmer(log(MAOM_13C_excess) ~ AM_hyph_per + AM_arb_per + AM_ves_ct + (1|Site_ID), 
     REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
     data = SOM_13C_T0, #choose dataframe
     na.action = na.omit)
@@ -3138,12 +3152,12 @@ shapiro.test(resid(lm(MAOM_13C_excess ~ AM_hyph_per + AM_arb_per + AM_absent, da
 shapiro.test(resid(lm(log(MAOM_13C_excess) ~ AM_hyph_per + AM_arb_per + AM_absent, data = SOM_13C_T0))) #normal
 summary(aov(log(MAOM_13C_excess) ~ AM_hyph_per + AM_arb_per + AM_ves_ct, data = SOM_13C_T0)) #vesicles, almost hyphae
 
-Anova(lmer(log(MAOM_13C_excess) ~ AM_hyph_per + AM_arb_per + AM_ves_ct + (1|Site), 
+Anova(lmer(log(MAOM_13C_excess) ~ AM_hyph_per + AM_arb_per + AM_ves_ct + (1|Site_ID), 
     REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
     data = SOM_13C_T0, #choose dataframe
     na.action = na.omit), type=3) #vesicles
 
-MAOM_excess_AM_lme <- lmer(log(MAOM_13C_excess) ~ AM_hyph_per + AM_arb_per + AM_ves_ct + (1|Site), 
+MAOM_excess_AM_lme <- lmer(log(MAOM_13C_excess) ~ AM_hyph_per + AM_arb_per + AM_ves_ct + (1|Site_ID), 
     REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
     data = SOM_13C_T0, #choose dataframe
     na.action = na.omit)
@@ -3162,7 +3176,7 @@ MuMIn::AICc(MAOM_excess_AM_lme, k=2) #calculate AICc for for model comparison wi
 
 ```{r resp overall 12}
 
-ggplot(data = resp_full, aes(x=Site, y=CO2_ppm, fill=Site)) + 
+ggplot(data = resp_full, aes(x=Site_ID, y=CO2_ppm, fill=Site_ID)) + 
 	geom_boxplot() + 
   scale_fill_manual(values = colors) + #define colors to use
   my_theme +
@@ -3176,17 +3190,17 @@ ggsave('CO2_overall.svg', #save plot name and type - can be "eps", "pdf", "jpeg"
        bg=NULL) #background from plot specifications
 
 #ANOVA and Tukey
-summary(aov(CO2_ppm ~ factor(Site), data = resp_min)) #almost
-summary(aov(CO2_ppm ~ factor(Site), data = resp_full)) #very
-TukeyHSD(aov(CO2_ppm ~ factor(Site), data = resp_full)) #Ambers > all, Flashes > Bick 1 & 2
+summary(aov(CO2_ppm ~ factor(Site_ID), data = resp_min)) #almost
+summary(aov(CO2_ppm ~ factor(Site_ID), data = resp_full)) #very
+TukeyHSD(aov(CO2_ppm ~ factor(Site_ID), data = resp_full)) #Ambers > all, Flashes > Bick 1 & 2
 
 ```
 
 ```{r resp 12C by week}
 
 #time series boxplots of 12C
-ggplot(data = resp_full, aes(x=Week, y=CO2_ppm, group=interaction(Week,Site))) + 
-  geom_boxplot(aes(fill=Site), position = position_dodge()) +
+ggplot(data = resp_full, aes(x=Week, y=CO2_ppm, group=interaction(Week,Site_ID))) + 
+  geom_boxplot(aes(fill=Site_ID), position = position_dodge()) +
   #geom_dotplot(aes(fill=Site, stroke=TRUE), binaxis = "y", dotsize = 0.5, position = position_dodge(), stackdir = "center", binpositions = "bygroup") +
   scale_fill_manual(values = colors) + #define colors to use
   scale_color_manual(values = colors) +
@@ -3210,7 +3224,7 @@ ggsave('12C_wks.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "t
 #multiply1000 <- function(x) {
  # return(x * 1000)}
 
-ggplot(data = resp_full, aes(x=Site, y=mass_C, fill=Site)) + 
+ggplot(data = resp_full, aes(x=Site_ID, y=mass_C, fill=Site_ID)) + 
 	geom_boxplot() + 
   scale_fill_manual(values = colors) + #define colors to use
   my_theme +
@@ -3226,16 +3240,16 @@ ggsave('CO2_overall_gC.svg', #save plot name and type - can be "eps", "pdf", "jp
        bg=NULL) #background from plot specifications
 
 #ANOVA and Tukey
-summary(aov(mass_C ~ factor(Site), data = resp_full)) #very
-TukeyHSD(aov(mass_C ~ factor(Site), data = resp_full)) #Ambers > all, Flashes > Bick 1 & 2
+summary(aov(mass_C ~ factor(Site_ID), data = resp_full)) #very
+TukeyHSD(aov(mass_C ~ factor(Site_ID), data = resp_full)) #Ambers > all, Flashes > Bick 1 & 2
 
 ```
 
 ```{r resp mass 12C by week}
 
 #time series boxplots of 12C
-ggplot(data = resp_full, aes(x=Week, y=mass_C, group=interaction(Week,Site))) + 
-  geom_boxplot(aes(fill=Site), position = position_dodge()) +
+ggplot(data = resp_full, aes(x=Week, y=mass_C, group=interaction(Week,Site_ID))) + 
+  geom_boxplot(aes(fill=Site_ID), position = position_dodge()) +
   #geom_dotplot(aes(fill=Site, stroke=TRUE), binaxis = "y", dotsize = 0.5, position = position_dodge(), stackdir = "center", binpositions = "bygroup") +
   scale_fill_manual(values = colors) + #define colors to use
   scale_color_manual(values = colors) +
@@ -3260,7 +3274,7 @@ ggsave('gC_wks.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "ti
 
 ```{r resp overall 13}
 
-ggplot(data = resp_full, aes(x=Site, y=d13CO2_permille, fill=Site)) + 
+ggplot(data = resp_full, aes(x=Site_ID, y=d13CO2_permille, fill=Site_ID)) + 
 	geom_boxplot() + 
   scale_fill_manual(values = colors) + #define colors to use
   my_theme +
@@ -3275,18 +3289,18 @@ ggsave('13CO2_overall.svg', #save plot name and type - can be "eps", "pdf", "jpe
        bg=NULL) #background from plot specifications
 
 #ANOVA and Tukey
-summary(aov(d13CO2_permille ~ factor(Site), data = resp_min)) #sig
-summary(aov(d13CO2_permille ~ factor(Site), data = resp_full)) #very sig
-TukeyHSD(aov(d13CO2_permille ~ factor(Site), data = resp_min)) #23 vs. 15 0.00058, vs. unmanaged almost, 15 vs. 4 0.033
-TukeyHSD(aov(d13CO2_permille ~ factor(Site), data = resp_full)) #all sig except Flashes vs. Bick 2
+summary(aov(d13CO2_permille ~ factor(Site_ID), data = resp_min)) #sig
+summary(aov(d13CO2_permille ~ factor(Site_ID), data = resp_full)) #very sig
+TukeyHSD(aov(d13CO2_permille ~ factor(Site_ID), data = resp_min)) #23 vs. 15 0.00058, vs. unmanaged almost, 15 vs. 4 0.033
+TukeyHSD(aov(d13CO2_permille ~ factor(Site_ID), data = resp_full)) #all sig except Flashes vs. Bick 2
 
 ```
 
 ```{r resp 13C by week}
 
 #time series boxplots of 12C
-ggplot(data = resp_full, aes(x=Week, y=d13CO2_permille, group=interaction(Week,Site))) + 
-  geom_boxplot(aes(fill=Site), position = position_dodge()) +
+ggplot(data = resp_full, aes(x=Week, y=d13CO2_permille, group=interaction(Week,Site_ID))) + 
+  geom_boxplot(aes(fill=Site_ID), position = position_dodge()) +
   #geom_dotplot(aes(fill=Site, stroke=TRUE), binaxis = "y", dotsize = 0.5, position = position_dodge(), stackdir = "center", binpositions = "bygroup") +
   scale_fill_manual(values = colors) + #define colors to use
   scale_color_manual(values = colors) +
@@ -3307,7 +3321,7 @@ ggsave('13C_wks.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "t
 
 ```{r resp overall 13 excess}
 
-ggplot(data = resp_full, aes(x=Site, y=atom_excess13C, fill=Site)) + 
+ggplot(data = resp_full, aes(x=Site_ID, y=atom_excess13C, fill=Site_ID)) + 
 	geom_boxplot() + 
   scale_fill_manual(values = colors) + #define colors to use
   my_theme +
@@ -3323,16 +3337,16 @@ ggsave('13CO2_overall_atom.svg', #save plot name and type - can be "eps", "pdf",
        bg=NULL) #background from plot specifications
 
 #ANOVA and Tukey
-summary(aov(atom_excess13C ~ factor(Site), data = resp_full)) #very sig
-TukeyHSD(aov(atom_excess13C ~ factor(Site), data = resp_full)) #all sig except Flashes vs. Bick 2
+summary(aov(atom_excess13C ~ factor(Site_ID), data = resp_full)) #very sig
+TukeyHSD(aov(atom_excess13C ~ factor(Site_ID), data = resp_full)) #all sig except Flashes vs. Bick 2
 
 ```
 
 ```{r resp excess 13C by week}
 
 #time series boxplots of 12C
-ggplot(data = resp_full, aes(x=Week, y=atom_excess13C, group=interaction(Week,Site))) + 
-  geom_boxplot(aes(fill=Site), position = position_dodge()) +
+ggplot(data = resp_full, aes(x=Week, y=atom_excess13C, group=interaction(Week,Site_ID))) + 
+  geom_boxplot(aes(fill=Site_ID), position = position_dodge()) +
   #geom_dotplot(aes(fill=Site, stroke=TRUE), binaxis = "y", dotsize = 0.5, position = position_dodge(), stackdir = "center", binpositions = "bygroup") +
   scale_fill_manual(values = colors) + #define colors to use
   scale_color_manual(values = colors) +
@@ -3353,8 +3367,11 @@ ggsave('excess13C_wks.svg', #save plot name and type - can be "eps", "pdf", "jpe
 
 ```{r resp overall 13C mass}
 
+multiply1000 <- function(x) {
+return(x * 1000)
+}
 
-ggplot(data = resp_full, aes(x=Site, y=mass_excess13C, fill=Site)) + 
+ggplot(data = resp_full, aes(x=Site_ID, y=mass_excess13C, fill=Site_ID)) + 
 	geom_boxplot() + 
   scale_fill_manual(values = colors) + #define colors to use
   my_theme +
@@ -3370,16 +3387,16 @@ ggsave('13C_overall_mass.svg', #save plot name and type - can be "eps", "pdf", "
        bg=NULL) #background from plot specifications
 
 #ANOVA and Tukey
-summary(aov(mass_excess13C ~ factor(Site), data = resp_full)) #very sig
-TukeyHSD(aov(mass_excess13C ~ factor(Site), data = resp_full)) #all sig except Flashes vs. Bick 2
+summary(aov(mass_excess13C ~ factor(Site_ID), data = resp_full)) #very sig
+TukeyHSD(aov(mass_excess13C ~ factor(Site_ID), data = resp_full)) #all sig except Flashes vs. Bick 2
 
 ```
 
 ```{r resp 13C mass by week}
 
 #time series boxplots
-ggplot(data = resp_full, aes(x=Week, y=mass_excess13C, group=interaction(Week,Site))) + 
-  geom_boxplot(aes(fill=Site), position = position_dodge()) +
+ggplot(data = resp_full, aes(x=Week, y=mass_excess13C, group=interaction(Week,Site_ID))) + 
+  geom_boxplot(aes(fill=Site_ID), position = position_dodge()) +
   #geom_dotplot(aes(fill=Site, stroke=TRUE), binaxis = "y", dotsize = 0.5, position = position_dodge(), stackdir = "center", binpositions = "bygroup") +
   scale_fill_manual(values = colors) + #define colors to use
   scale_color_manual(values = colors) +
@@ -3402,7 +3419,7 @@ ggsave('excess13C_wks_mass.svg', #save plot name and type - can be "eps", "pdf",
 
 #root:shoot ratio box plot
 ggplot(data = plant_harvest_est[-c(118,153),], #species data minus major outliers
-       aes(x=site, y=root_shoot, fill=site)) + 
+       aes(x=site_id, y=root_shoot, fill=site_id)) + 
 	geom_boxplot() +
   scale_fill_manual(values=colors) + #define colors to use
   ggtitle("Root:Shoot ratio per site") + #add a graph title
@@ -3417,7 +3434,7 @@ ggplot(data = plant_harvest_est[-c(118,153),], #species data minus major outlier
 ```{r beg root bio, warning=FALSE}
 
 #mass bar chart with error bars
-ggplot(data = summary_endbio, aes(x=Site, y=est_beg_drymass_mean, fill=Site)) + 
+ggplot(data = summary_endbio, aes(x=Site_ID, y=est_beg_drymass_mean, fill=Site_ID)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
   scale_fill_manual(values=colors) + #define colors to use
   geom_errorbar(aes(ymin=est_beg_drymass_mean-est_beg_drymass_se, ymax=est_beg_drymass_mean+est_beg_drymass_se),
@@ -3433,8 +3450,8 @@ ggsave('beg_roots.svg', #save plot name and type - can be "eps", "pdf", "jpeg", 
        bg=NULL) #background from plot specifications
 
 #ANOVA and Tukey
-summary(aov(est_beg_drymass ~ factor(Site), data = endbiomass)) #sig
-TukeyHSD(aov(est_beg_drymass ~ factor(Site), data = endbiomass)) #Flashes < Amberswood & Bick 2
+summary(aov(est_beg_drymass ~ factor(Site_ID), data = endbiomass)) #sig
+TukeyHSD(aov(est_beg_drymass ~ factor(Site_ID), data = endbiomass)) #Flashes < Amberswood & Bick 2
 
 ```
 
@@ -3442,7 +3459,7 @@ TukeyHSD(aov(est_beg_drymass ~ factor(Site), data = endbiomass)) #Flashes < Ambe
 ```{r end root bio, warning=FALSE}
 
 #mass bar chart with error bars
-ggplot(data = summary_endbio, aes(x=Site, y=end_drymass_clean_mean, fill=Site)) + 
+ggplot(data = summary_endbio, aes(x=Site_ID, y=end_drymass_clean_mean, fill=Site_ID)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
   scale_fill_manual(values=colors) + #define colors to use
   geom_errorbar(aes(ymin=end_drymass_clean_mean-end_drymass_clean_se, ymax=end_drymass_clean_mean+end_drymass_clean_se),
@@ -3458,8 +3475,8 @@ ggsave('end_roots.svg', #save plot name and type - can be "eps", "pdf", "jpeg", 
        bg=NULL) #background from plot specifications
 
 #ANOVA and Tukey
-summary(aov(end_drymass_clean ~ factor(Site), data = endbiomass)) #sig
-TukeyHSD(aov(end_drymass_clean ~ factor(Site), data = endbiomass)) #Flashes < Bick 1, almost Bick 2
+summary(aov(end_drymass_clean ~ factor(Site_ID), data = endbiomass)) #sig
+TukeyHSD(aov(end_drymass_clean ~ factor(Site_ID), data = endbiomass)) #Flashes < Bick 1, almost Bick 2
 
 ```
 
@@ -3469,8 +3486,8 @@ TukeyHSD(aov(end_drymass_clean ~ factor(Site), data = endbiomass)) #Flashes < Bi
 
 #decomposition percentage box plot
 endbiomass[-1,] %>% #remove G37 because of biomass est error
-ggplot(aes(x=Site, y=decomp_per_adj)) + 
-	geom_boxplot(aes(fill=Site)) +
+ggplot(aes(x=Site_ID, y=decomp_per_adj)) + 
+	geom_boxplot(aes(fill=Site_ID)) +
   scale_fill_manual(values=colors) + #define colors to use
   ggtitle("Decomposition per Site") + #add a graph title
   scale_y_continuous(labels = scales::percent_format(accuracy = 1)) + #change to %
@@ -3506,7 +3523,7 @@ ggplot(data = endbiomass[-1,], aes(x=years, y=decomp_per_adj)) +
 
 #decomposition lm plot vs restoration time
 ggplot(data = endbiomass[-1,], aes(x=pH, y=decomp_per_adj)) + 
-	geom_point(aes(color=Site), size=2) +
+	geom_point(aes(color=Site_ID), size=2) +
   scale_color_manual(values=colors) + #define colors to use
   geom_smooth(method="lm", se=TRUE, color=plotline_color, fill=fill_color) +
   scale_y_continuous(labels = scales::percent_format(accuracy = 1)) + #change to %
@@ -3527,10 +3544,10 @@ ggsave('decomp_pH.svg', #save plot name and type - can be "eps", "pdf", "jpeg", 
 ```{r decomp stats}
 
 #ANOVA and Tukey - Site comparison
-summary(aov(decomp_per_adj ~ factor(Site), data = endbiomass[-1,])) #sig
-TukeyHSD(aov(decomp_per_adj ~ factor(Site), data = endbiomass[-1,])) #Flashes > Bick 1 & 2, Amberswood > Bick 1
-kruskal.test(decomp_per_adj ~ factor(Site), data = endbiomass[-1,]) #Kruskal-Wallis rank sum test also sig
-dunn.test(endbiomass[-1,]$decomp_per_adj, endbiomass[-1,]$Site, method="bonferroni", kw=TRUE) #KW P=0.01, Flashes > Bick 1 & 2 only
+summary(aov(decomp_per_adj ~ factor(Site_ID), data = endbiomass[-1,])) #sig
+TukeyHSD(aov(decomp_per_adj ~ factor(Site_ID), data = endbiomass[-1,])) #Flashes > Bick 1 & 2, Amberswood > Bick 1
+kruskal.test(decomp_per_adj ~ factor(Site_ID), data = endbiomass[-1,]) #Kruskal-Wallis rank sum test also sig
+dunn.test(endbiomass[-1,]$decomp_per_adj, endbiomass[-1,]$Site_ID, method="bonferroni", kw=TRUE) #KW P=0.01, Flashes > Bick 1 & 2 only
 
 #AM association
 shapiro.test(resid(lm(decomp_per_adj ~ AM_hyph_per + AM_arb_per + AM_ves_ct, data = endbiomass))) #check normality of residuals - normal
@@ -3540,12 +3557,12 @@ summary(aov(decomp_per_adj ~ AM_hyph_per + AM_arb_per + AM_ves_ct, data = endbio
 shapiro.test(resid(lm(decomp_per_adj ~ pH, data = endbiomass))) #check normality of residuals - normal
 summary(aov(decomp_per_adj ~ pH, data = endbiomass)) #very sig
 
-Anova(lmer(decomp_per_adj ~ pH + (1|Site), 
+Anova(lmer(decomp_per_adj ~ pH + (1|Site_ID), 
     REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
     data = endbiomass, #choose dataframe
     na.action = na.omit), type=3) #pH
 
-decomp_pH_lme <- lmer(decomp_per_adj ~ pH + (1|Site), 
+decomp_pH_lme <- lmer(decomp_per_adj ~ pH + (1|Site_ID), 
     REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
     data = endbiomass, #choose dataframe
     na.action = na.omit)
@@ -3577,7 +3594,7 @@ ggplot(data = endbiomass, aes(x=Management, y=worms, fill=Management)) +
 ```{r rocks, warning=FALSE}
 
 #mass bar chart with error bars
-ggplot(data = summary_endbio, aes(x=Site, y=rocks_debris_mean, fill=Site)) + 
+ggplot(data = summary_endbio, aes(x=Site_ID, y=rocks_debris_mean, fill=Site_ID)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
   scale_fill_manual(values=colors) + #define colors to use
   geom_errorbar(aes(ymin=rocks_debris_mean-rocks_debris_se, ymax=rocks_debris_mean+rocks_debris_se),
@@ -3605,7 +3622,7 @@ TukeyHSD(rmass_aov) #Unmanaged-23 yr P=0.0000012, Unmanaged-15 yr P=0.0057, 4 yr
 ```{r coal, warning=FALSE}
 
 #worms box plot
-ggplot(data = SOM_2026, aes(x=Site, y=coal_2mm_g, fill=Management)) + 
+ggplot(data = SOM_2026, aes(x=Site_ID, y=coal_2mm_g, fill=Management)) + 
 	geom_boxplot() +
   scale_fill_manual(values=colors) + #define colors to use
   #ggtitle("Coal in BD cores") + #add a graph title
