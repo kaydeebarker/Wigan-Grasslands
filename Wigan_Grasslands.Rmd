@@ -3,9 +3,9 @@ title: "Wigan Grassland Restoration"
 author: "Kaydee S. Barker"
 date: "`r Sys.Date()`"
 output:
-  word_document: default
-  html_document: default
   pdf_document: default
+  html_document: default
+  word_document: default
 ---
 
 # Set up
@@ -2728,7 +2728,7 @@ TukeyHSD(aov(AM_hyph_per ~ pH_range + Site_ID, data = SOM_13C_T0)) #Moderately A
 
 ```
 
-```{r AM assoc pH}
+```{r AM arb pH}
 
 #Arbuscules boxplot
 ggplot(data = SOM_13C_T0, aes(x=pH_range, y=AM_arb_per, fill=Site_ID)) + 
@@ -3634,9 +3634,9 @@ TukeyHSD(aov(pot_13C_mg ~ Site_ID, data = SOM_T6[-17,])) #Flashes > all
 
 ```
 
-### Linear Mixed Models explaining 13C
+### Linear Mixed Models explaining soil 13C
 
-#### Soil 13C by soil pH
+#### By soil pH
 
 ```{r soil 13C compare pH}
 
@@ -3704,7 +3704,7 @@ TukeyHSD(aov(log(SOM_13C_excess) ~ pH_range + Site_ID, data = SOM_13C_T0)) #none
 
 ```
 
-#### Soil 13C by mycorrhizal association
+#### By mycorrhizal association
 ```{r soil 13C vs AM}
 
 shapiro.test(resid(lm(SOM_13C_excess ~ AM_hyph_per + AM_arb_per + AM_ves_ct, data = SOM_13C_T0))) #not normal
@@ -3761,6 +3761,68 @@ performance::r2(MAOM_excess_AM_lme, multivariate=TRUE) #calculate R-squared for 
 MuMIn::AICc(MAOM_excess_AM_lme, k=2) #calculate AICc for for model comparison with small sample sizes
 
 ```
+
+#### By soil fungi
+
+```{r soil 13C HLD}
+
+#HLD vs 13C
+shapiro.test(resid(lm(SOM_13C_excess ~ AM_mm_g + other_mm_g, data = SOM_13C_T0))) #normal
+summary(aov(SOM_13C_excess ~ AM_mm_g + other_mm_g, data = SOM_13C_T0)) #not sig
+
+shapiro.test(resid(lm(SOM_pot13C_mg ~ AM_mm_g + other_mm_g, data = SOM_13C_T0))) #not normal
+shapiro.test(resid(lm(log(SOM_pot13C_mg) ~ AM_mm_g + other_mm_g, data = SOM_13C_T0))) #normal
+summary(aov(log(SOM_pot13C_mg) ~ AM_mm_g + other_mm_g, data = SOM_13C_T0)) #not sig
+
+shapiro.test(resid(lm(POM_13C_excess ~ AM_mm_g + other_mm_g, data = SOM_13C_T0))) #not normal
+shapiro.test(resid(lm(log(POM_13C_excess) ~ AM_mm_g + other_mm_g, data = SOM_13C_T0))) #normal
+summary(aov(log(POM_13C_excess) ~ AM_mm_g + other_mm_g, data = SOM_13C_T0)) #not sig
+
+shapiro.test(resid(lm(POM_pot13C_mg ~ AM_mm_g + other_mm_g, data = SOM_13C_T0))) #not normal
+shapiro.test(resid(lm(log(POM_pot13C_mg) ~ AM_mm_g + other_mm_g, data = SOM_13C_T0))) #normal
+summary(aov(log(POM_pot13C_mg) ~ AM_mm_g + other_mm_g, data = SOM_13C_T0)) #not sig
+
+shapiro.test(resid(lm(MAOM_13C_excess ~ AM_mm_g + other_mm_g, data = SOM_13C_T0))) #not normal
+shapiro.test(resid(lm(log(MAOM_13C_excess) ~ AM_mm_g + other_mm_g, data = SOM_13C_T0))) #normal
+summary(aov(log(MAOM_13C_excess) ~ AM_mm_g + other_mm_g, data = SOM_13C_T0)) #not sig
+
+shapiro.test(resid(lm(MAOM_pot13C_mg ~ AM_mm_g + other_mm_g, data = SOM_13C_T0))) #normal
+summary(aov(MAOM_pot13C_mg ~ AM_mm_g + other_mm_g, data = SOM_13C_T0)) #other almost
+
+MAOM_pot13C_HLD_lme <- lmer(MAOM_pot13C_mg ~ AM_mm_g + other_mm_g + (1|Site_ID), 
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0, #choose dataframe
+    na.action = na.omit)
+summary(MAOM_pot13C_HLD_lme) #
+shapiro.test(resid(MAOM_pot13C_HLD_lme)) #normal
+performance::r2(MAOM_pot13C_HLD_lme, multivariate=TRUE) #calculate R-squared for model fit
+MuMIn::AICc(MAOM_pot13C_HLD_lme, k=2) #calculate AICc for for model comparison with small sample sizes
+
+#biomass vs 13C
+shapiro.test(resid(lm(SOM_13C_excess ~ AM_biomass_gkg + total_fun_gkg, data = SOM_13C_T0))) #normal
+summary(aov(SOM_13C_excess ~ AM_biomass_gkg + total_fun_gkg, data = SOM_13C_T0)) #not sig
+
+shapiro.test(resid(lm(SOM_pot13C_mg ~ AM_biomass_gkg + total_fun_gkg, data = SOM_13C_T0))) #normal
+summary(aov(SOM_pot13C_mg ~ AM_biomass_gkg + total_fun_gkg, data = SOM_13C_T0)) #not sig
+
+shapiro.test(resid(lm(POM_13C_excess ~ AM_biomass_gkg + total_fun_gkg, data = SOM_13C_T0))) #not normal
+shapiro.test(resid(lm(log(POM_13C_excess) ~ AM_biomass_gkg + total_fun_gkg, data = SOM_13C_T0))) #normal
+summary(aov(log(POM_13C_excess) ~ AM_biomass_gkg + total_fun_gkg, data = SOM_13C_T0)) #not sig
+
+shapiro.test(resid(lm(POM_pot13C_mg ~ AM_biomass_gkg + total_fun_gkg, data = SOM_13C_T0))) #not normal
+shapiro.test(resid(lm(log(POM_pot13C_mg) ~ AM_biomass_gkg + total_fun_gkg, data = SOM_13C_T0))) #normal
+summary(aov(log(POM_pot13C_mg) ~ AM_biomass_gkg + total_fun_gkg, data = SOM_13C_T0)) #not sig
+
+shapiro.test(resid(lm(MAOM_13C_excess ~ AM_biomass_gkg + total_fun_gkg, data = SOM_13C_T0))) #not normal
+shapiro.test(resid(lm(log(MAOM_13C_excess) ~ AM_biomass_gkg + total_fun_gkg, data = SOM_13C_T0))) #normal
+summary(aov(log(MAOM_13C_excess) ~ AM_biomass_gkg + total_fun_gkg, data = SOM_13C_T0)) #not sig
+
+shapiro.test(resid(lm(MAOM_pot13C_mg ~ AM_biomass_gkg + total_fun_gkg, data = SOM_13C_T0))) #normal
+summary(aov(MAOM_pot13C_mg ~ AM_biomass_gkg + total_fun_gkg, data = SOM_13C_T0)) #not sig
+
+```
+
+
 
 ## Respiration Data
 
