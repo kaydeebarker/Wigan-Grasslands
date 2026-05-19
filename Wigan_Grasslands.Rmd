@@ -917,6 +917,78 @@ summary_endbio$Site_ID <- factor(summary_endbio$Site_ID, levels = order_IDs)
 
 # Stats and Charts
 
+## Maps
+
+### Wigan, UK
+```{r map UK}
+
+library(sf) #spatial library
+library(rnaturalearth) #earth boundary maps
+library(rnaturalearthdata) #earth boundary maps - higher res
+
+#create UK boundary
+uk <- ne_countries(scale = 50, country = "United Kingdom", returnclass = "sf") #get UK boundary
+
+#plot
+ggplot() +
+  geom_sf(fill = "#46A9B0", alpha= 0.4, color = "black", linewidth = 0.3, data = uk) +
+  geom_point(aes(x = -2.6268, y = 53.5454), 
+             shape = 23, fill = "#EF8E45", color = "black", linewidth = 0.3, size = 4) +
+  #annotate("text", x = -2.6268, y = 53.3, label = "Wigan", hjust = 0.5, size = 3.5) +
+  coord_sf(xlim = c(-8, 2), ylim = c(50, 59)) +
+  #labs(title = "Wigan, England") +
+  xlab("") + ylab("") +
+  my_theme 
+
+
+#save figure
+ggsave('Wigan_UK.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 6, height = 8, units = "in", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
+
+```
+
+### Sites
+
+```{r map sites}
+
+library(tmap) #background map
+
+#create df with site locations
+site_locations <- data.frame(
+  Site_ID = order_IDs,
+  #order = c(1, 2, 3, 4, 5, 6),
+  long = c(-2.542323, -2.540316, -2.591300, -2.593789, -2.627059, -2.623926),
+  lat = c(53.508020, 53.504838, 53.527421, 53.526987, 53.525431, 53.524940)
+)
+
+#define the bounding box and center points for Wigan
+bbox <- c(xmin = -2.63, ymin = 53.501, xmax = -2.536, ymax = 53.53)
+
+#convert to sf object and specify order
+locations_sf <- st_as_sf(site_locations, coords = c("long", "lat"), crs = 4326)
+locations_sf$Site_ID <- factor(locations_sf$Site_ID, levels = order_IDs)
+
+#create map with tmap library
+tm_basemap("OpenStreetMap", alpha = 0.9) +
+  tm_shape(locations_sf, bbox = bbox) +
+  tm_squares(size = 0.8, #create points, define shape and size
+             plot.order = tm_plot_order("DATA"), #define order
+             fill = "Site_ID", fill.scale = tm_scale(values = colors9), #fill variable and colors
+             fill.legend = tm_legend(title = "Site", position = c("right", "top"))) + #legend
+  tm_text("Site_ID", ymod = -0.8) #, xmod = 1) #set label locations
+  
+#save figure
+tmap_save(filename = "Figures/Sites_map.png", width = 8, height = 6, dpi = 300)
+
+
+
+```
+
+
 ## Soil properties
 ```{r soil char}
 
