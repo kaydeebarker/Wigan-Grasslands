@@ -3,9 +3,9 @@ title: "Wigan Grassland Restoration"
 author: "Kaydee S. Barker"
 date: "`r Sys.Date()`"
 output:
-  pdf_document: default
-  html_document: default
   word_document: default
+  html_document: default
+  pdf_document: default
 ---
 
 # Set up
@@ -92,6 +92,10 @@ my_theme <- theme(text = element_text(#family = "Arial",
               legend.position="right", legend.box = "vertical", #where legend appears, what orientation
               panel.background = element_rect(fill='transparent'), plot.background = element_rect(fill='transparent', color=NA), #make backgrounds transparent
               panel.grid.major = element_blank(), panel.grid.minor = element_blank()) #no gridlines
+
+#function to multiply by 1000 for axes
+multiply1000 <- function(x) {
+  return(x * 1000)}
 
 ```
 
@@ -510,15 +514,45 @@ diversity <- diversity %>%
 
 ### Fungi
 
-```{r load AM data}
+```{r load AM association data}
 
-#read in AM data
+#read in AM association data
 AMdata <- read_csv("Wigan_myc.csv")
 
 #order variables
 AMdata$Site <- factor(AMdata$Site, levels = order_sites)
 AMdata$Mgmt_fct <- factor(AMdata$Mgmt_fct, levels = order_mgmt)
 AMdata$Site_ID <- factor(AMdata$Site_ID, levels = order_IDs)
+
+#read in HLD data
+HLD <- read_csv("HLD_Wigan.csv")
+
+#order variables
+HLD$Site_ID <- factor(HLD$Site_ID, levels = order_IDs)
+
+#calculate fungal biomass C
+HLD <- HLD %>%
+  mutate(other_biomass_gkg = other_sm_biomass_gkg + other_lg_biomass_gkg) %>%
+  mutate(AM_C_mgkg = AM_biomass_gkg * 0.3 * 1000) %>% #use 30% C (Hodge and Fitter 2010, Zhang et al. 2025b), convert to mg per kg soil
+  mutate(otherfun_C_mgkg = other_biomass_gkg * 0.41 * 1000) %>% #use 41% C (Pánek et al. 2024)
+  mutate(total_fun_C_mgkg = AM_C_mgkg + otherfun_C_mgkg) #add together
+
+#melt to be able to stack a bar chart for biomass
+fungal_mass <- HLD %>%
+  dplyr::select(Site_ID, AM_biomass_gkg, other_biomass_gkg) %>%
+  pivot_longer(
+		cols = AM_biomass_gkg:other_biomass_gkg, #pick columns
+		names_to = "fungal_type", #name column to put original column names in
+		values_to = "g_biomass") #name column to put values in
+
+#melt to be able to stack a bar chart for biomass C
+fungal_C <- HLD %>%
+  dplyr::select(Site_ID, AM_C_mgkg, otherfun_C_mgkg) %>%
+  pivot_longer(
+		cols = AM_C_mgkg:otherfun_C_mgkg, #pick columns
+		names_to = "fungal_type", #name column to put original column names in
+		values_to = "mg_C") #name column to put values in
+
 
 ```
 
@@ -676,6 +710,7 @@ summary_SOM_13C <- SOM_13C %>%
   group_by(Site, Site_ID, Mgmt_year, Mgmt_fct, Incubation_T, Fraction) %>%
   summarise(across(where(is.numeric), summary_stats)) #run all summary stats
 
+#add columns from other datasets to compare
 SOM_13C_T0 <- SOM_13C_T0 %>%
   mutate(AM_hyph_per = AMdata$hyph_percent[match(SOM_13C_T0$Plot_ID, AMdata$Plot_ID)]) %>%
   mutate(AM_hyph_ct = AMdata$Hyphae[match(SOM_13C_T0$Plot_ID, AMdata$Plot_ID)]) %>%
@@ -683,6 +718,14 @@ SOM_13C_T0 <- SOM_13C_T0 %>%
   mutate(AM_arb_ct = AMdata$Arbuscule[match(SOM_13C_T0$Plot_ID, AMdata$Plot_ID)]) %>%
   mutate(AM_ves_ct = AMdata$Vesicle[match(SOM_13C_T0$Plot_ID, AMdata$Plot_ID)]) %>%
   mutate(AM_absent = AMdata$Nothing[match(SOM_13C_T0$Plot_ID, AMdata$Plot_ID)]) %>%
+  mutate(spores_g = HLD$spores_g[match(SOM_13C_T0$Plot_ID, HLD$Pot)]) %>%
+  mutate(AM_mm_g = HLD$AM_mm_g[match(SOM_13C_T0$Plot_ID, HLD$Pot)]) %>%
+  mutate(other_mm_g = HLD$other_mm_g[match(SOM_13C_T0$Plot_ID, HLD$Pot)]) %>%
+  mutate(AM_biomass_gkg = HLD$AM_biomass_gkg[match(SOM_13C_T0$Plot_ID, HLD$Pot)]) %>%
+  mutate(total_fun_gkg = HLD$total_fun_gkg[match(SOM_13C_T0$Plot_ID, HLD$Pot)]) %>%
+  mutate(AM_C_mgkg = HLD$AM_C_mgkg[match(SOM_13C_T0$Plot_ID, HLD$Pot)]) %>%
+  mutate(otherfun_C_mgkg = HLD$otherfun_C_mgkg[match(SOM_13C_T0$Plot_ID, HLD$Pot)]) %>%
+  mutate(total_fun_C_mgkg = HLD$total_fun_C_mgkg[match(SOM_13C_T0$Plot_ID, HLD$Pot)]) %>%
   mutate(pH = SOM_13C_T0$pH <- site_data$pH[match(SOM_13C_T0$Plot_ID, site_data$Plot_ID)]) %>%
   mutate(pH_range = case_when(pH <= 5 ~ "Very Strongly Acidic",
                                 pH > 5 & pH <= 5.5 ~ "Strongly Acidic",
@@ -1478,7 +1521,7 @@ ggplot() +
   my_theme
 
 #save figure
-ggsave('SOMC_all_KB_adjustedBD.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+ggsave('SOMC_all_KB.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
 	path = "Figures", #save to folder within working directory
 	width = 6, height = 4, units = "in", #set dimensions for figure
 	dpi = 300, #set resolution
@@ -1498,7 +1541,7 @@ ggplot() +
   my_theme
 
 #save figure
-ggsave('SOM_N_all_KB_adjustedBD.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+ggsave('SOM_N_all_KB.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
 	path = "Figures", #save to folder within working directory
 	width = 6, height = 4, units = "in", #set dimensions for figure
 	dpi = 300, #set resolution
@@ -2562,7 +2605,75 @@ ggsave('POM_N_byAMhyph.svg', #save plot name and type - can be "eps", "pdf", "jp
 
 ```
 
-# AM Association by site
+
+#### By soil fungi
+
+```{r SOM vs HLD}
+
+#HLD - C
+shapiro.test(resid(lm(SOM_C ~ AM_mm_g + other_mm_g, data = SOM_13C_T0))) #check normality of residuals - not normal
+shapiro.test(resid(lm(log(SOM_C) ~ AM_mm_g + other_mm_g, data = SOM_13C_T0))) #check normality of residuals - not normal but closer
+summary(aov(log(SOM_C) ~ AM_mm_g + other_mm_g, data = SOM_13C_T0)) #not sig
+
+#HLD - N
+shapiro.test(resid(lm(SOM_N ~ AM_mm_g + other_mm_g, data = SOM_13C_T0))) #check normality of residuals - not normal
+shapiro.test(resid(lm(log(SOM_N) ~  AM_mm_g + other_mm_g, data = SOM_13C_T0))) #check normality of residuals - not normal
+summary(aov(log(SOM_N) ~ AM_mm_g + other_mm_g, data = SOM_13C_T0)) #not sig
+
+#HLD - POM-C and N
+shapiro.test(resid(lm(POM_C ~ AM_mm_g + other_mm_g, data = SOM_13C_T0))) #not normal
+shapiro.test(resid(lm(log(POM_C) ~ AM_mm_g + other_mm_g, data = SOM_13C_T0))) #normal
+summary(aov(log(POM_C) ~ AM_mm_g + other_mm_g, data = SOM_13C_T0)) #not sig
+
+shapiro.test(resid(lm(POM_N ~ AM_mm_g + other_mm_g, data = SOM_13C_T0))) #not normal
+shapiro.test(resid(lm(log(POM_N) ~ AM_mm_g + other_mm_g, data = SOM_13C_T0))) #normal
+summary(aov(log(POM_N) ~ AM_mm_g + other_mm_g, data = SOM_13C_T0)) #not sig
+
+#HLD - MAOM-C and N
+shapiro.test(resid(lm(MAOM_C ~ AM_mm_g + other_mm_g, data = SOM_13C_T0))) #not normal
+shapiro.test(resid(lm(log(MAOM_C) ~ AM_mm_g + other_mm_g, data = SOM_13C_T0))) #normal
+summary(aov(log(MAOM_C) ~ AM_mm_g + other_mm_g, data = SOM_13C_T0)) #not sig
+
+shapiro.test(resid(lm(MAOM_N ~ AM_mm_g + other_mm_g, data = SOM_13C_T0))) #not normal
+shapiro.test(resid(lm(log(MAOM_N) ~ AM_mm_g + other_mm_g, data = SOM_13C_T0))) #normal
+summary(aov(log(MAOM_N) ~ AM_mm_g + other_mm_g, data = SOM_13C_T0)) #not sig
+
+#biomass - C
+shapiro.test(resid(lm(SOM_C ~ AM_biomass_gkg + total_fun_gkg, data = SOM_13C_T0))) #check normality of residuals - not normal
+shapiro.test(resid(lm(log(SOM_C) ~ AM_biomass_gkg + total_fun_gkg, data = SOM_13C_T0))) #check normality of residuals - not normal but closer
+summary(aov(log(SOM_C) ~ AM_biomass_gkg + total_fun_gkg, data = SOM_13C_T0)) #not sig
+
+#biomass - N
+shapiro.test(resid(lm(SOM_N ~ AM_biomass_gkg + total_fun_gkg, data = SOM_13C_T0))) #check normality of residuals - not normal
+shapiro.test(resid(lm(log(SOM_N) ~ AM_biomass_gkg + total_fun_gkg, data = SOM_13C_T0))) #check normality of residuals - not normal but closer
+summary(aov(log(SOM_N) ~ AM_biomass_gkg + total_fun_gkg, data = SOM_13C_T0)) #not sig
+
+#biomass - POM-C and N
+shapiro.test(resid(lm(POM_C ~ AM_biomass_gkg + total_fun_gkg, data = SOM_13C_T0))) #not normal
+shapiro.test(resid(lm(log(POM_C) ~ AM_biomass_gkg + total_fun_gkg, data = SOM_13C_T0))) #normal
+summary(aov(log(POM_C) ~ AM_biomass_gkg + total_fun_gkg, data = SOM_13C_T0)) #not sig
+
+shapiro.test(resid(lm(POM_N ~ AM_biomass_gkg + total_fun_gkg, data = SOM_13C_T0))) #not normal
+shapiro.test(resid(lm(log(POM_N) ~ AM_biomass_gkg + total_fun_gkg, data = SOM_13C_T0))) #normal
+summary(aov(log(POM_N) ~ AM_biomass_gkg + total_fun_gkg, data = SOM_13C_T0)) #not sig
+
+#biomass - MAOM-C and N
+shapiro.test(resid(lm(MAOM_C ~ AM_biomass_gkg + total_fun_gkg, data = SOM_13C_T0))) #not normal
+shapiro.test(resid(lm(log(MAOM_C) ~ AM_biomass_gkg + total_fun_gkg, data = SOM_13C_T0))) #normal
+summary(aov(log(MAOM_C) ~ AM_biomass_gkg + total_fun_gkg, data = SOM_13C_T0)) #not sig
+
+shapiro.test(resid(lm(MAOM_N ~ AM_biomass_gkg + total_fun_gkg, data = SOM_13C_T0))) #not normal
+shapiro.test(resid(lm(log(MAOM_N) ~ AM_biomass_gkg + total_fun_gkg, data = SOM_13C_T0))) #normal
+summary(aov(log(MAOM_N) ~ AM_biomass_gkg + total_fun_gkg, data = SOM_13C_T0)) #not sig
+
+```
+
+
+# Fungi
+
+## AM Association 
+
+### By site
 
 ```{r AM presence}
 
@@ -2581,17 +2692,73 @@ ggsave('AM_hyph.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "t
        dpi = 300, #set resolution
        bg=NULL) #background from plot specifications
 
-shapiro.test(resid(lm(hyph_percent ~ Site, data = AMdata))) #check normality of residuals - normal
-summary(aov(hyph_percent ~ Site, data = AMdata)) #sig
-TukeyHSD(aov(hyph_percent ~ Site, data = AMdata)) #Flashes > Bick 1 & 2, Ambers > Bick 1
+shapiro.test(resid(lm(hyph_percent ~ Site_ID, data = AMdata))) #check normality of residuals - normal
+summary(aov(hyph_percent ~ Site_ID, data = AMdata)) #sig
+TukeyHSD(aov(hyph_percent ~ Site_ID, data = AMdata)) #Flashes > Bick 1 & 2, Ambers > Bick 1
 
 
 ```
 
-```{r AM vesicles}
+### By pH
+```{r AM assoc pH}
+
+#order variables
+SOM_13C_T0$pH_range <- factor(SOM_13C_T0$pH_range, levels = c("Alkaline", "Neutral", "Mildly Acidic", "Moderately Acidic"))
+
+#Hyphal presence boxplot
+ggplot(data = SOM_13C_T0, aes(x=pH_range, y=AM_hyph_per, fill=Site_ID)) + 
+	geom_boxplot() + 
+  scale_fill_manual(values = colors) + #define colors to use
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) + #change to %
+  my_theme +
+  #ggtitle("Hyphal Presence Across Sites") + #add a graph title
+  xlab("") + ylab("Presence of AM Hyphae (% of Root)") #define/change X and Y labels
+
+ggsave('AM_hyph_pH.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+shapiro.test(resid(lm(AM_hyph_per ~ pH + Site_ID, data = SOM_13C_T0))) #check normality of residuals - normal
+summary(aov(AM_hyph_per ~ pH + Site_ID, data = SOM_13C_T0)) #pH sig
+shapiro.test(resid(lm(AM_hyph_per ~ pH_range + Site_ID, data = SOM_13C_T0))) #check normality of residuals - normal
+summary(aov(AM_hyph_per ~ pH_range + Site_ID, data = SOM_13C_T0)) #pH sig
+TukeyHSD(aov(AM_hyph_per ~ pH_range + Site_ID, data = SOM_13C_T0)) #Moderately Acidic < Alkaline, Neutral, Mildly Acidic
+
+```
+
+```{r AM assoc pH}
+
+#Arbuscules boxplot
+ggplot(data = SOM_13C_T0, aes(x=pH_range, y=AM_arb_per, fill=Site_ID)) + 
+	geom_boxplot() + 
+  scale_fill_manual(values = colors) + #define colors to use
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) + #change to %
+  my_theme +
+  #ggtitle("Hyphal Presence Across Sites") + #add a graph title
+  xlab("") + ylab("Presence of AM Arbuscules (% of Root)") #define/change X and Y labels
+
+ggsave('AM_arb_pH.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+shapiro.test(resid(lm(AM_arb_per ~ pH + Site_ID, data = SOM_13C_T0))) #check normality of residuals - not normal but can't log inline, leave for now
+summary(aov(AM_arb_per ~ pH + Site_ID, data = SOM_13C_T0)) #pH sig
+
+shapiro.test(resid(lm(AM_arb_per ~ pH_range + Site_ID, data = SOM_13C_T0))) #check normality of residuals - not normal but can't log inline, leave for now
+summary(aov(AM_arb_per ~ pH_range + Site_ID, data = SOM_13C_T0)) #pH sig
+TukeyHSD(aov(AM_arb_per ~ pH_range + Site_ID, data = SOM_13C_T0)) #Moderately Acidic < Mildly Acidic
+
+```
+
+
+```{r AM vesicles pH}
 
 #Vesicles boxplot
-ggplot(data = AMdata, aes(x=Site_ID, y=Vesicle, fill=Site_ID)) + 
+ggplot(data = SOM_13C_T0, aes(x=pH_range, y=AM_ves_ct, fill=Site_ID)) + 
 	geom_boxplot() + 
   scale_fill_manual(values = colors) + #define colors to use
   #scale_y_continuous(labels = scales::percent_format(accuracy = 1)) + #change to %
@@ -2599,16 +2766,443 @@ ggplot(data = AMdata, aes(x=Site_ID, y=Vesicle, fill=Site_ID)) +
   #ggtitle("Hyphal Presence Across Sites") + #add a graph title
   xlab("") + ylab("AM Vesicles (Count)") #define/change X and Y labels
 
-ggsave('AM_ves.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+ggsave('AM_ves_pH.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
        path = "Figures", #save to folder
        width = 6, height = 4, units = "in", #set dimensions
        dpi = 300, #set resolution
        bg=NULL) #background from plot specifications
 
-shapiro.test(resid(lm(Vesicle ~ Site, data = AMdata))) #check normality of residuals - normal
-summary(aov(Vesicle ~ Site, data = AMdata)) #sig
-TukeyHSD(aov(Vesicle ~ Site, data = AMdata)) #Flashes > Bick 1 & 2, Ambers > Bick 1
+shapiro.test(resid(lm(AM_ves_ct ~ pH + Site_ID, data = SOM_13C_T0))) #check normality of residuals - normal
+summary(aov(AM_ves_ct ~ pH + Site_ID, data = SOM_13C_T0)) #pH sig
+shapiro.test(resid(lm(AM_ves_ct ~ pH_range + Site_ID, data = SOM_13C_T0))) #check normality of residuals - normal
+summary(aov(AM_ves_ct ~ pH_range + Site_ID, data = SOM_13C_T0)) #both site and pH sig
+TukeyHSD(aov(AM_ves_ct ~ pH_range + Site_ID, data = SOM_13C_T0)) #none
 
+
+```
+
+## HLD
+
+### By site
+
+```{r spores}
+
+#Spores boxplot
+ggplot(data = HLD, aes(x=Site_ID, y=spores_g, fill=Site_ID)) + 
+	geom_boxplot() + 
+  scale_fill_manual(values = colors) + #define colors to use
+  #scale_y_continuous(labels = scales::percent_format(accuracy = 1)) + #change to %
+  my_theme +
+  #ggtitle("Hyphal Presence Across Sites") + #add a graph title
+  xlab("") + ylab("Spores (Count/g soil)") #define/change X and Y labels
+
+ggsave('Spores.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+shapiro.test(resid(lm(spores_g ~ Site_ID, data = HLD))) #check normality of residuals - normal
+summary(aov(spores_g ~ Site_ID, data = HLD)) #not sig
+
+```
+
+```{r AM mm g}
+
+#AM HLD boxplot
+ggplot(data = HLD, aes(x=Site_ID, y=AM_mm_g, fill=Site_ID)) + 
+	geom_boxplot() + 
+  scale_fill_manual(values = colors) + #define colors to use
+  my_theme +
+  xlab("") + ylab("AM hyphal length density (mm/g soil)") #define/change X and Y labels
+
+ggsave('AM_HLD.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+shapiro.test(resid(lm(AM_mm_g ~ Site_ID, data = HLD))) #check normality of residuals - normal
+summary(aov(AM_mm_g ~ Site_ID, data = HLD)) #not sig
+
+```
+
+```{r other fungi mm g}
+
+#Other HLD boxplot
+ggplot(data = HLD, aes(x=Site_ID, y=other_mm_g, fill=Site_ID)) + 
+	geom_boxplot() + 
+  scale_fill_manual(values = colors) + #define colors to use
+  my_theme +
+  xlab("") + ylab("Non-AM hyphal length density (mm/g soil)") #define/change X and Y labels
+
+ggsave('other_HLD.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+shapiro.test(resid(lm(other_mm_g ~ Site_ID, data = HLD))) #check normality of residuals - normal
+summary(aov(other_mm_g ~ Site_ID, data = HLD)) #not sig
+
+```
+
+```{r AM length ratio}
+
+#Length ratio boxplot
+ggplot(data = HLD, aes(x=Site_ID, y=AM_fun_mm_ratio, fill=Site_ID)) + 
+	geom_boxplot() + 
+  scale_fill_manual(values = colors) + #define colors to use
+  my_theme + xlab("") + 
+  scale_y_continuous(name = expression("AM fungal: other fungal HLD ratio")) #change y axis
+  
+
+ggsave('AM_HLD_ratio.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+shapiro.test(resid(lm(AM_fun_mm_ratio ~ Site_ID, data = HLD))) #check normality of residuals - normal
+summary(aov(AM_fun_mm_ratio ~ Site_ID, data = HLD)) #not sig
+
+```
+
+
+```{r total fungal biomass}
+
+#Biomass boxplot
+ggplot(data = HLD, aes(x=Site_ID, y=total_fun_gkg, fill=Site_ID)) + 
+	geom_boxplot() + 
+  scale_fill_manual(values = colors) + #define colors to use
+  my_theme + xlab("") + 
+  scale_y_continuous(name = expression("Total fungal biomass (mg/kg soil)"), labels = multiply1000)  #change y axis, label
+
+ggsave('total_fun_biomass.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+shapiro.test(resid(lm(total_fun_gkg ~ Site_ID, data = HLD))) #check normality of residuals - normal
+summary(aov(total_fun_gkg ~ Site_ID, data = HLD)) #not sig
+
+```
+
+```{r AM fungal biomass}
+
+#Biomass boxplot
+ggplot(data = HLD, aes(x=Site_ID, y=AM_biomass_gkg, fill=Site_ID)) + 
+	geom_boxplot() + 
+  scale_fill_manual(values = colors) + #define colors to use
+  my_theme + xlab("") + 
+  scale_y_continuous(name = expression("AM fungal biomass (mg/kg soil)"), labels = multiply1000)  #change y axis, label
+  
+
+ggsave('AM_biomass.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+shapiro.test(resid(lm(AM_biomass_gkg ~ Site_ID, data = HLD))) #check normality of residuals - normal
+summary(aov(AM_biomass_gkg ~ Site_ID, data = HLD)) #not sig
+
+```
+
+```{r AM biomass ratio}
+
+#Biomass ratio boxplot
+ggplot(data = HLD, aes(x=Site_ID, y=AM_fun_g_ratio, fill=Site_ID)) + 
+	geom_boxplot() + 
+  scale_fill_manual(values = colors) + #define colors to use
+  my_theme + xlab("") + 
+  scale_y_continuous(name = expression("AM fungal: other fungal biomass ratio")) #change y axis
+  
+
+ggsave('AM_biomass_ratio.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+shapiro.test(resid(lm(AM_fun_g_ratio ~ Site_ID, data = HLD))) #check normality of residuals - normal
+summary(aov(AM_fun_g_ratio ~ Site_ID, data = HLD)) #not sig
+
+```
+
+```{r stacked fungal biomass}
+
+#stacked bar chart
+ggplot(data = fungal_mass, aes(x=Site_ID, y=g_biomass, fill=fungal_type)) + #use the fill part to set what you want to stack by
+  geom_bar(stat = "summary", add = "mean", width = 0.7, position="stack", colour="black") + #add mean bars with black outlines stacked by the fill variable
+  scale_fill_manual(values = colors, labels = c("AM fungi", "other fungi")) + #define colors to use
+  my_theme + xlab("") + 
+  scale_y_continuous(name = expression("Fungal biomass (mg/kg soil)"), labels = multiply1000)  #change y axis, label
+  
+
+ggsave('fungal_biomass_stacked.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+
+```
+
+### By pH
+
+```{r spores pH}
+
+#Spores boxplot
+ggplot(data = SOM_13C_T0, aes(x=pH_range, y=spores_g, fill=Site_ID)) + 
+	geom_boxplot() + 
+  scale_fill_manual(values = colors) + #define colors to use
+  #scale_y_continuous(labels = scales::percent_format(accuracy = 1)) + #change to %
+  my_theme +
+  #ggtitle("Hyphal Presence Across Sites") + #add a graph title
+  xlab("") + ylab("Spores (Count/g soil)") #define/change X and Y labels
+
+ggsave('Spores_pH.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+shapiro.test(resid(lm(spores_g ~ pH + Site_ID, data = SOM_13C_T0))) #check normality of residuals - normal
+summary(aov(spores_g ~ pH + Site_ID, data = SOM_13C_T0)) #not sig
+
+```
+
+```{r AM mm g pH}
+
+#AM HLD boxplot
+ggplot(data = SOM_13C_T0, aes(x=pH_range, y=AM_mm_g, fill=Site_ID)) + 
+	geom_boxplot() + 
+  scale_fill_manual(values = colors) + #define colors to use
+  my_theme +
+  xlab("") + ylab("AM hyphal length density (mm/g soil)") #define/change X and Y labels
+
+ggsave('AM_HLD_pH.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+shapiro.test(resid(lm(AM_mm_g ~ pH + Site_ID, data = SOM_13C_T0))) #check normality of residuals - normal
+summary(aov(AM_mm_g ~ pH + Site_ID, data = SOM_13C_T0)) #not sig
+
+```
+
+```{r other fungi mm g pH}
+
+#Other HLD boxplot
+ggplot(data = SOM_13C_T0, aes(x=pH_range, y=other_mm_g, fill=Site_ID)) + 
+	geom_boxplot() + 
+  scale_fill_manual(values = colors) + #define colors to use
+  my_theme +
+  xlab("") + ylab("Non-AM hyphal length density (mm/g soil)") #define/change X and Y labels
+
+ggsave('other_HLD_pH.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+shapiro.test(resid(lm(other_mm_g ~ pH + Site_ID, data = SOM_13C_T0))) #check normality of residuals - normal
+summary(aov(other_mm_g ~ pH + Site_ID, data = SOM_13C_T0)) #not sig
+
+```
+
+```{r AM length ratio pH, eval=FALSE}
+
+#Length ratio boxplot
+ggplot(data = HLD, aes(x=Site_ID, y=AM_fun_mm_ratio, fill=Site_ID)) + 
+	geom_boxplot() + 
+  scale_fill_manual(values = colors) + #define colors to use
+  my_theme + xlab("") + 
+  scale_y_continuous(name = expression("AM fungal: other fungal HLD ratio")) #change y axis
+  
+
+ggsave('AM_HLD_ratio.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+shapiro.test(resid(lm(AM_fun_mm_ratio ~ pH + Site_ID, data = SOM_13C_T0))) #check normality of residuals - normal
+summary(aov(AM_fun_mm_ratio ~ Site_ID, data = HLD)) #not sig
+
+```
+
+
+```{r total fungal biomass pH}
+
+#Biomass boxplot
+ggplot(data = SOM_13C_T0, aes(x=pH_range, y=total_fun_gkg, fill=Site_ID)) + 
+	geom_boxplot() + 
+  scale_fill_manual(values = colors) + #define colors to use
+  my_theme + xlab("") + 
+  scale_y_continuous(name = expression("Total fungal biomass (mg/kg soil)"), labels = multiply1000)  #change y axis, label
+
+ggsave('total_fun_biomass_pH.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+shapiro.test(resid(lm(total_fun_gkg ~ pH + Site_ID, data = SOM_13C_T0))) #check normality of residuals - normal
+summary(aov(total_fun_gkg ~ pH + Site_ID, data = SOM_13C_T0)) #not sig
+
+```
+
+```{r AM fungal biomass pH}
+
+#Biomass boxplot
+ggplot(data = SOM_13C_T0, aes(x=pH_range, y=AM_biomass_gkg, fill=Site_ID)) + 
+	geom_boxplot() + 
+  scale_fill_manual(values = colors) + #define colors to use
+  my_theme + xlab("") + 
+  scale_y_continuous(name = expression("AM fungal biomass (mg/kg soil)"), labels = multiply1000)  #change y axis, label
+  
+
+ggsave('AM_biomass_pH.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+shapiro.test(resid(lm(AM_biomass_gkg ~ pH + Site_ID, data = SOM_13C_T0))) #check normality of residuals - normal
+summary(aov(AM_biomass_gkg ~ pH + Site_ID, data = SOM_13C_T0)) #not sig
+
+```
+
+```{r AM biomass ratio pH, eval=FALSE}
+
+#Biomass ratio boxplot
+ggplot(data = HLD, aes(x=Site_ID, y=AM_fun_g_ratio, fill=Site_ID)) + 
+	geom_boxplot() + 
+  scale_fill_manual(values = colors) + #define colors to use
+  my_theme + xlab("") + 
+  scale_y_continuous(name = expression("AM fungal: other fungal biomass ratio")) #change y axis
+  
+
+ggsave('AM_biomass_ratio.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+shapiro.test(resid(lm(AM_fun_g_ratio ~ Site_ID, data = HLD))) #check normality of residuals - normal
+summary(aov(AM_fun_g_ratio ~ Site_ID, data = HLD)) #not sig
+
+```
+
+### Hyphal C
+
+```{r total hyph C site}
+
+#Biomass boxplot
+ggplot(data = SOM_13C_T0, aes(x=Site_ID, y=total_fun_C_mgkg, fill=Site_ID)) + 
+	geom_boxplot() + 
+  scale_fill_manual(values = colors) + #define colors to use
+  my_theme + xlab("") + 
+  scale_y_continuous(name = expression("Total fungal carbon (mg C/kg soil)"))  #change y axis, label
+  
+
+ggsave('totalfungal_C_site.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+shapiro.test(resid(lm(total_fun_C_mgkg ~ Site_ID, data = SOM_13C_T0))) #check normality of residuals - normal
+summary(aov(total_fun_C_mgkg ~ Site_ID, data = SOM_13C_T0)) #not sig
+
+```
+
+
+```{r AM hyph C site}
+
+#Biomass boxplot
+ggplot(data = SOM_13C_T0, aes(x=Site_ID, y=AM_C_mgkg, fill=Site_ID)) + 
+	geom_boxplot() + 
+  scale_fill_manual(values = colors) + #define colors to use
+  my_theme + xlab("") + 
+  scale_y_continuous(name = expression("AM fungal carbon (mg C/kg soil)"))  #change y axis, label
+  
+
+ggsave('AM_C_site.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+shapiro.test(resid(lm(AM_C_mgkg ~ Site_ID, data = SOM_13C_T0))) #check normality of residuals - normal
+summary(aov(AM_C_mgkg ~ Site_ID, data = SOM_13C_T0)) #not sig
+
+```
+
+
+```{r total hyph C pH}
+
+#Biomass boxplot
+ggplot(data = SOM_13C_T0, aes(x=pH_range, y=total_fun_C_mgkg, fill=Site_ID)) + 
+	geom_boxplot() + 
+  scale_fill_manual(values = colors) + #define colors to use
+  my_theme + xlab("") + 
+  scale_y_continuous(name = expression("Total fungal carbon (mg C/kg soil)"))  #change y axis, label
+  
+
+ggsave('totalfungal_C_pH.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+shapiro.test(resid(lm(total_fun_C_mgkg ~ pH + Site_ID, data = SOM_13C_T0))) #check normality of residuals - normal
+summary(aov(total_fun_C_mgkg ~ pH + Site_ID, data = SOM_13C_T0)) #not sig
+
+```
+
+
+```{r AM hyph C pH}
+
+#Biomass boxplot
+ggplot(data = SOM_13C_T0, aes(x=pH_range, y=AM_C_mgkg, fill=Site_ID)) + 
+	geom_boxplot() + 
+  scale_fill_manual(values = colors) + #define colors to use
+  my_theme + xlab("") + 
+  scale_y_continuous(name = expression("AM fungal carbon (mg C/kg soil)"))  #change y axis, label
+  
+
+ggsave('AM_C_pH.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+shapiro.test(resid(lm(AM_C_mgkg ~ pH + Site_ID, data = SOM_13C_T0))) #check normality of residuals - normal
+summary(aov(AM_C_mgkg ~ pH + Site_ID, data = SOM_13C_T0)) #not sig
+
+```
+
+
+```{r hyph C stacked}
+
+#stacked bar chart
+ggplot(data = fungal_C, aes(x=Site_ID, y=mg_C, fill=fungal_type)) + #use the fill part to set what you want to stack by
+  geom_bar(stat = "summary", add = "mean", width = 0.7, position="stack", colour="black") + #add mean bars with black outlines stacked by the fill variable
+  scale_fill_manual(values = colors, labels = c("AM fungi", "other fungi")) + #define colors to use
+  my_theme + xlab("") + 
+  scale_y_continuous(name = expression("Fungal biomass carbon (mg C/kg soil)"))  #change y axis, label
+  
+
+ggsave('fungal_C_stacked.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
 
 ```
 
@@ -2940,7 +3534,7 @@ SOM_13C_T0 %>%
 ggplot(aes(x=Site_ID, y=SOM_15N, fill=Site_ID)) + 
 	geom_boxplot() +
   scale_fill_manual(values=colors) + #define colors to use
-  scale_x_discrete(labels = c("Bickershaw U", "Bickershaw M", "Amberswood M", "Flashes M")) + #change x axis labels
+  #scale_x_discrete(labels = c("Bickershaw U", "Bickershaw M", "Amberswood M", "Flashes M")) + #change x axis labels
   #ggtitle("Rocks and Debris per site") + #add a graph title
   xlab("") + ylab(expression(""^15*"N in SOM")) + #define/change X and Y labels
   my_theme +
@@ -3221,9 +3815,6 @@ ggsave('12C_wks.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "t
 
 ```{r C resp mass overall}
 
-#multiply1000 <- function(x) {
- # return(x * 1000)}
-
 ggplot(data = resp_full, aes(x=Site_ID, y=mass_C, fill=Site_ID)) + 
 	geom_boxplot() + 
   scale_fill_manual(values = colors) + #define colors to use
@@ -3367,9 +3958,6 @@ ggsave('excess13C_wks.svg', #save plot name and type - can be "eps", "pdf", "jpe
 
 ```{r resp overall 13C mass}
 
-multiply1000 <- function(x) {
-return(x * 1000)
-}
 
 ggplot(data = resp_full, aes(x=Site_ID, y=mass_excess13C, fill=Site_ID)) + 
 	geom_boxplot() + 
