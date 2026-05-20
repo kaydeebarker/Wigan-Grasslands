@@ -66,11 +66,24 @@ summary_stats <- list(
 
 #Color palettes
 
-#color palette example using hex codes
-colors <- c("#84B699", "#EF8E45", "#BF876E", "#46A9B0")
-colors5 <- c("#84B699", "#EF8E45", "#BF876E", "#46A9B0", "azure")
-colors9 <- c("#84B699", "#EF8E45", "#BF876E", "#46A9B0", "azure", "#A1EBCF", "#FFBC7E", "#FFCAB1", "#61E9F2")
-colors11 <- c("#84B699", "#EF8E45", "#BF876E", "#46A9B0", "lightblue", "#61E9F2", "azure", "#FFCAB1", "#FFBC5F", "tan")
+#color palette using hex codes
+colors3 <- c("#84B699", "#EF8E45", "#46A9B0") #for 3 sites
+
+colors4 <- c("#84B699", "#EF8E45", "#BF876E", "#46A9B0") #for 4 sites
+
+colors5 <- c("#84B699", "#EF8E45", "#BF876E", "#46A9B0", "#fffdf9")
+
+colors6 <- c("#8ebf9f", "#c3d0c7", #for unmanaged vs managed
+             "#f28749", "#ffbc85", 
+             "#44a6a6", "#afeeeb")
+
+colors10 <- c("#7b887f", "#c25205", "#8d5744", "#00666a",  #for 4 UK survey sites vs 6 sites
+              "#8ebf9f", "#c3d0c7", 
+              "#f28749", "#ffbc85", 
+              "#44a6a6", "#afeeeb")
+
+colors13 <- c("#7b887f", "#8ebf9f", "#c3d0c7", "#c25205", "#f28749", "#ffbc85", "#00666a", "#44a6a6", "#afeeeb", "#8d5744", "#bf846f", "#bda59c", "#fffdf9")
+
 
 #color palette with gradient with 20 steps
 colors_ramp <- colorRampPalette(c("#84B699", "azure","#BF876E"))(25)
@@ -1005,7 +1018,7 @@ tm_basemap("OpenStreetMap", alpha = 0.9) +
   tm_shape(locations_sf, bbox = bbox) +
   tm_squares(size = 0.8, #create points, define shape and size
              plot.order = tm_plot_order("DATA"), #define order
-             fill = "Site_ID", fill.scale = tm_scale(values = colors9), #fill variable and colors
+             fill = "Site_ID", fill.scale = tm_scale(values = colors6), #fill variable and colors
              fill.legend = tm_legend(title = "Site", position = c("right", "top"))) + #legend
   tm_text("Site_ID", ymod = -0.8) #, xmod = 1) #set label locations
   
@@ -1210,7 +1223,7 @@ FTIR_long %>%
 ggplot(aes(x=Site, y=absorbance, fill=Site_ID)) + 
   geom_boxplot() +
   facet_wrap(~wavelength, scales = "free", nrow=2) + #create a separate plot for each site
-  scale_fill_manual(values=colors9) + #define colors to use
+  scale_fill_manual(values=colors4) + #define colors to use
   #ggtitle("Soil carbon compounds per site") + #add a graph title
   xlab("Site") + ylab(expression("Absorbance (cm"^-1*")")) + #define/change X and Y labels
   theme(#axis.text.x = element_text(angle=90), #set angle of variable labels
@@ -1248,8 +1261,8 @@ autoplot(FTIR_pca, data = FTIR_standardized, colour = 'Site_ID', fill = 'Site_ID
          loadings.label = TRUE, loadings.label.size = 3,
          frame = TRUE, frame.type = 'norm', frame.colour = 'Site_ID', frame.fill = 'Site_ID',
          shape = 21) +
-  scale_color_manual(values = colors) +
-  scale_fill_manual(values = colors) +
+  scale_color_manual(values = colors4) +
+  scale_fill_manual(values = colors4) +
   my_theme +
   ggtitle("Principal Components of FTIR Wavelengths Across Sites") 
 
@@ -1272,7 +1285,7 @@ ggsave('FTIR_PCA.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "
 #SOM C bar chart with error bars
 ggplot(data = summary_SOM_Kimpton, aes(x=Site, y=SOM_C_mean, fill=Site)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
-  scale_fill_manual(values=colors) + #define colors to use
+  scale_fill_manual(values=colors4) + #define colors to use
   geom_errorbar(aes(ymin=SOM_C_mean-SOM_C_se, ymax=SOM_C_mean+SOM_C_se),
   color = "grey10", width = 0.7, position = "dodge") + 
   ggtitle("Soil Organic Matter C per site") + #add a graph title
@@ -1293,7 +1306,7 @@ ggsave('SOC_Kimpton.svg', #save plot name and type - can be "eps", "pdf", "jpeg"
 #SOM C bar chart with error bars per hectare
 ggplot(data = summary_SOM_Kimpton, aes(x=Site, y=C_Tha_mean, fill=Site)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
-  scale_fill_manual(values=colors) + #define colors to use
+  scale_fill_manual(values=colors4) + #define colors to use
   geom_errorbar(aes(ymin=(C_Tha_mean-C_Tha_se), ymax=(C_Tha_mean+C_Tha_se)),
   color = "grey10", width = 0.7, position = "dodge") + 
   scale_y_continuous(breaks = pretty(c(0,300), n = 6)) + #set limits and change number of tick marks on y axis
@@ -1315,7 +1328,7 @@ ggsave('SOC_ha_Kimpton.svg', #save plot name and type - can be "eps", "pdf", "jp
 #SOM N bar chart with error bars
 ggplot(data = summary_SOM_Kimpton, aes(x=Site, y=SOM_N_mean, fill=Site)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
-  scale_fill_manual(values=colors) + #define colors to use
+  scale_fill_manual(values=colors4) + #define colors to use
   geom_errorbar(aes(ymin=SOM_N_mean-SOM_N_se, ymax=SOM_N_mean+SOM_N_se),
   color = "grey10", width = 0.7, position = "dodge") + 
   ggtitle("Soil Organic Matter N per site") + #add a graph title
@@ -1336,7 +1349,7 @@ ggsave('SOM_N_Kimpton.svg', #save plot name and type - can be "eps", "pdf", "jpe
 #SOM CN boxplot
 ggplot(data = SOM_Kimpton2) + 
 	geom_boxplot(aes(x=Site, y=SOM_CN, fill=Site)) +
-  scale_fill_manual(values=colors) + #define colors to use
+  scale_fill_manual(values=colors4) + #define colors to use
   ggtitle("Soil Organic Matter C:N per site") + #add a graph title
   xlab("Site") + ylab("C:N") + #define/change X and Y labels
   my_theme
@@ -1355,7 +1368,7 @@ ggsave('SOM_CN_Kimpton.svg', #save plot name and type - can be "eps", "pdf", "jp
 #combined boxplots with error bars
 ggplot(data = SOM_Kimpton) + 
 	geom_boxplot(aes(x=Site, y=C_gkg, fill=Fraction)) +
-  scale_fill_manual(values=colors) + #define colors to use
+  scale_fill_manual(values=colors4) + #define colors to use
   ggtitle("Soil Organic Matter C per site") + #add a graph title
   xlab("Site") + ylab("C (g/kg)") + #define/change X and Y labels
   my_theme
@@ -1374,7 +1387,7 @@ ggsave('SOMC_all_Kimpton.svg', #save plot name and type - can be "eps", "pdf", "
 #combined boxplots with error bars
 ggplot(data = SOM_Kimpton) + 
 	geom_boxplot(aes(x=Site, y=N_gkg, fill=Fraction)) +
-  scale_fill_manual(values=colors) + #define colors to use
+  scale_fill_manual(values=colors4) + #define colors to use
   ggtitle("Soil Organic Matter N per site") + #add a graph title
   xlab("Site") + ylab("N (g/kg)") + #define/change X and Y labels
   my_theme
@@ -1393,7 +1406,7 @@ ggsave('SOM_N_all_Kimpton.svg', #save plot name and type - can be "eps", "pdf", 
 #POM C bar chart with error bars
 ggplot(data = summary_SOM_Kimpton, aes(x=Site, y=POM_C_mean, fill=Site)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
-  scale_fill_manual(values=colors) + #define colors to use
+  scale_fill_manual(values=colors4) + #define colors to use
   geom_errorbar(aes(ymin=POM_C_mean-POM_C_se, ymax=POM_C_mean+POM_C_se),
   color = "grey10", width = 0.7, position = "dodge") + 
   ggtitle("Particulate Organic Matter C per site") + #add a graph title
@@ -1414,7 +1427,7 @@ ggsave('POM_Cbar_Kimpton.svg', #save plot name and type - can be "eps", "pdf", "
 #POM N bar chart with error bars
 ggplot(data = summary_SOM_Kimpton, aes(x=Site, y=POM_N_mean, fill=Site)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
-  scale_fill_manual(values=colors) + #define colors to use
+  scale_fill_manual(values=colors4) + #define colors to use
   geom_errorbar(aes(ymin=POM_N_mean-POM_N_se, ymax=POM_N_mean+POM_N_se),
   color = "grey10", width = 0.7, position = "dodge") + 
   ggtitle("Particulate Organic Matter N per site") + #add a graph title
@@ -1435,7 +1448,7 @@ ggsave('POM_Nbar_Kimpton.svg', #save plot name and type - can be "eps", "pdf", "
 #MAOM C bar chart with error bars
 ggplot(data = summary_SOM_Kimpton, aes(x=Site, y=MAOM_C_mean, fill=Site)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
-  scale_fill_manual(values=colors) + #define colors to use
+  scale_fill_manual(values=colors4) + #define colors to use
   geom_errorbar(aes(ymin=MAOM_C_mean-MAOM_C_se, ymax=MAOM_C_mean+MAOM_C_se),
   color = "grey10", width = 0.7, position = "dodge") + 
   ggtitle("Mineral Associated Organic Matter C per site") + #add a graph title
@@ -1456,7 +1469,7 @@ ggsave('MAOM_Cbar_Kimpton.svg', #save plot name and type - can be "eps", "pdf", 
 #MAOM N bar chart with error bars
 ggplot(data = summary_SOM_Kimpton, aes(x=Site, y=MAOM_N_mean, fill=Site)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
-  scale_fill_manual(values=colors) + #define colors to use
+  scale_fill_manual(values=colors4) + #define colors to use
   geom_errorbar(aes(ymin=MAOM_N_mean-MAOM_N_se, ymax=MAOM_N_mean+MAOM_N_se),
   color = "grey10", width = 0.7, position = "dodge") + 
   ggtitle("Mineral Associated Organic Matter N per site") + #add a graph title
@@ -1477,7 +1490,7 @@ ggsave('MAOM_Nbar_Kimpton.svg', #save plot name and type - can be "eps", "pdf", 
 #fMAOM C box chart
 ggplot(data = SOM_Kimpton2, aes(x=Site, y=fMAOM_C, fill=Site)) + 
 	geom_boxplot() +
-  scale_fill_manual(values=colors) + #define colors to use
+  scale_fill_manual(values=colors4) + #define colors to use
   ggtitle("fMAOM C per site") + #add a graph title
   xlab("Site") + ylab("Portion of SOC stored in MAOM") + #define/change X and Y labels
   scale_y_continuous(labels = scales::percent) + #change y axis to percent
@@ -1497,7 +1510,7 @@ ggsave('fMAOM_C_Kimpton.svg', #save plot name and type - can be "eps", "pdf", "j
 #fMAOM N box chart
 ggplot(data = SOM_Kimpton2, aes(x=Site, y=fMAOM_N, fill=Site)) + 
 	geom_boxplot() +
-  scale_fill_manual(values=colors) + #define colors to use
+  scale_fill_manual(values=colors4) + #define colors to use
   ggtitle("fMAOM N per site") + #add a graph title
   xlab("Site") + ylab("Portion of SOC stored in MAOM") + #define/change X and Y labels
   scale_y_continuous(labels = scales::percent) + #change y axis to percent
@@ -1524,7 +1537,7 @@ summary_SOM_13C %>%
   filter(Fraction == "SOM" & Incubation_T == 0) %>% #filter for SOM and incubation 0
 ggplot(aes(x=Site_ID, y=C_gkg_mean, fill=Site_ID)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
-  scale_fill_manual(values=colors) + #define colors to use
+  scale_fill_manual(values=colors4) + #define colors to use
   geom_errorbar(aes(ymin=C_gkg_mean-C_gkg_se, ymax=C_gkg_mean+C_gkg_se),
   color = "grey10", width = 0.7, position = "dodge") + 
   #ggtitle("Soil Organic Matter C per site") + #add a graph title
@@ -1547,7 +1560,7 @@ summary_SOM_13C %>%
   filter(Fraction == "SOM" & Incubation_T == 0) %>% #filter for SOM and incubation 0
 ggplot(aes(x=Site_ID, y=C_kgm2_7cm_mean, fill=Site_ID)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
-  scale_fill_manual(values=colors) + #define colors to use
+  scale_fill_manual(values=colors4) + #define colors to use
   geom_errorbar(aes(ymin=C_kgm2_7cm_mean-C_kgm2_7cm_se, 
                     ymax=C_kgm2_7cm_mean+C_kgm2_7cm_se),
   color = "grey10", width = 0.7, position = "dodge") + 
@@ -1571,7 +1584,7 @@ summary_SOM_13C %>%
   filter(Fraction == "SOM" & Incubation_T == 0) %>% #filter for SOM and incubation 0
 ggplot(aes(x=Site_ID, y=N_gkg_mean, fill=Site_ID)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
-  scale_fill_manual(values=colors) + #define colors to use
+  scale_fill_manual(values=colors4) + #define colors to use
   geom_errorbar(aes(ymin=N_gkg_mean-N_gkg_se, ymax=N_gkg_mean+N_gkg_se),
   color = "grey10", width = 0.7, position = "dodge") + 
   ggtitle("Soil Organic Matter N per site") + #add a graph title
@@ -1593,7 +1606,7 @@ ggsave('SOM_N_KB.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "
 #SOM CN boxplot
 ggplot(data = SOM_13C) + 
 	geom_boxplot(aes(x=Site_ID, y=C_N, fill=Site_ID)) +
-  scale_fill_manual(values=colors) + #define colors to use
+  scale_fill_manual(values=colors4) + #define colors to use
   ggtitle("Soil Organic Matter C:N per site") + #add a graph title
   xlab("Site") + ylab("C:N") + #define/change X and Y labels
   my_theme
@@ -1615,7 +1628,7 @@ ggsave('SOM_CN_KB.svg', #save plot name and type - can be "eps", "pdf", "jpeg", 
 SOM_13C %>%
 ggplot() + 
 	geom_boxplot(aes(x=Site_ID, y=C_gkg, fill=Fraction)) +
-  scale_fill_manual(values=colors) + #define colors to use
+  scale_fill_manual(values=colors4) + #define colors to use
   ggtitle("Soil Organic Matter C per site") + #add a graph title
   xlab("Site") + ylab("C (g/kg)") + #define/change X and Y labels
   my_theme
@@ -1635,7 +1648,7 @@ ggsave('SOMC_all_KB.svg', #save plot name and type - can be "eps", "pdf", "jpeg"
 SOM_13C %>%
 ggplot() + 
 	geom_boxplot(aes(x=Site_ID, y=N_gkg, fill=Fraction)) +
-  scale_fill_manual(values=colors) + #define colors to use
+  scale_fill_manual(values=colors4) + #define colors to use
   ggtitle("Soil Organic Matter N per site") + #add a graph title
   xlab("Site") + ylab("N (g/kg)") + #define/change X and Y labels
   my_theme
@@ -1654,7 +1667,7 @@ ggsave('SOM_N_all_KB.svg', #save plot name and type - can be "eps", "pdf", "jpeg
 #POM C bar chart with error bars
 ggplot(data = summary_SOM_13C_T0, aes(x=Site_ID, y=POM_C_mean, fill=Site_ID)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
-  scale_fill_manual(values=colors) + #define colors to use
+  scale_fill_manual(values=colors4) + #define colors to use
   geom_errorbar(aes(ymin=POM_C_mean-POM_C_se, ymax=POM_C_mean+POM_C_se),
   color = "grey10", width = 0.7, position = "dodge") + 
   ggtitle("Particulate Organic Matter C per site") + #add a graph title
@@ -1675,7 +1688,7 @@ ggsave('POM_Cbar_KB.svg', #save plot name and type - can be "eps", "pdf", "jpeg"
 #POM N bar chart with error bars
 ggplot(data = summary_SOM_13C_T0, aes(x=Site_ID, y=POM_N_mean, fill=Site_ID)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
-  scale_fill_manual(values=colors) + #define colors to use
+  scale_fill_manual(values=colors4) + #define colors to use
   geom_errorbar(aes(ymin=POM_N_mean-POM_N_se, ymax=POM_N_mean+POM_N_se),
   color = "grey10", width = 0.7, position = "dodge") + 
   ggtitle("Particulate Organic Matter N per site") + #add a graph title
@@ -1696,7 +1709,7 @@ ggsave('POM_Nbar_KB.svg', #save plot name and type - can be "eps", "pdf", "jpeg"
 #MAOM C bar chart with error bars
 ggplot(data = summary_SOM_13C_T0, aes(x=Site_ID, y=MAOM_C_mean, fill=Site_ID)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
-  scale_fill_manual(values=colors) + #define colors to use
+  scale_fill_manual(values=colors4) + #define colors to use
   geom_errorbar(aes(ymin=MAOM_C_mean-MAOM_C_se, ymax=MAOM_C_mean+MAOM_C_se),
   color = "grey10", width = 0.7, position = "dodge") + 
   ggtitle("Mineral Associated Organic Matter C per site") + #add a graph title
@@ -1717,7 +1730,7 @@ ggsave('MAOM_Cbar_KB.svg', #save plot name and type - can be "eps", "pdf", "jpeg
 #MAOM N bar chart with error bars
 ggplot(data = summary_SOM_13C_T0, aes(x=Site_ID, y=MAOM_N_mean, fill=Site_ID)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
-  scale_fill_manual(values=colors) + #define colors to use
+  scale_fill_manual(values=colors4) + #define colors to use
   geom_errorbar(aes(ymin=MAOM_N_mean-MAOM_N_se, ymax=MAOM_N_mean+MAOM_N_se),
   color = "grey10", width = 0.7, position = "dodge") + 
   ggtitle("Mineral Associated Organic Matter N per site") + #add a graph title
@@ -1738,7 +1751,7 @@ ggsave('MAOM_Nbar_KB.svg', #save plot name and type - can be "eps", "pdf", "jpeg
 #fMAOM C box chart
 ggplot(data = SOM_13C_T0, aes(x=Site_ID, y=fMAOM_C, fill=Site_ID)) + 
 	geom_boxplot() +
-  scale_fill_manual(values=colors) + #define colors to use
+  scale_fill_manual(values=colors4) + #define colors to use
   ggtitle("fMAOM C per site") + #add a graph title
   xlab("Site") + ylab("Portion of SOC stored in MAOM") + #define/change X and Y labels
   scale_y_continuous(labels = scales::percent) + #change y axis to percent
@@ -1758,7 +1771,7 @@ ggsave('fMAOM_C_KB.svg', #save plot name and type - can be "eps", "pdf", "jpeg",
 #fMAOM N box chart
 ggplot(data = SOM_13C_T0, aes(x=Site_ID, y=fMAOM_N, fill=Site_ID)) + 
 	geom_boxplot() +
-  scale_fill_manual(values=colors) + #define colors to use
+  scale_fill_manual(values=colors4) + #define colors to use
   ggtitle("fMAOM N per site") + #add a graph title
   xlab("Site") + ylab("Portion of SON stored in MAOM") + #define/change X and Y labels
   scale_y_continuous(labels = scales::percent) + #change y axis to percent
@@ -1780,7 +1793,7 @@ ggsave('fMAOM_N_KB.svg', #save plot name and type - can be "eps", "pdf", "jpeg",
 SOM_multiyr %>%
 ggplot() + 
 	geom_boxplot(aes(x=factor(Sample_year), y=SOM_C_kgm2_7cm, fill=Site)) +
-  scale_fill_manual(values=colors9) + #define colors to use
+  scale_fill_manual(values=colors6) + #define colors to use
   #ggtitle("Soil Organic Matter C across the UK") + #add a graph title
   xlab("") + ylab(expression("SOC (kg/m"^2*" in top 7cm)")) + #define/change X and Y labels
   scale_x_discrete(labels = c("2023", "2026")) + #change labels
@@ -1800,7 +1813,7 @@ ggsave('SOC_years_site.svg', #save plot name and type - can be "eps", "pdf", "jp
 SOM_multiyr %>%
 ggplot() + 
 	geom_boxplot(aes(x=factor(Sample_year), y=SOM_C_kgm2_7cm, fill=Site_ID)) +
-  scale_fill_manual(values=colors9) + #define colors to use
+  scale_fill_manual(values=colors6) + #define colors to use
   #ggtitle("Soil Organic Matter C across the UK") + #add a graph title
   xlab("") + ylab(expression("SOC (kg/m"^2*" in top 7cm)")) + #define/change X and Y labels
   scale_x_discrete(labels = c("2023", "2026")) + #change labels
@@ -1820,7 +1833,7 @@ ggsave('SOC_years.svg', #save plot name and type - can be "eps", "pdf", "jpeg", 
 SOM_multiyr %>%
 ggplot() + 
 	geom_boxplot(aes(x=factor(Sample_year), y=SOM_perC, fill=Site_ID)) +
-  scale_fill_manual(values=colors9) + #define colors to use
+  scale_fill_manual(values=colors6) + #define colors to use
   #ggtitle("Soil Organic Matter C across the UK") + #add a graph title
   xlab("") + ylab(expression("SOM % C")) + #define/change X and Y labels
   scale_x_discrete(labels = c("2023", "2026")) + #change labels
@@ -1841,7 +1854,7 @@ ggsave('SOC_per_years.svg', #save plot name and type - can be "eps", "pdf", "jpe
 SOM_multiyr %>%
 ggplot() + 
 	geom_boxplot(aes(x=factor(Sample_year), y=POM_C_kgm2_7cm, fill=Site_ID)) +
-  scale_fill_manual(values=colors9) + #define colors to use
+  scale_fill_manual(values=colors6) + #define colors to use
   #ggtitle("Soil Organic Matter C across the UK") + #add a graph title
   xlab("") + ylab(expression("POM-C (kg/m"^2*" in top 7cm)")) + #define/change X and Y labels
   scale_x_discrete(labels = c("2023", "2026")) + #change labels
@@ -1861,7 +1874,7 @@ ggsave('POMC_years.svg', #save plot name and type - can be "eps", "pdf", "jpeg",
 SOM_multiyr %>%
 ggplot() + 
 	geom_boxplot(aes(x=factor(Sample_year), y=POM_perC, fill=Site_ID)) +
-  scale_fill_manual(values=colors9) + #define colors to use
+  scale_fill_manual(values=colors6) + #define colors to use
   #ggtitle("Soil Organic Matter C across the UK") + #add a graph title
   xlab("") + ylab(expression("POM % C")) + #define/change X and Y labels
   scale_x_discrete(labels = c("2023", "2026")) + #change labels
@@ -1883,7 +1896,7 @@ ggsave('POMC_per_years.svg', #save plot name and type - can be "eps", "pdf", "jp
 SOM_multiyr %>%
 ggplot() + 
 	geom_boxplot(aes(x=factor(Sample_year), y=MAOM_C_kgm2_7cm, fill=Site_ID)) +
-  scale_fill_manual(values=colors9) + #define colors to use
+  scale_fill_manual(values=colors6) + #define colors to use
   #ggtitle("Soil Organic Matter C across the UK") + #add a graph title
   xlab("") + ylab(expression("MAOM-C (kg/m"^2*" in top 7cm)")) + #define/change X and Y labels
   scale_x_discrete(labels = c("2023", "2026")) + #change labels
@@ -1903,7 +1916,7 @@ ggsave('MAOMC_years.svg', #save plot name and type - can be "eps", "pdf", "jpeg"
 SOM_multiyr %>%
 ggplot() + 
 	geom_boxplot(aes(x=factor(Sample_year), y=MAOM_perC, fill=Site_ID)) +
-  scale_fill_manual(values=colors9) + #define colors to use
+  scale_fill_manual(values=colors6) + #define colors to use
   #ggtitle("Soil Organic Matter C across the UK") + #add a graph title
   xlab("") + ylab(expression("MAOM % C")) + #define/change X and Y labels
   scale_x_discrete(labels = c("2023", "2026")) + #change labels
@@ -1925,7 +1938,7 @@ ggsave('MAOMC_per_years.svg', #save plot name and type - can be "eps", "pdf", "j
 SOM_multiyr %>%
 ggplot() + 
 	geom_boxplot(aes(x=factor(Sample_year), y=fMAOM_C, fill=Site_ID)) +
-  scale_fill_manual(values=colors9) + #define colors to use
+  scale_fill_manual(values=colors6) + #define colors to use
   #ggtitle("Soil Organic Matter C across the UK") + #add a graph title
   xlab("") + ylab(expression("Portion of SOC stored in MAOM")) + #define/change X and Y labels
   scale_x_discrete(labels = c("2023", "2026")) + #change labels
@@ -1946,7 +1959,7 @@ ggsave('fMAOMC_years.svg', #save plot name and type - can be "eps", "pdf", "jpeg
 SOM_multiyr %>%
 ggplot() + 
 	geom_boxplot(aes(x=factor(Sample_year), y=fMAOM_N, fill=Site_ID)) +
-  scale_fill_manual(values=colors9) + #define colors to use
+  scale_fill_manual(values=colors6) + #define colors to use
   #ggtitle("Soil Organic Matter C across the UK") + #add a graph title
   xlab("") + ylab(expression("Portion of SON stored in MAOM")) + #define/change X and Y labels
   scale_x_discrete(labels = c("2023", "2026")) + #change labels
@@ -1968,7 +1981,7 @@ ggsave('fMAOMN_years.svg', #save plot name and type - can be "eps", "pdf", "jpeg
 #SOM C bar chart with error bars
 ggplot(data = summary_UKsoils, aes(x=vegetation, y=TotalC_mean, fill=vegetation)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
-  scale_fill_manual(values=colors9) + #define colors to use
+  scale_fill_manual(values=colors6) + #define colors to use
   geom_errorbar(aes(ymin=TotalC_mean-TotalC_se, 
                     ymax=TotalC_mean+TotalC_se),
   color = "grey10", width = 0.7, position = "dodge") + 
@@ -1993,7 +2006,7 @@ soilC_compare %>%
   filter(Sample_year != 2023) %>%
 ggplot() + 
 	geom_boxplot(aes(x=vegetation, y=TotalC, fill=vegetation)) +
-  scale_fill_manual(values=colors11) + #define colors to use
+  scale_fill_manual(values=colors10) + #define colors to use
   ggtitle("Soil Organic Matter C across the UK") + #add a graph title
   xlab("") + ylab(expression("SOC (kg/m"^2*" in top 7cm)")) + #define/change X and Y labels
   scale_x_discrete(labels = c("", "", "", "", "", "", "", "","","","")) + #remove vegetation labels from x axis
@@ -2014,7 +2027,7 @@ soilC_compare %>%
   #filter(Sample_year != 2023) %>%
 ggplot() + 
 	geom_boxplot(aes(x=type, y=TotalC, fill=vegetation)) +
-  scale_fill_manual(values=colors11) + #define colors to use
+  scale_fill_manual(values=colors10) + #define colors to use
   ggtitle("Soil Organic Matter C across the UK") + #add a graph title
   xlab("") + ylab(expression("SOC (kg/m"^2*" in top 7cm)")) + #define/change X and Y labels
   scale_x_discrete(labels = c("Unimproved Grasslands", "Restored Grasslands")) + #remove vegetation labels from x axis
@@ -2034,7 +2047,7 @@ ggsave('SOC_comparison2_2026.svg', #save plot name and type - can be "eps", "pdf
 
 ggplot(data = soilC_compare) + 
 	geom_boxplot(aes(x=type, y=POM_C, fill=vegetation)) +
-  scale_fill_manual(values=colors11) + #define colors to use
+  scale_fill_manual(values=colors10) + #define colors to use
   #ggtitle("Particulate Organic Matter C across the UK") + #add a graph title
   xlab("") + ylab(expression("POM-C (kg/m"^2*" in top 7cm)")) + #define/change X and Y labels
   scale_x_discrete(labels = c("Unimproved Grasslands", "Restored Grasslands")) + #remove vegetation labels from x axis
@@ -2054,7 +2067,7 @@ ggsave('POM-C_comparison_2026.svg', #save plot name and type - can be "eps", "pd
 
 ggplot(data = soilC_compare) + 
 	geom_boxplot(aes(x=type, y=MAOM_C, fill=vegetation)) +
-  scale_fill_manual(values=colors11) + #define colors to use
+  scale_fill_manual(values=colors10) + #define colors to use
   #ggtitle("Mineral Associated Organic Matter C across the UK") + #add a graph title
   xlab("") + ylab(expression("C in the <45um fraction (kg/m"^2*" in top 7cm)")) + #define/change X and Y labels
   scale_x_discrete(labels = c("Unimproved Grasslands", "Restored Grasslands")) + #remove vegetation labels from x axis
@@ -2186,7 +2199,7 @@ ggplot(LRR_SOM_C, aes(y=Site, x=LRR_SOM_perC, fill=Site, color=Site)) +
                     xmax=predict(lm(LRR_SOM_perC ~ Site, data = LRR_SOM_C), 
                                  interval = "confidence")[,3]),
                 width=0.2) +
-  scale_color_manual(values = colors) + scale_fill_manual(values = colors) +
+  scale_color_manual(values = colors3) + scale_fill_manual(values = colors3) +
   #ggtitle("Log Response Ratio of SOM %C for Hay Cutting vs Unmanaged") +
   ylab("") + xlab("Log Response Ratio of SOM %C") +
   my_theme
@@ -2212,7 +2225,7 @@ ggplot(LRR_SOM_C, aes(y=Site, x=LRR_SOM_CTha, fill=Site, color=Site)) +
                     xmax=predict(lm(LRR_SOM_CTha ~ Site, data = LRR_SOM_C), 
                                  interval = "confidence")[,3]),
                 width=0.2) +
-  scale_color_manual(values = colors) + scale_fill_manual(values = colors) +
+  scale_color_manual(values = colors3) + scale_fill_manual(values = colors3) +
   #ggtitle("Log Response Ratio of SOM C in T ha for Hay Cutting vs Unmanaged") +
   ylab("") + xlab("Log Response Ratio of SOM C in T ha") +
   my_theme
@@ -2264,7 +2277,7 @@ ggplot(LRR_POM_C, aes(y=Site, x=LRR_POM_perC, fill=Site, color=Site)) +
                     xmax=predict(lm(LRR_POM_perC ~ Site, data = LRR_POM_C), 
                                  interval = "confidence")[,3]),
                 width=0.2) +
-  scale_color_manual(values = colors) + scale_fill_manual(values = colors) +
+  scale_color_manual(values = colors3) + scale_fill_manual(values = colors3) +
   #ggtitle("Log Response Ratio of SOM %C for Hay Cutting vs Unmanaged") +
   scale_x_continuous(breaks = c(-1, -0.5, 0, 0.5, 1)) + #set specific tick marks on x axis
   ylab("") + xlab("Log Response Ratio of POM %C") +
@@ -2318,7 +2331,7 @@ ggplot(LRR_MAOM_C, aes(y=Site, x=LRR_MAOM_perC, fill=Site, color=Site)) +
                     xmax=predict(lm(LRR_MAOM_perC ~ Site, data = LRR_MAOM_C), 
                                  interval = "confidence")[,3]),
                 width=0.2) +
-  scale_color_manual(values = colors) + scale_fill_manual(values = colors) +
+  scale_color_manual(values = colors3) + scale_fill_manual(values = colors3) +
   #ggtitle("Log Response Ratio of SOM %C for Hay Cutting vs Unmanaged") +
   scale_x_continuous(breaks = c(-1, -0.5, 0, 0.5, 1)) + #set specific tick marks on x axis
   ylab("") + xlab("Log Response Ratio of MAOM %C") +
@@ -2550,7 +2563,7 @@ TukeyHSD(aov(MAOM_C ~ pH_range + Site, data = SOM_13C_T0)) #acidic lower
 ggplot(data = SOM_13C_T0, aes(x=pH, y=SOM_C)) + 
   geom_point(aes(color = factor(Site_ID))) + #add points to plot
   geom_smooth(method="lm", se=TRUE, color=plotline_color, fill=fill_color) +
-  scale_color_manual(values = colors) + #define colors to use
+  scale_color_manual(values = colors4) + #define colors to use
   my_theme +
   xlab("pH") + ylab("SOM-C (g C/kg soil)") #define/change X and Y labels
 
@@ -2568,7 +2581,7 @@ ggsave('SOM_C_bypH.svg', #save plot name and type - can be "eps", "pdf", "jpeg",
 ggplot(data = SOM_13C_T0, aes(x=pH, y=POM_C)) + 
   geom_point(aes(color = factor(Site_ID))) + #add points to plot
   geom_smooth(method="lm", se=TRUE, color=plotline_color, fill=fill_color) +
-  scale_color_manual(values = colors) + #define colors to use
+  scale_color_manual(values = colors4) + #define colors to use
   my_theme +
   xlab("pH") + ylab("POM-C (g C/kg soil)") #define/change X and Y labels
 
@@ -2586,7 +2599,7 @@ ggsave('POM_C_bypH.svg', #save plot name and type - can be "eps", "pdf", "jpeg",
 ggplot(data = SOM_13C_T0, aes(x=pH, y=MAOM_C)) + 
   geom_point(aes(color = factor(Site_ID))) + #add points to plot
   geom_smooth(method="lm", se=TRUE, color=plotline_color, fill=fill_color) +
-  scale_color_manual(values = colors) + #define colors to use
+  scale_color_manual(values = colors4) + #define colors to use
   my_theme +
   xlab("pH") + ylab("MAOM-C (g C/kg soil)") #define/change X and Y labels
 
@@ -2675,7 +2688,7 @@ summary(aov(log(MAOM_C) ~ AM_hyph_per + AM_arb_per + AM_ves_ct, data = SOM_13C_T
 ggplot(data = SOM_13C_T0, aes(x=AM_ves_ct, y=POM_C)) + 
   geom_point(aes(color = factor(Site_ID))) + #add points to plot
   geom_smooth(method="lm", se=TRUE, color=plotline_color, fill=fill_color) +
-  scale_color_manual(values = colors) + #define colors to use
+  scale_color_manual(values = colors4) + #define colors to use
   my_theme +
   #ggtitle("Hyphal Presence Across Sites") + #add a graph title
   xlab("AM Vesicles (Count)") + ylab("POM-C (g C/kg soil)") #define/change X and Y labels
@@ -2694,7 +2707,7 @@ ggsave('POM_C_byAMvesicles.svg', #save plot name and type - can be "eps", "pdf",
 ggplot(data = SOM_13C_T0, aes(x=AM_hyph_per, y=POM_N)) + 
   geom_point(aes(color = factor(Site_ID))) + #add points to plot
   geom_smooth(method="lm", se=TRUE, color=plotline_color, fill=fill_color) +
-  scale_color_manual(values = colors) + #define colors to use
+  scale_color_manual(values = colors4) + #define colors to use
   scale_x_continuous(labels = scales::percent_format(accuracy = 1)) + #change to %
   my_theme +
   #ggtitle("Hyphal Presence Across Sites") + #add a graph title
@@ -2783,7 +2796,7 @@ summary(aov(log(MAOM_N) ~ AM_biomass_gkg + total_fun_gkg, data = SOM_13C_T0)) #n
 #Hyphal presence boxplot
 ggplot(data = AMdata, aes(x=Site_ID, y=hyph_percent, fill=Site_ID)) + 
 	geom_boxplot() + 
-  scale_fill_manual(values = colors) + #define colors to use
+  scale_fill_manual(values = colors4) + #define colors to use
   scale_y_continuous(labels = scales::percent_format(accuracy = 1)) + #change to %
   my_theme +
   #ggtitle("Hyphal Presence Across Sites") + #add a graph title
@@ -2806,12 +2819,13 @@ TukeyHSD(aov(hyph_percent ~ Site_ID, data = AMdata)) #Flashes > Bick 1 & 2, Ambe
 ```{r AM assoc pH}
 
 #order variables
-SOM_13C_T0$pH_range <- factor(SOM_13C_T0$pH_range, levels = c("Alkaline", "Neutral", "Mildly Acidic", "Moderately Acidic"))
+SOM_13C_T0$pH_range <- factor(SOM_13C_T0$pH_range, levels = c("Moderately Acidic", "Mildly Acidic", "Neutral", "Alkaline"))
+
 
 #Hyphal presence boxplot
 ggplot(data = SOM_13C_T0, aes(x=pH_range, y=AM_hyph_per, fill=Site_ID)) + 
 	geom_boxplot() + 
-  scale_fill_manual(values = colors) + #define colors to use
+  scale_fill_manual(values = colors4) + #define colors to use
   scale_y_continuous(labels = scales::percent_format(accuracy = 1)) + #change to %
   my_theme +
   #ggtitle("Hyphal Presence Across Sites") + #add a graph title
@@ -2836,7 +2850,7 @@ TukeyHSD(aov(AM_hyph_per ~ pH_range + Site_ID, data = SOM_13C_T0)) #Moderately A
 #Arbuscules boxplot
 ggplot(data = SOM_13C_T0, aes(x=pH_range, y=AM_arb_per, fill=Site_ID)) + 
 	geom_boxplot() + 
-  scale_fill_manual(values = colors) + #define colors to use
+  scale_fill_manual(values = colors4) + #define colors to use
   scale_y_continuous(labels = scales::percent_format(accuracy = 1)) + #change to %
   my_theme +
   #ggtitle("Hyphal Presence Across Sites") + #add a graph title
@@ -2863,7 +2877,7 @@ TukeyHSD(aov(AM_arb_per ~ pH_range + Site_ID, data = SOM_13C_T0)) #Moderately Ac
 #Vesicles boxplot
 ggplot(data = SOM_13C_T0, aes(x=pH_range, y=AM_ves_ct, fill=Site_ID)) + 
 	geom_boxplot() + 
-  scale_fill_manual(values = colors) + #define colors to use
+  scale_fill_manual(values = colors4) + #define colors to use
   #scale_y_continuous(labels = scales::percent_format(accuracy = 1)) + #change to %
   my_theme +
   #ggtitle("Hyphal Presence Across Sites") + #add a graph title
@@ -2891,7 +2905,7 @@ TukeyHSD(aov(AM_ves_ct ~ pH_range + Site_ID, data = SOM_13C_T0)) #none
 #Hyphal presence lm plot
 ggplot(data = SOM_13C_T0, aes(x=g_debris, y=AM_hyph_per)) + 
 	geom_point(aes(color=Site_ID), size=2) +
-  scale_color_manual(values=colors) + #define colors to use
+  scale_color_manual(values=colors4) + #define colors to use
   geom_smooth(method="lm", se=TRUE, color=plotline_color, fill=fill_color) +
   scale_y_continuous(labels = scales::percent_format(accuracy = 1)) + #change to %
   xlab("Colliery Waste (g/mesocosm)") + ylab("Presence of AM Hyphae (% of Root)") + #define/change X and Y labels
@@ -2902,7 +2916,7 @@ SOM_13C_T0 %>%
   filter(g_debris < 750) %>%
 ggplot(aes(x=g_debris, y=AM_hyph_per)) + 
 	geom_point(aes(color=Site_ID), size=2) +
-  scale_color_manual(values=colors) + #define colors to use
+  scale_color_manual(values=colors4) + #define colors to use
   geom_smooth(method="lm", se=TRUE, color=plotline_color, fill=fill_color) +
   scale_y_continuous(labels = scales::percent_format(accuracy = 1)) + #change to %
   xlab("Colliery Waste (g/mesocosm)") + ylab("Presence of AM Hyphae (% of Root)") + #define/change X and Y labels
@@ -2941,7 +2955,7 @@ SOM_13C_T0 %>%
   filter(AM_hyph_per < 0.92) %>%
 ggplot(aes(x=g_debris, y=AM_hyph_per, group=Site_ID)) + 
 	geom_point(aes(color=Site_ID), size=2) +
-  scale_color_manual(values=colors) + #define colors to use
+  scale_color_manual(values=colors4) + #define colors to use
   geom_smooth(aes(color=Site_ID), method="lm", se=FALSE, fill=fill_color) +
   scale_y_continuous(labels = scales::percent_format(accuracy = 1)) + #change to %
   xlab("Colliery Waste (g/mesocosm)") + ylab("Presence of AM Hyphae (% of Root)") + #define/change X and Y labels
@@ -2950,7 +2964,7 @@ ggplot(aes(x=g_debris, y=AM_hyph_per, group=Site_ID)) +
 #Hyphal presence lm plot - split by site only
 ggplot(data = SOM_13C_T0, aes(x=g_debris, y=AM_hyph_per, group=Site_ID)) + 
 	geom_point(aes(color=Site_ID), size=2) +
-  scale_color_manual(values=colors) + #define colors to use
+  scale_color_manual(values=colors4) + #define colors to use
   geom_smooth(aes(color=Site_ID), method="lm", se=FALSE, fill=fill_color) +
   scale_y_continuous(labels = scales::percent_format(accuracy = 1)) + #change to %
   xlab("Colliery Waste (g/mesocosm)") + ylab("Presence of AM Hyphae (% of Root)") + #define/change X and Y labels
@@ -2970,7 +2984,7 @@ ggsave('AM_hyph_waste_site.svg', #save plot name and type - can be "eps", "pdf",
 #Hyphal presence lm plot
 ggplot(data = SOM_13C_T0, aes(x=g_debris, y=AM_arb_per)) + 
 	geom_point(aes(color=Site_ID), size=2) +
-  scale_color_manual(values=colors) + #define colors to use
+  scale_color_manual(values=colors4) + #define colors to use
   geom_smooth(method="lm", se=TRUE, color=plotline_color, fill=fill_color) +
   scale_y_continuous(labels = scales::percent_format(accuracy = 1)) + #change to %
   xlab("Colliery Waste (g/mesocosm)") + ylab("Presence of AM Arbuscules (% of Root)") + #define/change X and Y labels
@@ -2981,7 +2995,7 @@ SOM_13C_T0 %>%
   filter(g_debris < 750) %>%
 ggplot(aes(x=g_debris, y=AM_arb_per)) + 
 	geom_point(aes(color=Site_ID), size=2) +
-  scale_color_manual(values=colors) + #define colors to use
+  scale_color_manual(values=colors4) + #define colors to use
   geom_smooth(method="lm", se=TRUE, color=plotline_color, fill=fill_color) +
   scale_y_continuous(labels = scales::percent_format(accuracy = 1)) + #change to %
   xlab("Colliery Waste (g/mesocosm)") + ylab("Presence of AM Arbuscules (% of Root)") + #define/change X and Y labels
@@ -3014,7 +3028,7 @@ Anova(lmer(AM_arb_per ~ g_debris + (1|Site_ID),
 #Spores boxplot
 ggplot(data = HLD, aes(x=Site_ID, y=spores_g, fill=Site_ID)) + 
 	geom_boxplot() + 
-  scale_fill_manual(values = colors) + #define colors to use
+  scale_fill_manual(values = colors4) + #define colors to use
   #scale_y_continuous(labels = scales::percent_format(accuracy = 1)) + #change to %
   my_theme +
   #ggtitle("Hyphal Presence Across Sites") + #add a graph title
@@ -3036,7 +3050,7 @@ summary(aov(spores_g ~ Site_ID, data = HLD)) #not sig
 #AM HLD boxplot
 ggplot(data = HLD, aes(x=Site_ID, y=AM_mm_g, fill=Site_ID)) + 
 	geom_boxplot() + 
-  scale_fill_manual(values = colors) + #define colors to use
+  scale_fill_manual(values = colors4) + #define colors to use
   my_theme +
   xlab("") + ylab("AM hyphal length density (mm/g soil)") #define/change X and Y labels
 
@@ -3056,7 +3070,7 @@ summary(aov(AM_mm_g ~ Site_ID, data = HLD)) #not sig
 #Other HLD boxplot
 ggplot(data = HLD, aes(x=Site_ID, y=other_mm_g, fill=Site_ID)) + 
 	geom_boxplot() + 
-  scale_fill_manual(values = colors) + #define colors to use
+  scale_fill_manual(values = colors4) + #define colors to use
   my_theme +
   xlab("") + ylab("Non-AM hyphal length density (mm/g soil)") #define/change X and Y labels
 
@@ -3076,7 +3090,7 @@ summary(aov(other_mm_g ~ Site_ID, data = HLD)) #not sig
 #Length ratio boxplot
 ggplot(data = HLD, aes(x=Site_ID, y=AM_fun_mm_ratio, fill=Site_ID)) + 
 	geom_boxplot() + 
-  scale_fill_manual(values = colors) + #define colors to use
+  scale_fill_manual(values = colors4) + #define colors to use
   my_theme + xlab("") + 
   scale_y_continuous(name = expression("AM fungal: other fungal HLD ratio")) #change y axis
   
@@ -3098,7 +3112,7 @@ summary(aov(AM_fun_mm_ratio ~ Site_ID, data = HLD)) #not sig
 #Biomass boxplot
 ggplot(data = HLD, aes(x=Site_ID, y=total_fun_gkg, fill=Site_ID)) + 
 	geom_boxplot() + 
-  scale_fill_manual(values = colors) + #define colors to use
+  scale_fill_manual(values = colors4) + #define colors to use
   my_theme + xlab("") + 
   scale_y_continuous(name = expression("Total fungal biomass (mg/kg soil)"), labels = multiply1000)  #change y axis, label
 
@@ -3118,7 +3132,7 @@ summary(aov(total_fun_gkg ~ Site_ID, data = HLD)) #not sig
 #Biomass boxplot
 ggplot(data = HLD, aes(x=Site_ID, y=AM_biomass_gkg, fill=Site_ID)) + 
 	geom_boxplot() + 
-  scale_fill_manual(values = colors) + #define colors to use
+  scale_fill_manual(values = colors4) + #define colors to use
   my_theme + xlab("") + 
   scale_y_continuous(name = expression("AM fungal biomass (mg/kg soil)"), labels = multiply1000)  #change y axis, label
   
@@ -3139,7 +3153,7 @@ summary(aov(AM_biomass_gkg ~ Site_ID, data = HLD)) #not sig
 #Biomass ratio boxplot
 ggplot(data = HLD, aes(x=Site_ID, y=AM_fun_g_ratio, fill=Site_ID)) + 
 	geom_boxplot() + 
-  scale_fill_manual(values = colors) + #define colors to use
+  scale_fill_manual(values = colors4) + #define colors to use
   my_theme + xlab("") + 
   scale_y_continuous(name = expression("AM fungal: other fungal biomass ratio")) #change y axis
   
@@ -3160,7 +3174,7 @@ summary(aov(AM_fun_g_ratio ~ Site_ID, data = HLD)) #not sig
 #stacked bar chart
 ggplot(data = fungal_mass, aes(x=Site_ID, y=g_biomass, fill=fungal_type)) + #use the fill part to set what you want to stack by
   geom_bar(stat = "summary", add = "mean", width = 0.7, position="stack", colour="black") + #add mean bars with black outlines stacked by the fill variable
-  scale_fill_manual(values = colors, labels = c("AM fungi", "other fungi")) + #define colors to use
+  scale_fill_manual(values = colors4, labels = c("AM fungi", "other fungi")) + #define colors to use
   my_theme + xlab("") + 
   scale_y_continuous(name = expression("Fungal biomass (mg/kg soil)"), labels = multiply1000)  #change y axis, label
   
@@ -3181,7 +3195,7 @@ ggsave('fungal_biomass_stacked.svg', #save plot name and type - can be "eps", "p
 #Spores boxplot
 ggplot(data = SOM_13C_T0, aes(x=pH_range, y=spores_g, fill=Site_ID)) + 
 	geom_boxplot() + 
-  scale_fill_manual(values = colors) + #define colors to use
+  scale_fill_manual(values = colors4) + #define colors to use
   #scale_y_continuous(labels = scales::percent_format(accuracy = 1)) + #change to %
   my_theme +
   #ggtitle("Hyphal Presence Across Sites") + #add a graph title
@@ -3203,7 +3217,7 @@ summary(aov(spores_g ~ pH + Site_ID, data = SOM_13C_T0)) #not sig
 #AM HLD boxplot
 ggplot(data = SOM_13C_T0, aes(x=pH_range, y=AM_mm_g, fill=Site_ID)) + 
 	geom_boxplot() + 
-  scale_fill_manual(values = colors) + #define colors to use
+  scale_fill_manual(values = colors4) + #define colors to use
   my_theme +
   xlab("") + ylab("AM hyphal length density (mm/g soil)") #define/change X and Y labels
 
@@ -3223,7 +3237,7 @@ summary(aov(AM_mm_g ~ pH + Site_ID, data = SOM_13C_T0)) #not sig
 #Other HLD boxplot
 ggplot(data = SOM_13C_T0, aes(x=pH_range, y=other_mm_g, fill=Site_ID)) + 
 	geom_boxplot() + 
-  scale_fill_manual(values = colors) + #define colors to use
+  scale_fill_manual(values = colors4) + #define colors to use
   my_theme +
   xlab("") + ylab("Non-AM hyphal length density (mm/g soil)") #define/change X and Y labels
 
@@ -3243,7 +3257,7 @@ summary(aov(other_mm_g ~ pH + Site_ID, data = SOM_13C_T0)) #not sig
 #Length ratio boxplot
 ggplot(data = HLD, aes(x=Site_ID, y=AM_fun_mm_ratio, fill=Site_ID)) + 
 	geom_boxplot() + 
-  scale_fill_manual(values = colors) + #define colors to use
+  scale_fill_manual(values = colors4) + #define colors to use
   my_theme + xlab("") + 
   scale_y_continuous(name = expression("AM fungal: other fungal HLD ratio")) #change y axis
   
@@ -3265,7 +3279,7 @@ summary(aov(AM_fun_mm_ratio ~ Site_ID, data = HLD)) #not sig
 #Biomass boxplot
 ggplot(data = SOM_13C_T0, aes(x=pH_range, y=total_fun_gkg, fill=Site_ID)) + 
 	geom_boxplot() + 
-  scale_fill_manual(values = colors) + #define colors to use
+  scale_fill_manual(values = colors4) + #define colors to use
   my_theme + xlab("") + 
   scale_y_continuous(name = expression("Total fungal biomass (mg/kg soil)"), labels = multiply1000)  #change y axis, label
 
@@ -3285,7 +3299,7 @@ summary(aov(total_fun_gkg ~ pH + Site_ID, data = SOM_13C_T0)) #not sig
 #Biomass boxplot
 ggplot(data = SOM_13C_T0, aes(x=pH_range, y=AM_biomass_gkg, fill=Site_ID)) + 
 	geom_boxplot() + 
-  scale_fill_manual(values = colors) + #define colors to use
+  scale_fill_manual(values = colors4) + #define colors to use
   my_theme + xlab("") + 
   scale_y_continuous(name = expression("AM fungal biomass (mg/kg soil)"), labels = multiply1000)  #change y axis, label
   
@@ -3306,7 +3320,7 @@ summary(aov(AM_biomass_gkg ~ pH + Site_ID, data = SOM_13C_T0)) #not sig
 #Biomass ratio boxplot
 ggplot(data = HLD, aes(x=Site_ID, y=AM_fun_g_ratio, fill=Site_ID)) + 
 	geom_boxplot() + 
-  scale_fill_manual(values = colors) + #define colors to use
+  scale_fill_manual(values = colors4) + #define colors to use
   my_theme + xlab("") + 
   scale_y_continuous(name = expression("AM fungal: other fungal biomass ratio")) #change y axis
   
@@ -3351,7 +3365,7 @@ summary(aov(total_fun_gkg ~ g_debris + Site_ID, data = SOM_13C_T0)) #not sig
 #Biomass boxplot
 ggplot(data = SOM_13C_T0, aes(x=Site_ID, y=total_fun_C_mgkg, fill=Site_ID)) + 
 	geom_boxplot() + 
-  scale_fill_manual(values = colors) + #define colors to use
+  scale_fill_manual(values = colors4) + #define colors to use
   my_theme + xlab("") + 
   scale_y_continuous(name = expression("Total fungal carbon (mg C/kg soil)"))  #change y axis, label
   
@@ -3373,7 +3387,7 @@ summary(aov(total_fun_C_mgkg ~ Site_ID, data = SOM_13C_T0)) #not sig
 #Biomass boxplot
 ggplot(data = SOM_13C_T0, aes(x=Site_ID, y=AM_C_mgkg, fill=Site_ID)) + 
 	geom_boxplot() + 
-  scale_fill_manual(values = colors) + #define colors to use
+  scale_fill_manual(values = colors4) + #define colors to use
   my_theme + xlab("") + 
   scale_y_continuous(name = expression("AM fungal carbon (mg C/kg soil)"))  #change y axis, label
   
@@ -3395,7 +3409,7 @@ summary(aov(AM_C_mgkg ~ Site_ID, data = SOM_13C_T0)) #not sig
 #Biomass boxplot
 ggplot(data = SOM_13C_T0, aes(x=pH_range, y=total_fun_C_mgkg, fill=Site_ID)) + 
 	geom_boxplot() + 
-  scale_fill_manual(values = colors) + #define colors to use
+  scale_fill_manual(values = colors4) + #define colors to use
   my_theme + xlab("") + 
   scale_y_continuous(name = expression("Total fungal carbon (mg C/kg soil)"))  #change y axis, label
   
@@ -3417,7 +3431,7 @@ summary(aov(total_fun_C_mgkg ~ pH + Site_ID, data = SOM_13C_T0)) #not sig
 #Biomass boxplot
 ggplot(data = SOM_13C_T0, aes(x=pH_range, y=AM_C_mgkg, fill=Site_ID)) + 
 	geom_boxplot() + 
-  scale_fill_manual(values = colors) + #define colors to use
+  scale_fill_manual(values = colors4) + #define colors to use
   my_theme + xlab("") + 
   scale_y_continuous(name = expression("AM fungal carbon (mg C/kg soil)"))  #change y axis, label
   
@@ -3439,7 +3453,7 @@ summary(aov(AM_C_mgkg ~ pH + Site_ID, data = SOM_13C_T0)) #not sig
 #stacked bar chart
 ggplot(data = fungal_C, aes(x=Site_ID, y=mg_C, fill=fungal_type)) + #use the fill part to set what you want to stack by
   geom_bar(stat = "summary", add = "mean", width = 0.7, position="stack", colour="black") + #add mean bars with black outlines stacked by the fill variable
-  scale_fill_manual(values = colors, labels = c("AM fungi", "other fungi")) + #define colors to use
+  scale_fill_manual(values = colors4, labels = c("AM fungi", "other fungi")) + #define colors to use
   my_theme + xlab("") + 
   scale_y_continuous(name = expression("Fungal biomass carbon (mg C/kg soil)"))  #change y axis, label
   
@@ -3468,8 +3482,8 @@ ggplot(aes(x=site_id, y=shoot, fill=functional_group)) +
 	geom_boxplot() + 
   geom_jitter(position=position_jitterdodge(jitter.width=0.2, dodge.width=0.75), #add points with jitter
               alpha=0.5, size=0.8, color="black") + #point appearance
-  scale_fill_manual(values = colors) + #define colors to use
-  #scale_color_manual(values = colors) + #define colors to use
+  scale_fill_manual(values = colors4) + #define colors to use
+  #scale_color_manual(values = colors4) + #define colors to use
   my_theme +
   #ggtitle("Plant Shoot Biomass Across Sites") + #add a graph title
   xlab("") + ylab("Shoot Biomass (g)") #define/change X and Y labels
@@ -3500,7 +3514,7 @@ TukeyHSD(aov(log(shoot) ~ functional_group * site_id, data = plant_harvest[ #nor
 #box plots of plant biodiversity metrics
 ggplot(diversity, aes(x=site_id, y=species_richness, fill=site_id)) + 
   geom_boxplot() +
-  scale_fill_manual(values=colors9) + #define colors to use
+  scale_fill_manual(values=colors4) + #define colors to use
   scale_y_continuous(breaks = pretty) +
   #ggtitle("Species richness per site") + #add a graph title
   xlab("") + ylab("Species Richness (#)") + #define/change X and Y labels
@@ -3527,7 +3541,7 @@ TukeyHSD(aov(species_richness ~ site_id, data = diversity)) #Ambers > Bick 1 & 2
 #box plots of plant biodiversity metrics
 ggplot(diversity, aes(x=site_id, y=shannon, fill=site_id)) + 
   geom_boxplot() +
-  scale_fill_manual(values=colors9) + #define colors to use
+  scale_fill_manual(values=colors4) + #define colors to use
   scale_y_continuous(breaks = pretty) +
   #ggtitle("Species richness per site") + #add a graph title
   xlab("") + ylab("Shannon Diversity Index") + #define/change X and Y labels
@@ -3553,7 +3567,7 @@ summary(aov(shannon ~ site_id, data = diversity)) #not sig
 #box plots of plant biodiversity metrics
 ggplot(diversity, aes(x=site_id, y=simpson, fill=site_id)) + 
   geom_boxplot() +
-  scale_fill_manual(values=colors9) + #define colors to use
+  scale_fill_manual(values=colors4) + #define colors to use
   scale_y_continuous(breaks = pretty) +
   #ggtitle("Species richness per site") + #add a graph title
   xlab("") + ylab("Simpson Diversity Index") + #define/change X and Y labels
@@ -3621,7 +3635,7 @@ summary_plant13C %>%
   filter(sample_type == "shoot") %>%
 ggplot(aes(x=site_id, y=excess13C_mg_mean, fill=site_id)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
-  scale_fill_manual(values=colors) + #define colors to use
+  scale_fill_manual(values=colors4) + #define colors to use
   scale_y_continuous(breaks = pretty) +
   geom_errorbar(aes(ymin=excess13C_mg_mean-excess13C_mg_se, ymax=excess13C_mg_mean+excess13C_mg_se), 
                 color = "grey10", width = 0.7, position = "dodge") + 
@@ -3648,7 +3662,7 @@ summary_plant13C %>%
   filter(sample_type == "root") %>%
 ggplot(aes(x=site_id, y=excess13C_mg_mean, fill=site_id)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
-  scale_fill_manual(values=colors) + #define colors to use
+  scale_fill_manual(values=colors4) + #define colors to use
   #scale_y_continuous(limits = c(0, 150), breaks = seq(0, 150, by = 50)) + #set y axis ticks
   geom_errorbar(aes(ymin=excess13C_mg_mean-excess13C_mg_se, ymax=excess13C_mg_mean+excess13C_mg_se), 
                 color = "grey10", width = 0.7, position = "dodge") + 
@@ -3698,7 +3712,7 @@ summary_SOM_13C %>%
   filter(Fraction == "SOM" & Incubation_T == 0) %>%
 ggplot(aes(x=interaction(Site, Mgmt_fct), y=pot_13C_mg_mean, fill=Mgmt_fct)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
-  scale_fill_manual(values=colors) + #define colors to use
+  scale_fill_manual(values=colors4) + #define colors to use
   geom_errorbar(aes(ymin=pot_13C_mg_mean-pot_13C_mg_se, ymax=pot_13C_mg_mean+pot_13C_mg_se),
   color = "grey10", width = 0.7, position = "dodge") + 
   #scale_y_continuous(labels = scales::number_format(scale=1*1000, accuracy=1), breaks = pretty) + #change y axis to mg
@@ -3723,7 +3737,7 @@ summary_SOM_13C %>%
   filter(Fraction == "POM" & Incubation_T == 0) %>%
 ggplot(aes(x=interaction(Site, Mgmt_fct), y=pot_13C_mg_mean, fill=Mgmt_fct)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
-  scale_fill_manual(values=colors) + #define colors to use
+  scale_fill_manual(values=colors4) + #define colors to use
   scale_y_continuous(breaks = pretty) + #set y axis ticks
   geom_errorbar(aes(ymin=pot_13C_mg_mean-pot_13C_mg_se, ymax=pot_13C_mg_mean+pot_13C_mg_se), 
                 color = "grey10", width = 0.7, position = "dodge") + 
@@ -3753,7 +3767,7 @@ summary_SOM_13C %>%
   filter(Fraction == "MAOM" & Incubation_T == 0) %>%
 ggplot(aes(x=interaction(Site, Mgmt_fct), y=pot_13C_mg_mean, fill=Mgmt_fct)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
-  scale_fill_manual(values=colors) + #define colors to use
+  scale_fill_manual(values=colors4) + #define colors to use
   #scale_y_continuous(limits = c(0, 40), breaks = seq(0, 40, by = 10)) + #set y axis ticks
   geom_errorbar(aes(ymin=pot_13C_mg_mean-pot_13C_mg_se, ymax=pot_13C_mg_mean+pot_13C_mg_se), 
                 color = "grey10", width = 0.7, position = "dodge") + 
@@ -3781,7 +3795,7 @@ TukeyHSD(aov(log(MAOM_pot13C_mg) ~ Site_ID, data = SOM_13C_T0)) #Flashes > Bick 
 #fMAOM C box chart
 ggplot(data = SOM_13C_T0, aes(x=interaction(Site, Mgmt_fct), y=fMAOM_13C, fill=Mgmt_fct)) + 
 	geom_boxplot() +
-  scale_fill_manual(values=colors) + #define colors to use
+  scale_fill_manual(values=colors4) + #define colors to use
   #ggtitle(expression("fMAOM "^13*"C per site")) + #add a graph title
   xlab("") + 
   ylab(expression("Portion of "^13*"C stored in MAOM")) + #define/change X and Y labels
@@ -3814,7 +3828,7 @@ TukeyHSD(aov(SOM_15N ~ Site_ID, data = SOM_13C_T0)) #BU < BM, BU and BM > Amber 
 SOM_13C_T0 %>%
 ggplot(aes(x=Site_ID, y=SOM_15N, fill=Site_ID)) + 
 	geom_boxplot() +
-  scale_fill_manual(values=colors) + #define colors to use
+  scale_fill_manual(values=colors4) + #define colors to use
   #scale_x_discrete(labels = c("Bickershaw U", "Bickershaw M", "Amberswood M", "Flashes M")) + #change x axis labels
   #ggtitle("Rocks and Debris per site") + #add a graph title
   xlab("") + ylab(expression(""^15*"N in SOM")) + #define/change X and Y labels
@@ -3861,7 +3875,7 @@ TukeyHSD(aov(POM_15N ~ Site_ID, data = SOM_13C_T0)) #BU and BM > Amber & Flashes
 SOM_13C_T0 %>%
 ggplot(aes(x=Site_ID, y=POM_15N, fill=Site_ID)) + 
 	geom_boxplot() +
-  scale_fill_manual(values=colors) + #define colors to use
+  scale_fill_manual(values=colors4) + #define colors to use
   scale_x_discrete(labels = c("Bickershaw U", "Bickershaw M", "Amberswood M", "Flashes M")) + #change x axis labels
   #ggtitle("Rocks and Debris per site") + #add a graph title
   xlab("") + ylab(expression(""^15*"N in POM")) + #define/change X and Y labels
@@ -3900,7 +3914,7 @@ TukeyHSD(aov(log(MAOM_15N) ~ Site_ID, data = SOM_13C_T0)) #BU and BM > Amber & F
 SOM_13C_T0 %>%
 ggplot(aes(x=Site_ID, y=MAOM_15N, fill=Site_ID)) + 
 	geom_boxplot() +
-  scale_fill_manual(values=colors) + #define colors to use
+  scale_fill_manual(values=colors4) + #define colors to use
   scale_x_discrete(labels = c("Bickershaw U", "Bickershaw M", "Amberswood M", "Flashes M")) + #change x axis labels
   #ggtitle("Rocks and Debris per site") + #add a graph title
   xlab("") + ylab(expression(""^15*"N in MAOM")) + #define/change X and Y labels
@@ -3938,7 +3952,7 @@ summary_SOM_13C %>%
   filter(Fraction == "SOM" & Incubation_T == 6) %>%
 ggplot(aes(x=interaction(Site, Mgmt_fct), y=pot_13C_mg_mean, fill=Mgmt_fct)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
-  scale_fill_manual(values=colors) + #define colors to use
+  scale_fill_manual(values=colors4) + #define colors to use
   scale_y_continuous(breaks = pretty) + #set y axis ticks
   geom_errorbar(aes(ymin=pot_13C_mg_mean-pot_13C_mg_se, ymax=pot_13C_mg_mean+pot_13C_mg_se), 
                 color = "grey10", width = 0.7, position = "dodge") + 
@@ -4160,7 +4174,7 @@ summary(aov(MAOM_pot13C_mg ~ AM_biomass_gkg + total_fun_gkg, data = SOM_13C_T0))
 
 ggplot(data = resp_full, aes(x=Site_ID, y=CO2_ppm, fill=Site_ID)) + 
 	geom_boxplot() + 
-  scale_fill_manual(values = colors) + #define colors to use
+  scale_fill_manual(values = colors4) + #define colors to use
   my_theme +
   ggtitle("12CO2 Respiration") + #add a graph title
   xlab("") + ylab(expression(""^12*"CO"^2*" (ppm)")) #define/change X and Y labels
@@ -4184,8 +4198,8 @@ TukeyHSD(aov(CO2_ppm ~ factor(Site_ID), data = resp_full)) #Ambers > all, Flashe
 ggplot(data = resp_full, aes(x=Week, y=CO2_ppm, group=interaction(Week,Site_ID))) + 
   geom_boxplot(aes(fill=Site_ID), position = position_dodge()) +
   #geom_dotplot(aes(fill=Site, stroke=TRUE), binaxis = "y", dotsize = 0.5, position = position_dodge(), stackdir = "center", binpositions = "bygroup") +
-  scale_fill_manual(values = colors) + #define colors to use
-  scale_color_manual(values = colors) +
+  scale_fill_manual(values = colors4) + #define colors to use
+  scale_color_manual(values = colors4) +
   my_theme +
   scale_y_continuous(name=expression(""^12*"CO"^2*" (ppm)"), breaks = pretty(c(600,8000), n = 8)) + #set limits and change number of tick marks on y axis
   scale_x_continuous(name ="Incubation Time (Week)", breaks = c(0,1)) #set ticks and label for x axis
@@ -4205,7 +4219,7 @@ ggsave('12C_wks.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "t
 
 ggplot(data = resp_full, aes(x=Site_ID, y=mass_C, fill=Site_ID)) + 
 	geom_boxplot() + 
-  scale_fill_manual(values = colors) + #define colors to use
+  scale_fill_manual(values = colors4) + #define colors to use
   my_theme +
   #ggtitle("12CO2 Respiration") + #add a graph title
   scale_y_continuous(name="Total Carbon Respired (g C)", breaks = pretty(c(0,0.2), n=6)) +
@@ -4230,8 +4244,8 @@ TukeyHSD(aov(mass_C ~ factor(Site_ID), data = resp_full)) #Ambers > all, Flashes
 ggplot(data = resp_full, aes(x=Week, y=mass_C, group=interaction(Week,Site_ID))) + 
   geom_boxplot(aes(fill=Site_ID), position = position_dodge()) +
   #geom_dotplot(aes(fill=Site, stroke=TRUE), binaxis = "y", dotsize = 0.5, position = position_dodge(), stackdir = "center", binpositions = "bygroup") +
-  scale_fill_manual(values = colors) + #define colors to use
-  scale_color_manual(values = colors) +
+  scale_fill_manual(values = colors4) + #define colors to use
+  scale_color_manual(values = colors4) +
   my_theme +
   scale_y_continuous(name="Total Carbon Respired (g C)", breaks = pretty(c(0,0.2), n=6)) + #set limits and change number of tick marks on y axis
   scale_x_continuous(name ="Incubation Time (Week)", breaks = c(0,1)) #set ticks and label for x axis
@@ -4255,7 +4269,7 @@ ggsave('gC_wks.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "ti
 
 ggplot(data = resp_full, aes(x=Site_ID, y=d13CO2_permille, fill=Site_ID)) + 
 	geom_boxplot() + 
-  scale_fill_manual(values = colors) + #define colors to use
+  scale_fill_manual(values = colors4) + #define colors to use
   my_theme +
   ggtitle("13CO2 Respiration") + #add a graph title
   xlab("") + ylab(expression("Delta "^13*"CO"^2*" (per mille)")) + #define/change X and Y labels
@@ -4281,8 +4295,8 @@ TukeyHSD(aov(d13CO2_permille ~ factor(Site_ID), data = resp_full)) #all sig exce
 ggplot(data = resp_full, aes(x=Week, y=d13CO2_permille, group=interaction(Week,Site_ID))) + 
   geom_boxplot(aes(fill=Site_ID), position = position_dodge()) +
   #geom_dotplot(aes(fill=Site, stroke=TRUE), binaxis = "y", dotsize = 0.5, position = position_dodge(), stackdir = "center", binpositions = "bygroup") +
-  scale_fill_manual(values = colors) + #define colors to use
-  scale_color_manual(values = colors) +
+  scale_fill_manual(values = colors4) + #define colors to use
+  scale_color_manual(values = colors4) +
   my_theme +
   scale_y_continuous(name=expression("Delta "^13*"CO"^2*" (per mille)"), breaks = pretty(c(0,1000), n = 8)) + #set limits and change number of tick marks on y axis
   scale_x_continuous(name ="Weeks of Incubation", breaks = c(0,1,2,3,4)) #set ticks and label for x axis
@@ -4302,7 +4316,7 @@ ggsave('13C_wks.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "t
 
 ggplot(data = resp_full, aes(x=Site_ID, y=atom_excess13C, fill=Site_ID)) + 
 	geom_boxplot() + 
-  scale_fill_manual(values = colors) + #define colors to use
+  scale_fill_manual(values = colors4) + #define colors to use
   my_theme +
   #ggtitle("13CO2 Respiration") + #add a graph title
   scale_y_continuous(name = expression("Excess "^13*"C Respiration (atom %)"), labels = scales::percent) + #change y axis to percent, label
@@ -4327,8 +4341,8 @@ TukeyHSD(aov(atom_excess13C ~ factor(Site_ID), data = resp_full)) #all sig excep
 ggplot(data = resp_full, aes(x=Week, y=atom_excess13C, group=interaction(Week,Site_ID))) + 
   geom_boxplot(aes(fill=Site_ID), position = position_dodge()) +
   #geom_dotplot(aes(fill=Site, stroke=TRUE), binaxis = "y", dotsize = 0.5, position = position_dodge(), stackdir = "center", binpositions = "bygroup") +
-  scale_fill_manual(values = colors) + #define colors to use
-  scale_color_manual(values = colors) +
+  scale_fill_manual(values = colors4) + #define colors to use
+  scale_color_manual(values = colors4) +
   my_theme +
   scale_y_continuous(name = expression("Excess "^13*"C Respiration (atom %)"), labels = scales::percent) + #change y axis to percent, label
   scale_x_continuous(name ="Weeks of Incubation", breaks = c(0,1,2,3,4)) #set ticks and label for x axis
@@ -4349,7 +4363,7 @@ ggsave('excess13C_wks.svg', #save plot name and type - can be "eps", "pdf", "jpe
 
 ggplot(data = resp_full, aes(x=Site_ID, y=mass_excess13C, fill=Site_ID)) + 
 	geom_boxplot() + 
-  scale_fill_manual(values = colors) + #define colors to use
+  scale_fill_manual(values = colors4) + #define colors to use
   my_theme +
   #ggtitle("13CO2 Respiration") + #add a graph title
   scale_y_continuous(name = expression("Total "^13*"C Respired (mg "^13*"C)"), labels = multiply1000) + #change y axis, label
@@ -4374,8 +4388,8 @@ TukeyHSD(aov(mass_excess13C ~ factor(Site_ID), data = resp_full)) #all sig excep
 ggplot(data = resp_full, aes(x=Week, y=mass_excess13C, group=interaction(Week,Site_ID))) + 
   geom_boxplot(aes(fill=Site_ID), position = position_dodge()) +
   #geom_dotplot(aes(fill=Site, stroke=TRUE), binaxis = "y", dotsize = 0.5, position = position_dodge(), stackdir = "center", binpositions = "bygroup") +
-  scale_fill_manual(values = colors) + #define colors to use
-  scale_color_manual(values = colors) +
+  scale_fill_manual(values = colors4) + #define colors to use
+  scale_color_manual(values = colors4) +
   my_theme +
   scale_y_continuous(name = expression("Total "^13*"C Respired (mg "^13*"C)"), labels = multiply1000) + #change y axis, label
   scale_x_continuous(name ="Weeks of Incubation", breaks = c(0,1,2,3,4)) #set ticks and label for x axis
@@ -4397,7 +4411,7 @@ ggsave('excess13C_wks_mass.svg', #save plot name and type - can be "eps", "pdf",
 ggplot(data = plant_harvest_est[-c(118,153),], #species data minus major outliers
        aes(x=site_id, y=root_shoot, fill=site_id)) + 
 	geom_boxplot() +
-  scale_fill_manual(values=colors) + #define colors to use
+  scale_fill_manual(values=colors4) + #define colors to use
   ggtitle("Root:Shoot ratio per site") + #add a graph title
   xlab("Site") + ylab("Root:Shoot ratio") + #define/change X and Y labels
   my_theme
@@ -4412,7 +4426,7 @@ ggplot(data = plant_harvest_est[-c(118,153),], #species data minus major outlier
 #mass bar chart with error bars
 ggplot(data = summary_endbio, aes(x=Site_ID, y=est_beg_drymass_mean, fill=Site_ID)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
-  scale_fill_manual(values=colors) + #define colors to use
+  scale_fill_manual(values=colors4) + #define colors to use
   geom_errorbar(aes(ymin=est_beg_drymass_mean-est_beg_drymass_se, ymax=est_beg_drymass_mean+est_beg_drymass_se),
   color = "grey10", width = 0.7, position = "dodge") + 
   ggtitle("Beginning biomass per site") + #add a graph title
@@ -4437,7 +4451,7 @@ TukeyHSD(aov(est_beg_drymass ~ factor(Site_ID), data = endbiomass)) #Flashes < A
 #mass bar chart with error bars
 ggplot(data = summary_endbio, aes(x=Site_ID, y=end_drymass_clean_mean, fill=Site_ID)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
-  scale_fill_manual(values=colors) + #define colors to use
+  scale_fill_manual(values=colors4) + #define colors to use
   geom_errorbar(aes(ymin=end_drymass_clean_mean-end_drymass_clean_se, ymax=end_drymass_clean_mean+end_drymass_clean_se),
   color = "grey10", width = 0.7, position = "dodge") + 
   ggtitle("Ending biomass per site") + #add a graph title
@@ -4464,7 +4478,7 @@ TukeyHSD(aov(end_drymass_clean ~ factor(Site_ID), data = endbiomass)) #Flashes <
 endbiomass[-1,] %>% #remove G37 because of biomass est error
 ggplot(aes(x=Site_ID, y=decomp_per_adj)) + 
 	geom_boxplot(aes(fill=Site_ID)) +
-  scale_fill_manual(values=colors) + #define colors to use
+  scale_fill_manual(values=colors4) + #define colors to use
   ggtitle("Decomposition per Site") + #add a graph title
   scale_y_continuous(labels = scales::percent_format(accuracy = 1)) + #change to %
   xlab("") + ylab("Decomposition (%)") + #define/change X and Y labels
@@ -4485,7 +4499,7 @@ ggsave('decomp.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "ti
 #decomposition lm plot vs restoration time
 ggplot(data = endbiomass[-1,], aes(x=years, y=decomp_per_adj)) + 
 	geom_point(aes(color=Management), size=2, alpha=0.5) +
-  scale_fill_manual(values=colors) + #define colors to use
+  scale_fill_manual(values=colors4) + #define colors to use
   geom_smooth(method="lm", se=TRUE, color=plotline_color, fill=fill_color) +
   scale_x_continuous(breaks=c(0,4,15,23), expand = c(0.1,0.1)) + #set limits and change tick marks on x axis
   scale_y_continuous(labels = scales::percent_format(accuracy = 1)) + #change to %
@@ -4500,7 +4514,7 @@ ggplot(data = endbiomass[-1,], aes(x=years, y=decomp_per_adj)) +
 #decomposition lm plot vs restoration time
 ggplot(data = endbiomass[-1,], aes(x=pH, y=decomp_per_adj)) + 
 	geom_point(aes(color=Site_ID), size=2) +
-  scale_color_manual(values=colors) + #define colors to use
+  scale_color_manual(values=colors4) + #define colors to use
   geom_smooth(method="lm", se=TRUE, color=plotline_color, fill=fill_color) +
   scale_y_continuous(labels = scales::percent_format(accuracy = 1)) + #change to %
   ggtitle("Decomposition by pH") + #add a graph title
@@ -4521,7 +4535,7 @@ ggsave('decomp_pH.svg', #save plot name and type - can be "eps", "pdf", "jpeg", 
 #decomposition lm plot vs restoration time
 ggplot(data = endbiomass[-1,], aes(x=rocks_debris, y=decomp_per_adj)) + 
 	geom_point(aes(color=Site_ID), size=2) +
-  scale_color_manual(values=colors) + #define colors to use
+  scale_color_manual(values=colors4) + #define colors to use
   geom_smooth(method="lm", se=TRUE, color=plotline_color, fill=fill_color) +
   scale_y_continuous(labels = scales::percent_format(accuracy = 1)) + #change to %
   ggtitle("Decomposition by pH") + #add a graph title
@@ -4599,7 +4613,7 @@ summary(aov(decomp_per_adj ~ worms, data = endbiomass[-1,])) #not sig
 #worms box plot
 ggplot(data = endbiomass, aes(x=Management, y=worms, fill=Management)) + 
 	geom_boxplot() +
-  scale_fill_manual(values=colors) + #define colors to use
+  scale_fill_manual(values=colors4) + #define colors to use
   ggtitle("Worms per site") + #add a graph title
   xlab("Management") + ylab("Number of worms") + #define/change X and Y labels
   my_theme
@@ -4615,7 +4629,7 @@ ggplot(data = endbiomass, aes(x=Management, y=worms, fill=Management)) +
 #mass bar chart with error bars
 ggplot(data = summary_endbio, aes(x=Site_ID, y=rocks_debris_mean, fill=Site_ID)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
-  scale_fill_manual(values=colors) + #define colors to use
+  scale_fill_manual(values=colors4) + #define colors to use
   geom_errorbar(aes(ymin=rocks_debris_mean-rocks_debris_se, ymax=rocks_debris_mean+rocks_debris_se),
   color = "grey10", width = 0.7, position = "dodge") + 
   #ggtitle("Rocks and Debris per site") + #add a graph title
@@ -4643,7 +4657,7 @@ TukeyHSD(rmass_aov) #Unmanaged-23 yr P=0.0000012, Unmanaged-15 yr P=0.0057, 4 yr
 #worms box plot
 ggplot(data = SOM_2026, aes(x=Site_ID, y=coal_2mm_g, fill=Management)) + 
 	geom_boxplot() +
-  scale_fill_manual(values=colors) + #define colors to use
+  scale_fill_manual(values=colors3) + #define colors to use
   #ggtitle("Coal in BD cores") + #add a graph title
   xlab("") + ylab("Coal >2mm in topsoil BD cores (g)") + #define/change X and Y labels
   my_theme
