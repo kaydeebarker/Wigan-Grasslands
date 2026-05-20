@@ -24,13 +24,13 @@ knitr::opts_chunk$set(echo = TRUE) #default display code in knit output (FALSE w
 #Create groups of packages/libraries 
 
 ##1. For data reading and manipulation - could just do tidyverse and a few others, or make group of specific libraries for faster loading
-datalib <- c("dplyr", "tidyr", "readr", "readxl", "stringr", "tibble", "reshape2", "janitor") 
+datalib <- c("dplyr", "tidyr", "readr", "readxl", "stringr", "tibble", "reshape2", "janitor", "DescTools") 
 
 ##2. For data visualization (note ggplot2 is in tidyverse)
-vislib <- c("ggplot2", "ggthemes", "ggfortify", "ggrepel", "plotrix", "RColorBrewer", "Cairo", "ggsci")
+vislib <- c("ggplot2", "ggthemes", "ggfortify", "ggrepel", "ggsignif", "plotrix", "RColorBrewer", "Cairo", "sjPlot", "multcompView")
 
-##3. For calculation and stats functions, including ecology-specific libraries
-statlib <- c("car", "MASS", "rcompanion", "zoo", "lme4", "MuMIn", "emmeans", "ARTool", "dunn.test", "performance", "see", "corrplot", "BAT", "vegan")
+##3. For calculation and stats functions, including ecology and microbial-specific libraries
+statlib <- c("car", "MASS", "rcompanion", "zoo", "lme4", "MuMIn", "emmeans", "ARTool", "dunn.test", "performance", "see", "corrplot", "BAT", "vegan", "ape")
 
 #Install packages as needed - commented out, but remove # and adjust as neededas a group:
 #lapply(c(datalib, vislib, statlib), install.packages)
@@ -512,9 +512,36 @@ diversity <- diversity %>%
 
 ```
 
+### Bacteria
+```{r load 16S, eval=FALSE}
+
+#load data
+asv_16S.tmp <- read.table('DNA/16S/asv.csv',header=TRUE,sep=',',row.names=1)
+taxa_16S <- read.table('DNA/16S/taxa.csv',header=TRUE,sep=',')
+dna_16S <- read.FASTA('DNA/16S/rep-set.fasta')
+env_16S <- read.table('DNA/16S/env.csv',header=TRUE,sep=',',row.names=1) #sample numbers - make into row numbers
+
+#set row names of asv file from env
+asv_16S <- asv_16S.tmp[which(row.names(asv_16S.tmp)%in%row.names(env_16S)),which(colnames(asv_16S.tmp)%in%names(dna_16S))]
+row.names(asv_16S)==row.names(env_16S) #check it worked
+rm(asv_16S.tmp) #remove temp file
+
+```
+
 ### Fungi
 
-```{r load AM association data}
+```{r load fungi data}
+
+#load ITS data
+#asv_ITS.tmp <- read.table('DNA/ITS/asv.csv',header=TRUE,sep=',',row.names=1)
+#env_ITS <- read.table('DNA/ITS/env.csv',header=TRUE,sep=',',row.names=1)
+#taxa_ITS <- read.table('DNA/ITS/taxa.csv',header=TRUE,sep=',')
+#dna_ITS <- read.FASTA('DNA/ITS/rep-set.fasta')
+
+#set row names of asv file from env
+#asv_ITS <- asv_ITS.tmp[which(row.names(asv_ITS.tmp)%in%row.names(env_ITS)),which(colnames(asv_ITS.tmp)%in%names(dna_ITS))]
+#row.names(asv_ITS)==row.names(env_ITS) #check it worked
+#rm(asv_ITS.tmp) #remove temp file
 
 #read in AM association data
 AMdata <- read_csv("Wigan_myc.csv")
@@ -753,10 +780,11 @@ summary_SOM_13C_T0$Site_ID <- factor(summary_SOM_13C_T0$Site_ID, levels = order_
 
 ```
 
-```{r load 2026 SOM data, include=FALSE}
+```{r load 2026 SOM data}
 
 #read in field soil C/N data from 2026 and calculate additional
 SOM_2026 <- read_csv("SOM_2026.csv") %>%
+  rename("SOM_C_kgm2_7cm" = "C_kgm2_7cm") %>%
   mutate(MAOM_perC = 
            MAOM53_perC*(per_53/(per_53+per_45)) + MAOM45_perC*(per_45/(per_53+per_45))) %>% #calculate total MAOM per C
   mutate(MAOM_perN = 
@@ -778,10 +806,10 @@ summary_SOM_2026 <- SOM_2026[c(3:7,10,14,26,29,30:32,35:56)] %>%
   summarise(across(where(is.numeric), summary_stats)) #run all summary stats
 
 #combine with above data
-SOM_multiyr <- SOM_2026 %>%
-  dplyr::select(Sample_year, Site, Site_ID, Mgmt_year, adj_BD, SOM_perC, SOM_perN, SOM_CN, C_kgm2_7cm, POM_perC, POM_perN, POM_C_kgm2_7cm, MAOM_perC, MAOM_perN, MAOM_C_kgm2_7cm, fMAOM_C) %>%
-  rename("SOM_C_kgm2_7cm" = "C_kgm2_7cm") %>%
-  bind_rows(SOM_13C_T0[c(1:4,8,9,12,18,21,22,31,34,35,44,47,59,60)])
+SOM_multiyr <- SOM_13C_T0 %>%
+  dplyr::select(Sample_year, Site, Site_ID, Mgmt_year, SOM_perC, SOM_perN, SOM_CN, SOM_C_kgm2_7cm, POM_perC, POM_perN, POM_C_kgm2_7cm, MAOM_perC, MAOM_perN, MAOM_C_kgm2_7cm, fMAOM_C) %>%
+  bind_rows(SOM_2026) 
+  
 
 SOM_2026$Site <- factor(SOM_2026$Site, levels = order_sites)
 SOM_2026$Site_ID <- factor(SOM_2026$Site_ID, levels = order_IDs)
@@ -819,9 +847,9 @@ summary_UKsoils <- UK_soil %>%
 
 
 soilC_compare <- SOM_2026 %>%
-  dplyr::select(Sample_year, Site_ID, C_kgm2_7cm, POM53_C_kgm2_7cm, MAOM45_C_kgm2_7cm) %>%
+  dplyr::select(Sample_year, Site_ID, SOM_C_kgm2_7cm, POM53_C_kgm2_7cm, MAOM45_C_kgm2_7cm) %>%
   rename("site" = "Site_ID") %>%
-  rename("TotalC" = "C_kgm2_7cm") %>%
+  rename("TotalC" = "SOM_C_kgm2_7cm") %>%
   rename("POM_C" = "POM53_C_kgm2_7cm") %>%
   rename("MAOM_C" = "MAOM45_C_kgm2_7cm") %>%
   mutate(type = "R") %>% #R for restored
@@ -2046,6 +2074,9 @@ ggsave('MAOM-C_comparison_adjBD_2026.svg', #save plot name and type - can be "ep
 ### Compare years
 ```{r SOM years}
 
+SOM_multiyr_match <- SOM_multiyr %>%
+  filter(Site_ID != "AU" & Site_ID != "FU")
+
 #SOM-C
 shapiro.test(resid(lm(SOM_perC ~ Sample_year, data = SOM_multiyr))) #check normality of residuals - not normal
 shapiro.test(resid(lm(log(SOM_perC) ~ Sample_year, data = SOM_multiyr))) #check normality of residuals - not normal but closer
@@ -2060,39 +2091,39 @@ shapiro.test(resid(lm(POM_perC ~ Sample_year, data = SOM_multiyr))) #check norma
 shapiro.test(resid(lm(log(POM_perC) ~ Sample_year, data = SOM_multiyr))) #check normality of residuals - not normal but closer
 summary(aov(log(POM_perC) ~ Sample_year, data = SOM_multiyr)) #not sig
 
-shapiro.test(resid(lm(POM_perC ~ Sample_year * Site_ID, data = SOM_multiyr))) #almost normal
-summary(aov(POM_perC ~ Sample_year * Site_ID, data = SOM_multiyr)) #site sig, interaction not
-TukeyHSD(aov(POM_perC ~ factor(Sample_year) * Site_ID, data = SOM_multiyr)) #none are different between years at the same site
+shapiro.test(resid(lm(POM_perC ~ Sample_year * Site_ID, data = SOM_multiyr_match))) #almost normal
+summary(aov(POM_perC ~ Sample_year * Site_ID, data = SOM_multiyr_match)) #site sig, interaction not
+TukeyHSD(aov(POM_perC ~ factor(Sample_year) * Site_ID, data = SOM_multiyr_match)) #none are different between years at the same site
 
 shapiro.test(resid(lm(POM_C_kgm2_7cm ~ Sample_year, data = SOM_multiyr))) #check normality of residuals - not normal
 shapiro.test(resid(lm(log(POM_C_kgm2_7cm) ~ Sample_year, data = SOM_multiyr))) #check normality of residuals - not normal but closer
 summary(aov(log(POM_C_kgm2_7cm) ~ Sample_year, data = SOM_multiyr)) #not sig
 
-shapiro.test(resid(lm(POM_C_kgm2_7cm ~ Sample_year * Site_ID, data = SOM_multiyr))) #check normality of residuals - not normal
-shapiro.test(resid(lm(log(POM_C_kgm2_7cm) ~ Sample_year * Site_ID, data = SOM_multiyr))) #normal
-summary(aov(log(POM_C_kgm2_7cm) ~ Sample_year * Site_ID, data = SOM_multiyr)) #site sig, interaction not
-TukeyHSD(aov(POM_C_kgm2_7cm ~ factor(Sample_year) * Site_ID, data = SOM_multiyr)) #none are different between years at the same site
+shapiro.test(resid(lm(POM_C_kgm2_7cm ~ Sample_year * Site_ID, data = SOM_multiyr_match))) #check normality of residuals - not normal
+shapiro.test(resid(lm(log(POM_C_kgm2_7cm) ~ Sample_year * Site_ID, data = SOM_multiyr_match))) #normal
+summary(aov(log(POM_C_kgm2_7cm) ~ Sample_year * Site_ID, data = SOM_multiyr_match)) #site sig, interaction not
+TukeyHSD(aov(POM_C_kgm2_7cm ~ factor(Sample_year) * Site_ID, data = SOM_multiyr_match)) #none are different between years at the same site
 
 #MAOM-C
 shapiro.test(resid(lm(MAOM_perC ~ Sample_year, data = SOM_multiyr))) #check normality of residuals - not normal
 shapiro.test(resid(lm(log(MAOM_perC) ~ Sample_year, data = SOM_multiyr))) #not normal but closer
 summary(aov(log(MAOM_perC) ~ Sample_year, data = SOM_multiyr)) #significant
 
-shapiro.test(resid(lm(MAOM_perC ~ Sample_year * Site_ID, data = SOM_multiyr))) #normal
-summary(aov(MAOM_perC ~ Sample_year * Site_ID, data = SOM_multiyr)) #year & site sig, interaction sig
-TukeyHSD(aov(MAOM_perC ~ factor(Sample_year) * Site_ID, data = SOM_multiyr)) #Tukey HSD test for pairwise comparisons -> FM less in 2026 than 2023
+shapiro.test(resid(lm(MAOM_perC ~ Sample_year * Site_ID, data = SOM_multiyr_match))) #normal
+summary(aov(MAOM_perC ~ Sample_year * Site_ID, data = SOM_multiyr_match)) #year & site sig, interaction sig
+TukeyHSD(aov(MAOM_perC ~ factor(Sample_year) * Site_ID, data = SOM_multiyr_match)) #Tukey HSD test for pairwise comparisons -> FM less in 2026 than 2023
 
 shapiro.test(resid(lm(MAOM_C_kgm2_7cm ~ Sample_year, data = SOM_multiyr))) #check normality of residuals - not normal
 shapiro.test(resid(lm(log(MAOM_C_kgm2_7cm) ~ Sample_year, data = SOM_multiyr))) #normal
 summary(aov(log(MAOM_C_kgm2_7cm) ~ Sample_year, data = SOM_multiyr)) #sig
 
-shapiro.test(resid(lm(MAOM_C_kgm2_7cm ~ Sample_year * Site_ID, data = SOM_multiyr))) #normal
-summary(aov(MAOM_C_kgm2_7cm ~ Sample_year * Site_ID, data = SOM_multiyr)) #year & site sig, interaction sig
-TukeyHSD(aov(MAOM_C_kgm2_7cm ~ factor(Sample_year) * Site_ID, data = SOM_multiyr)) #Tukey HSD test for pairwise comparisons -> FM less in 2026 than 2023
+shapiro.test(resid(lm(MAOM_C_kgm2_7cm ~ Sample_year * Site_ID, data = SOM_multiyr_match))) #normal
+summary(aov(MAOM_C_kgm2_7cm ~ Sample_year * Site_ID, data = SOM_multiyr_match)) #year & site sig, interaction sig
+TukeyHSD(aov(MAOM_C_kgm2_7cm ~ factor(Sample_year) * Site_ID, data = SOM_multiyr_match)) #Tukey HSD test for pairwise comparisons -> FM less in 2026 than 2023
 
 
 #Calculate means to compare differences between years
-SOM_multiyr_diff <- SOM_multiyr %>%
+SOM_multiyr_diff <- SOM_multiyr_match %>%
   dplyr::select(Sample_year, Site_ID, SOM_perC, POM_perC, MAOM_perC, SOM_C_kgm2_7cm, POM_C_kgm2_7cm, MAOM_C_kgm2_7cm) %>%
   group_by(Sample_year, Site_ID) %>%
   summarise(across(where(is.numeric), list(mean = ~mean(., na.rm=TRUE)))) #run all summary stats
@@ -3544,6 +3575,41 @@ TukeyHSD(aov(simpson ~ site_id, data = diversity)) #Flashes > Bick 1
 
 ```
 
+# Microbial Communities
+
+## Alpha diversity
+Diversity of species within sites
+
+### 16S
+```{r 16S alpha}
+
+
+
+```
+
+### ITS 
+```{r ITS alpha}
+
+
+
+```
+
+## Beta diversity
+Diversity between sites
+
+### 16S
+```{r 16S beta}
+
+
+
+```
+
+### ITS 
+```{r ITS beta}
+
+
+
+```
 
 # Isotope and Incubation Results
 
@@ -3764,6 +3830,26 @@ ggsave('SOM_15N_240426.svg', #save plot name and type - can be "eps", "pdf", "jp
 
 ```
 
+```{r SOM 15N waste}
+
+shapiro.test(resid(lm(SOM_15N ~ g_debris + Site_ID, data = SOM_13C_T0))) #check normality of residuals - normal
+summary(aov(SOM_15N ~ g_debris + Site_ID, data = SOM_13C_T0)) #both sig
+
+Anova(lmer(SOM_15N ~ g_debris + (1|Site_ID), 
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0, #choose dataframe
+    na.action = na.omit), type=3) #not sig
+
+SOM15N_debris_lme <- lmer(SOM_15N ~ g_debris + (1|Site_ID), 
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0, #choose dataframe
+    na.action = na.omit)
+summary(SOM15N_debris_lme) #random accounts for most variance
+shapiro.test(resid(SOM15N_debris_lme)) #normal
+performance::r2(SOM15N_debris_lme) #calculate R-squared for model fit
+MuMIn::AICc(SOM15N_debris_lme, k=2) #calculate AICc for for model comparison with small sample sizes
+
+```
 
 ```{r POM 15N}
 
@@ -3791,6 +3877,18 @@ ggsave('POM_15N_240426.svg', #save plot name and type - can be "eps", "pdf", "jp
 
 ```
 
+```{r POM 15N waste}
+
+shapiro.test(resid(lm(POM_15N ~ g_debris + Site_ID, data = SOM_13C_T0))) #check normality of residuals - normal
+summary(aov(POM_15N ~ g_debris + Site_ID, data = SOM_13C_T0)) #both sig
+
+Anova(lmer(POM_15N ~ g_debris + (1|Site_ID), 
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0, #choose dataframe
+    na.action = na.omit), type=3) #not sig
+
+```
+
 ```{r MAOM 15N}
 
 shapiro.test(resid(lm(MAOM_15N ~ Site_ID, data = SOM_13C_T0))) #check normality of residuals - not normal
@@ -3815,6 +3913,19 @@ ggsave('MAOM_15N_240426.svg', #save plot name and type - can be "eps", "pdf", "j
 	width = 6, height = 4, units = "in", #set dimensions for figure
 	dpi = 300, #set resolution
 	bg=NULL) #background from plot specifications
+
+```
+
+```{r MAOM 15N waste}
+
+shapiro.test(resid(lm(MAOM_15N ~ g_debris + Site_ID, data = SOM_13C_T0))) #check normality of residuals - not normal P-val but close and W is high, will leave
+shapiro.test(resid(lm(log(MAOM_15N) ~ g_debris + Site_ID, data = SOM_13C_T0))) #check normality of residuals - normal, but NaNs produced
+summary(aov(MAOM_15N ~ g_debris + Site_ID, data = SOM_13C_T0)) #both sig
+
+Anova(lmer(MAOM_15N ~ g_debris + (1|Site_ID), 
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0, #choose dataframe
+    na.action = na.omit), type=3) #not sig
 
 ```
 
