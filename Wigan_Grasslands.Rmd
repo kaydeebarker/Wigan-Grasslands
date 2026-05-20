@@ -643,7 +643,7 @@ SOM_13C <- read_csv("SOM_13C.csv")
 SOM_T0 <- SOM_13C %>%
   filter(Fraction == "SOM") %>%
   filter(Incubation_T == 0) %>%
-  dplyr::select(Sample_year, Site_ID, Site, Mgmt_year, Mgmt_fct, Plot_ID, Incubation_T, per_C, per_N, C_gkg, N_gkg, C_N, d13C, `13C_excess_per`, `15N`, per_POM, per_MAOM, C_kgm2_7cm, pot_C_g, pot_13C_mg) %>% #select columns to keep
+  dplyr::select(Sample_year, Site_ID, Site, Mgmt_year, Mgmt_fct, Plot_ID, Incubation_T, per_C, per_N, C_gkg, N_gkg, C_N, d13C, `13C_excess_per`, `15N`, per_POM, per_MAOM, C_kgm2_7cm, pot_C_g, pot_13C_mg, g_debris) %>% #select columns to keep
   rename("SOM_perC" = "per_C") %>%
   rename("SOM_perN" = "per_N") %>%
   rename("SOM_potC_g" = "pot_C_g") %>%
@@ -2741,7 +2741,7 @@ summary(aov(log(MAOM_N) ~ AM_biomass_gkg + total_fun_gkg, data = SOM_13C_T0)) #n
 ```
 
 
-# Fungi
+# Fungi 2023 
 
 ## AM Association 
 
@@ -2852,6 +2852,127 @@ TukeyHSD(aov(AM_ves_ct ~ pH_range + Site_ID, data = SOM_13C_T0)) #none
 
 
 ```
+
+### By coal waste
+
+```{r AM assoc waste 1}
+
+#Hyphal presence lm plot
+ggplot(data = SOM_13C_T0, aes(x=g_debris, y=AM_hyph_per)) + 
+	geom_point(aes(color=Site_ID), size=2) +
+  scale_color_manual(values=colors) + #define colors to use
+  geom_smooth(method="lm", se=TRUE, color=plotline_color, fill=fill_color) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) + #change to %
+  xlab("Colliery Waste (g/mesocosm)") + ylab("Presence of AM Hyphae (% of Root)") + #define/change X and Y labels
+  my_theme
+
+#Hyphal presence lm plot - remove outlier for waste
+SOM_13C_T0 %>%
+  filter(g_debris < 750) %>%
+ggplot(aes(x=g_debris, y=AM_hyph_per)) + 
+	geom_point(aes(color=Site_ID), size=2) +
+  scale_color_manual(values=colors) + #define colors to use
+  geom_smooth(method="lm", se=TRUE, color=plotline_color, fill=fill_color) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) + #change to %
+  xlab("Colliery Waste (g/mesocosm)") + ylab("Presence of AM Hyphae (% of Root)") + #define/change X and Y labels
+  my_theme
+
+ggsave('AM_hyph_waste1.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+shapiro.test(resid(lm(AM_hyph_per ~ g_debris + Site_ID, data = SOM_13C_T0))) #check normality of residuals - normal
+summary(aov(AM_hyph_per ~ g_debris + Site_ID, data = SOM_13C_T0)) #debris sig, site almost
+
+Anova(lmer(AM_hyph_per ~ g_debris + (1|Site_ID), 
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0, #choose dataframe
+    na.action = na.omit), type=3) #debris very
+
+AM_debris_lme <- lmer(AM_hyph_per ~ g_debris + (1|Site_ID), 
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0, #choose dataframe
+    na.action = na.omit)
+summary(AM_debris_lme) #random accounts for less variance
+shapiro.test(resid(AM_debris_lme)) #normal
+performance::r2(AM_debris_lme) #calculate R-squared for model fit
+MuMIn::AICc(AM_debris_lme, k=2) #calculate AICc for for model comparison with small sample sizes
+
+```
+
+```{r AM assoc waste 2}
+
+#Hyphal presence lm plot - remove outliers and split by site
+SOM_13C_T0 %>%
+  filter(g_debris < 750) %>%
+  filter(AM_hyph_per < 0.92) %>%
+ggplot(aes(x=g_debris, y=AM_hyph_per, group=Site_ID)) + 
+	geom_point(aes(color=Site_ID), size=2) +
+  scale_color_manual(values=colors) + #define colors to use
+  geom_smooth(aes(color=Site_ID), method="lm", se=FALSE, fill=fill_color) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) + #change to %
+  xlab("Colliery Waste (g/mesocosm)") + ylab("Presence of AM Hyphae (% of Root)") + #define/change X and Y labels
+  my_theme
+
+#Hyphal presence lm plot - split by site only
+ggplot(data = SOM_13C_T0, aes(x=g_debris, y=AM_hyph_per, group=Site_ID)) + 
+	geom_point(aes(color=Site_ID), size=2) +
+  scale_color_manual(values=colors) + #define colors to use
+  geom_smooth(aes(color=Site_ID), method="lm", se=FALSE, fill=fill_color) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) + #change to %
+  xlab("Colliery Waste (g/mesocosm)") + ylab("Presence of AM Hyphae (% of Root)") + #define/change X and Y labels
+  my_theme
+
+ggsave('AM_hyph_waste_site.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+
+```
+
+```{r AM arb waste}
+
+#Hyphal presence lm plot
+ggplot(data = SOM_13C_T0, aes(x=g_debris, y=AM_arb_per)) + 
+	geom_point(aes(color=Site_ID), size=2) +
+  scale_color_manual(values=colors) + #define colors to use
+  geom_smooth(method="lm", se=TRUE, color=plotline_color, fill=fill_color) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) + #change to %
+  xlab("Colliery Waste (g/mesocosm)") + ylab("Presence of AM Arbuscules (% of Root)") + #define/change X and Y labels
+  my_theme
+
+#Hyphal presence lm plot - remove outlier for waste
+SOM_13C_T0 %>%
+  filter(g_debris < 750) %>%
+ggplot(aes(x=g_debris, y=AM_arb_per)) + 
+	geom_point(aes(color=Site_ID), size=2) +
+  scale_color_manual(values=colors) + #define colors to use
+  geom_smooth(method="lm", se=TRUE, color=plotline_color, fill=fill_color) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) + #change to %
+  xlab("Colliery Waste (g/mesocosm)") + ylab("Presence of AM Arbuscules (% of Root)") + #define/change X and Y labels
+  my_theme
+
+ggsave('AM_arb_waste.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+shapiro.test(resid(lm(AM_arb_per ~ g_debris + Site_ID, data = SOM_13C_T0))) #check normality of residuals - not normal but can't log
+summary(aov(AM_arb_per ~ g_debris + Site_ID, data = SOM_13C_T0)) #debris sig, site almost
+
+Anova(lmer(AM_arb_per ~ g_debris + (1|Site_ID), 
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0, #choose dataframe
+    na.action = na.omit), type=3) #debris almost but not
+
+
+```
+
 
 ## HLD
 
@@ -3169,6 +3290,28 @@ shapiro.test(resid(lm(AM_fun_g_ratio ~ Site_ID, data = HLD))) #check normality o
 summary(aov(AM_fun_g_ratio ~ Site_ID, data = HLD)) #not sig
 
 ```
+
+### By coal waste
+
+```{r fungi x waste stats}
+
+shapiro.test(resid(lm(spores_g ~ g_debris + Site_ID, data = SOM_13C_T0))) #check normality of residuals - normal
+summary(aov(spores_g ~ g_debris + Site_ID, data = SOM_13C_T0)) #not sig
+
+shapiro.test(resid(lm(AM_mm_g ~ g_debris + Site_ID, data = SOM_13C_T0))) #check normality of residuals - normal
+summary(aov(AM_mm_g ~ g_debris + Site_ID, data = SOM_13C_T0)) #not sig
+
+shapiro.test(resid(lm(other_mm_g ~ g_debris + Site_ID, data = SOM_13C_T0))) #check normality of residuals - normal
+summary(aov(other_mm_g ~ g_debris + Site_ID, data = SOM_13C_T0)) #not sig
+
+shapiro.test(resid(lm(AM_biomass_gkg ~ g_debris + Site_ID, data = SOM_13C_T0))) #check normality of residuals - normal
+summary(aov(AM_biomass_gkg ~ g_debris + Site_ID, data = SOM_13C_T0)) #not sig
+
+shapiro.test(resid(lm(total_fun_gkg ~ g_debris + Site_ID, data = SOM_13C_T0))) #check normality of residuals - normal
+summary(aov(total_fun_gkg ~ g_debris + Site_ID, data = SOM_13C_T0)) #not sig
+
+```
+
 
 ### Hyphal C
 
@@ -4204,7 +4347,7 @@ TukeyHSD(aov(end_drymass_clean ~ factor(Site_ID), data = endbiomass)) #Flashes <
 
 ### Decomposition
 
-```{r decomp, warning=FALSE}
+```{r decomp}
 
 #decomposition percentage box plot
 endbiomass[-1,] %>% #remove G37 because of biomass est error
@@ -4262,6 +4405,27 @@ ggsave('decomp_pH.svg', #save plot name and type - can be "eps", "pdf", "jpeg", 
 
 ```
 
+```{r decomp plot waste}
+
+#decomposition lm plot vs restoration time
+ggplot(data = endbiomass[-1,], aes(x=rocks_debris, y=decomp_per_adj)) + 
+	geom_point(aes(color=Site_ID), size=2) +
+  scale_color_manual(values=colors) + #define colors to use
+  geom_smooth(method="lm", se=TRUE, color=plotline_color, fill=fill_color) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) + #change to %
+  ggtitle("Decomposition by pH") + #add a graph title
+  xlab("Colliery Waste (g/mesocosm)") + ylab("Decomposition (%)") + #define/change X and Y labels
+  my_theme
+
+#save figure
+ggsave('decomp_waste.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 6, height = 4, units = "in", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
+```
+
 
 ```{r decomp stats}
 
@@ -4272,26 +4436,48 @@ kruskal.test(decomp_per_adj ~ factor(Site_ID), data = endbiomass[-1,]) #Kruskal-
 dunn.test(endbiomass[-1,]$decomp_per_adj, endbiomass[-1,]$Site_ID, method="bonferroni", kw=TRUE) #KW P=0.01, Flashes > Bick 1 & 2 only
 
 #AM association
-shapiro.test(resid(lm(decomp_per_adj ~ AM_hyph_per + AM_arb_per + AM_ves_ct, data = endbiomass))) #check normality of residuals - normal
-summary(aov(decomp_per_adj ~ AM_hyph_per + AM_arb_per + AM_ves_ct, data = endbiomass)) #none
+shapiro.test(resid(lm(decomp_per_adj ~ AM_hyph_per + AM_arb_per + AM_ves_ct, data = endbiomass[-1,]))) #check normality of residuals - normal
+summary(aov(decomp_per_adj ~ AM_hyph_per + AM_arb_per + AM_ves_ct, data = endbiomass[-1,])) #hyph almost
 
 #pH
-shapiro.test(resid(lm(decomp_per_adj ~ pH, data = endbiomass))) #check normality of residuals - normal
-summary(aov(decomp_per_adj ~ pH, data = endbiomass)) #very sig
+shapiro.test(resid(lm(decomp_per_adj ~ pH, data = endbiomass[-1,]))) #check normality of residuals - normal
+summary(aov(decomp_per_adj ~ pH, data = endbiomass[-1,])) #very sig
 
 Anova(lmer(decomp_per_adj ~ pH + (1|Site_ID), 
     REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
-    data = endbiomass, #choose dataframe
+    data = endbiomass[-1,], #choose dataframe
     na.action = na.omit), type=3) #pH
 
 decomp_pH_lme <- lmer(decomp_per_adj ~ pH + (1|Site_ID), 
     REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
-    data = endbiomass, #choose dataframe
+    data = endbiomass[-1,], #choose dataframe
     na.action = na.omit)
 summary(decomp_pH_lme) #random accounts for most variance
-shapiro.test(resid(decomp_pH_lme)) #normal
+shapiro.test(resid(decomp_pH_lme)) #not normal, log was worse
 performance::r2(decomp_pH_lme, multivariate=TRUE) #calculate R-squared for model fit
 MuMIn::AICc(decomp_pH_lme, k=2) #calculate AICc for for model comparison with small sample sizes
+
+#decomp versus coal waste
+shapiro.test(resid(lm(decomp_per_adj ~ rocks_debris + Site_ID, data = endbiomass[-1,]))) #check normality of residuals - normal
+summary(aov(decomp_per_adj ~ rocks_debris + Site_ID, data = endbiomass[-1,])) #debris very sig
+
+Anova(lmer(decomp_per_adj ~ rocks_debris + (1|Site_ID), 
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = endbiomass[-1,], #choose dataframe
+    na.action = na.omit), type=3) #debris
+
+decomp_debris_lme <- lmer(decomp_per_adj ~ rocks_debris + (1|Site_ID), 
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = endbiomass[-1,], #choose dataframe
+    na.action = na.omit)
+summary(decomp_debris_lme) #random accounts for less variance
+shapiro.test(resid(decomp_debris_lme)) #normal
+performance::r2(decomp_debris_lme, multivariate=TRUE) #calculate R-squared for model fit
+MuMIn::AICc(decomp_debris_lme, k=2) #calculate AICc for for model comparison with small sample sizes
+
+#decomp versus worms
+shapiro.test(resid(lm(decomp_per_adj ~ worms, data = endbiomass[-1,]))) #check normality of residuals - normal
+summary(aov(decomp_per_adj ~ worms, data = endbiomass[-1,])) #not sig
 
 ```
 
