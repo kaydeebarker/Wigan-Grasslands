@@ -3,9 +3,9 @@ title: "Wigan Grassland Restoration"
 author: "Kaydee S. Barker"
 date: "`r Sys.Date()`"
 output:
-  pdf_document: default
-  html_document: default
   word_document: default
+  html_document: default
+  pdf_document: default
 ---
 
 # Set up
@@ -526,35 +526,46 @@ diversity <- diversity %>%
 ```
 
 ### Bacteria
-```{r load 16S, eval=FALSE}
+```{r load 16S}
 
 #load data
-asv_16S.tmp <- read.table('DNA/16S/asv.csv',header=TRUE,sep=',',row.names=1)
+asv_16S <- read.table('DNA/16S/asv.csv',header=TRUE,sep=',',row.names=1)
+env_16S <- read.table('DNA/16S/env-its.csv',header=TRUE,sep=',',row.names=1) #sample numbers - make into row numbers
 taxa_16S <- read.table('DNA/16S/taxa.csv',header=TRUE,sep=',')
 dna_16S <- read.FASTA('DNA/16S/rep-set.fasta')
-env_16S <- read.table('DNA/16S/env.csv',header=TRUE,sep=',',row.names=1) #sample numbers - make into row numbers
 
 #set row names of asv file from env
-asv_16S <- asv_16S.tmp[which(row.names(asv_16S.tmp)%in%row.names(env_16S)),which(colnames(asv_16S.tmp)%in%names(dna_16S))]
-row.names(asv_16S)==row.names(env_16S) #check it worked
-rm(asv_16S.tmp) #remove temp file
+#asv_16S <- asv_16S.tmp[which(row.names(asv_16S.tmp)%in%row.names(env_16S)),which(colnames(asv_16S.tmp)%in%names(dna_16S))]
+#row.names(asv_16S)==row.names(env_16S) #check it worked
+#rm(asv_16S.tmp) #remove temp file
+
+#alpha diversity - asv
+#observation richness
+x16s_sobs.list <-  replicate(100, 1:dim(asv_16S)[1], simplify = FALSE)
+for (i in 1:100) {
+  x16s_sobs.list[[i]] <- specnumber(as.matrix(rrarefy(asv_16S,sample=170)))
+}
+env_16S$sobs <- Reduce("+", x16s_sobs.list) / length(x16s_sobs.list)
+
+#shannon
+x16s_shannon.list <-  replicate(100, 1:dim(asv_16S)[1], simplify = FALSE)
+for (i in 1:100) {
+  x16s_shannon.list[[i]] <- diversity(as.matrix(rrarefy(asv_16S,sample=170)), index = "shannon")
+}
+env_16S$shannon <- Reduce("+", x16s_shannon.list) / length(x16s_shannon.list)
+
+#gini
+x16s_gini.list <-  replicate(100, 1:dim(asv_16S)[1], simplify = FALSE)
+for (i in 1:100) {
+  x16s_gini.list[[i]] <- apply(as.matrix(rrarefy(asv_16S,sample=170)), 1, function(x) Gini(x))
+}
+env_16S$gini <- Reduce("+", x16s_gini.list) / length(x16s_gini.list)
 
 ```
 
 ### Fungi
 
-```{r load fungi data}
-
-#load ITS data
-#asv_ITS.tmp <- read.table('DNA/ITS/asv.csv',header=TRUE,sep=',',row.names=1)
-#env_ITS <- read.table('DNA/ITS/env.csv',header=TRUE,sep=',',row.names=1)
-#taxa_ITS <- read.table('DNA/ITS/taxa.csv',header=TRUE,sep=',')
-#dna_ITS <- read.FASTA('DNA/ITS/rep-set.fasta')
-
-#set row names of asv file from env
-#asv_ITS <- asv_ITS.tmp[which(row.names(asv_ITS.tmp)%in%row.names(env_ITS)),which(colnames(asv_ITS.tmp)%in%names(dna_ITS))]
-#row.names(asv_ITS)==row.names(env_ITS) #check it worked
-#rm(asv_ITS.tmp) #remove temp file
+```{r load AM and biomass fungi data}
 
 #read in AM association data
 AMdata <- read_csv("Wigan_myc.csv")
@@ -592,6 +603,183 @@ fungal_C <- HLD %>%
 		cols = AM_C_mgkg:otherfun_C_mgkg, #pick columns
 		names_to = "fungal_type", #name column to put original column names in
 		values_to = "mg_C") #name column to put values in
+
+
+```
+
+```{r load process ITS, warning=FALSE}
+
+#load ITS data
+asv_ITS <- read.table('DNA/ITS/asv.csv',header=TRUE,sep=',',row.names=1)
+dna_ITS <- read.FASTA('DNA/ITS/rep-set.fasta')
+env_ITS <- read.table('DNA/ITS/env.csv',header=TRUE,sep=',',row.names=1)
+env_ITS$Site_ID <- factor(env_ITS$Site_ID, levels = order_IDs) #order sites
+taxa_ITS <- read.table('DNA/ITS/taxa.csv',header=TRUE,sep=',')
+taxa_ITS[is.na(taxa_ITS)] <- "unknown" #replace NA values with text
+
+#add some site, plant, other fungal data to env df
+env_ITS <- env_ITS %>%
+  mutate(pH = env_ITS$pH <- site_data$pH[match(env_ITS$Plot_ID, site_data$Plot_ID)]) %>%
+  mutate(ppm_Ca = env_ITS$ppm_Ca <- 
+           site_data$ppm_Ca1[match(env_ITS$Plot_ID, site_data$Plot_ID)]) %>%
+  mutate(ppm_Mg = env_ITS$ppm_Mg <- 
+           site_data$ppm_Mg[match(env_ITS$Plot_ID, site_data$Plot_ID)]) %>%
+  mutate(ppm_Fe = env_ITS$ppm_Fe <- 
+           site_data$ppm_Fe[match(env_ITS$Plot_ID, site_data$Plot_ID)]) %>%
+  mutate(ppm_K = env_ITS$ppm_K <- 
+           site_data$ppm_K[match(env_ITS$Plot_ID, site_data$Plot_ID)]) %>%
+  mutate(ppm_Na = env_ITS$ppm_Na <- 
+           site_data$ppm_Na[match(env_ITS$Plot_ID, site_data$Plot_ID)]) %>%
+  mutate(ppm_P = env_ITS$ppm_P <- 
+           site_data$ppm_P1[match(env_ITS$Plot_ID, site_data$Plot_ID)]) %>%
+  mutate(ppm_S = env_ITS$ppm_S <- 
+           site_data$ppm_S1[match(env_ITS$Plot_ID, site_data$Plot_ID)]) %>%
+  mutate(plant_r = env_ITS$plant_r <- 
+           diversity$species_richness[match(env_ITS$Plot_ID, diversity$pot)]) %>%
+  mutate(plant_shannon = env_ITS$plant_shannon <- 
+           diversity$shannon[match(env_ITS$Plot_ID, diversity$pot)]) %>%
+  mutate(plant_simpson = env_ITS$plant_simpson <- 
+           diversity$simpson[match(env_ITS$Plot_ID, diversity$pot)]) %>%
+  mutate(AM_assoc = env_ITS$AM_assoc <-
+           AMdata$hyph_percent[match(env_ITS$Plot_ID, AMdata$Plot_ID)]) %>%
+  mutate(AM_biomass = env_ITS$AM_biomass <- 
+           HLD$AM_biomass_gkg[match(env_ITS$Plot_ID, HLD$Pot)]) %>%
+  mutate(total_fun_biomass = env_ITS$total_fun_biomass <- 
+           HLD$total_fun_gkg[match(env_ITS$Plot_ID, HLD$Pot)])
+
+
+#alpha diversity calcs - asv
+#observed richness
+its_sobs.list <-  replicate(100, 1:dim(asv_ITS)[1], simplify = FALSE)
+for (i in 1:100) {
+  its_sobs.list[[i]] <- specnumber(as.matrix(rrarefy(asv_ITS,sample=170)))
+}
+env_ITS$sobs <- Reduce("+", its_sobs.list) / length(its_sobs.list)
+
+#shannon
+its_shannon.list <-  replicate(100, 1:dim(asv_ITS)[1], simplify = FALSE)
+for (i in 1:100) {
+  its_shannon.list[[i]] <- diversity(as.matrix(rrarefy(asv_ITS,sample=170)), index = "shannon")
+}
+env_ITS$shannon <- Reduce("+", its_shannon.list) / length(its_shannon.list)
+
+#simpson
+its_simpson.list <-  replicate(100, 1:dim(asv_ITS)[1], simplify = FALSE)
+for (i in 1:100) {
+  its_simpson.list[[i]] <- diversity(as.matrix(rrarefy(asv_ITS,sample=170)), index = "simpson")
+}
+env_ITS$simpson <- Reduce("+", its_simpson.list) / length(its_simpson.list)
+
+#gini coefficient
+its_gini.list <-  replicate(100, 1:dim(asv_ITS)[1], simplify = FALSE)
+for (i in 1:100) {
+  its_gini.list[[i]] <- apply(as.matrix(rrarefy(asv_ITS,sample=170)), 1, function(x) Gini(x))
+}
+env_ITS$gini <- Reduce("+", its_gini.list) / length(its_gini.list)
+
+
+#amalgamating the data with species & genus
+taxa_ITS$genus.species <- paste(taxa_ITS$Genus,taxa_ITS$Species, sep = ".")
+unique(taxa_ITS$genus.species) 
+
+taxa_ITS$asv <- gsub(" ", "", taxa_ITS$asv) #remove spaces from taxa_ITS$asv to match the column naming format
+
+taxa_ITS.sp <- taxa_ITS %>% #check asvs allocated just to genus have same reference sequence
+  filter(Genus != "unknown") %>%
+  filter(Species == "unknown")
+
+sp.tf <- data.frame(genus.species=unique(taxa_ITS.sp$genus.species),
+                    all.same=1:length(unique(taxa_ITS.sp$genus.species)),
+                    length=1:length(unique(taxa_ITS.sp$genus.species)))
+
+for (i in 1:length(unique(taxa_ITS.sp$genus.species))) {
+  temp <- taxa_ITS.sp[which(taxa_ITS.sp$genus.species==unique(taxa_ITS.sp$genus.species)[i]),]
+  sp.tf$length[i] <-  length(unique(temp$seq))
+  sp.tf$all.same[i] <-  length(unique(temp$seq))==1
+  }
+sp.tf #
+
+#combine at species level
+asv_ITS.s <- matrix(0, nrow=nrow(asv_ITS), ncol=length(unique(taxa_ITS$genus.species)))
+rownames(asv_ITS.s) <- rownames(asv_ITS)
+colnames(asv_ITS.s) <- unique(taxa_ITS$genus.species)
+for (i in 1:length(unique(taxa_ITS$genus.species))) {
+  temp <- taxa_ITS[which(taxa_ITS$genus.species == unique(taxa_ITS$genus.species)[i]),]
+  temp2 <- asv_ITS[, which(colnames(asv_ITS) %in% temp$asv), drop=FALSE]
+  asv_ITS.s[,i] <- rowSums(temp2)
+}
+asv_ITS.s <- as.data.frame(asv_ITS.s)
+
+
+#alpha - species
+#observed richness
+its_sobs.list.s <-  replicate(100, 1:dim(asv_ITS.s)[1], simplify = FALSE)
+for (i in 1:100) {
+  its_sobs.list.s[[i]] <- specnumber(as.matrix(rrarefy(asv_ITS.s,sample=170)))
+}
+env_ITS$sobs.s <- Reduce("+", its_sobs.list.s) / length(its_sobs.list.s)
+
+#shannon
+its_shannon.list.s <-  replicate(100, 1:dim(asv_ITS.s)[1], simplify = FALSE)
+for (i in 1:100) {
+  its_shannon.list.s[[i]] <- diversity(as.matrix(rrarefy(asv_ITS.s,sample=170)), index = "shannon")
+}
+env_ITS$shannon.s <- Reduce("+", its_shannon.list.s) / length(its_shannon.list.s)
+
+#simpson
+its_simpson.list.s <-  replicate(100, 1:dim(asv_ITS.s)[1], simplify = FALSE)
+for (i in 1:100) {
+  its_simpson.list.s[[i]] <- diversity(as.matrix(rrarefy(asv_ITS.s,sample=170)), index = "simpson")
+}
+env_ITS$simpson.s <- Reduce("+", its_simpson.list.s) / length(its_simpson.list.s)
+
+#gini
+its_gini.list.s <-  replicate(100, 1:dim(asv_ITS.s)[1], simplify = FALSE)
+for (i in 1:100) {
+  its_gini.list.s[[i]] <- apply(as.matrix(rrarefy(asv_ITS.s,sample=170)), 1, function(x) Gini(x))
+}
+env_ITS$gini.s <- Reduce("+", its_gini.list.s) / length(its_gini.list.s)
+
+
+#combine at genus level
+asv_ITS.g <- matrix(0, nrow=nrow(asv_ITS), ncol=length(unique(taxa_ITS$Genus)))
+rownames(asv_ITS.g) <- rownames(asv_ITS)
+colnames(asv_ITS.g) <- unique(taxa_ITS$Genus)
+for (i in 1:length(unique(taxa_ITS$Genus))) {
+  temp <- taxa_ITS[which(taxa_ITS$Genus == unique(taxa_ITS$Genus)[i]),]
+  temp2 <- asv_ITS[, which(colnames(asv_ITS) %in% temp$asv), drop=FALSE]
+  asv_ITS.g[,i] <- rowSums(temp2)
+}
+asv_ITS.g <- as.data.frame(asv_ITS.g)
+
+#alpha - genus
+#observed richness
+its_sobs.list.g <-  replicate(1000, 1:dim(asv_ITS.g)[1], simplify = FALSE)
+for (i in 1:1000) {
+  its_sobs.list.g[[i]] <- specnumber(as.matrix(rrarefy(asv_ITS.g,sample=170)))
+}
+env_ITS$sobs.g <- Reduce("+", its_sobs.list.g) / length(its_sobs.list.g)
+
+#shannon
+its_shannon.list.g <-  replicate(100, 1:dim(asv_ITS.g)[1], simplify = FALSE)
+for (i in 1:1000) {
+  its_shannon.list.g[[i]] <- diversity(as.matrix(rrarefy(asv_ITS.g,sample=170)), index = "shannon")
+}
+env_ITS$shannon.g <- Reduce("+", its_shannon.list.g) / length(its_shannon.list.g)
+
+#simpson
+its_simpson.list.g <-  replicate(100, 1:dim(asv_ITS.g)[1], simplify = FALSE)
+for (i in 1:100) {
+  its_simpson.list.g[[i]] <- diversity(as.matrix(rrarefy(asv_ITS.g,sample=170)), index = "simpson")
+}
+env_ITS$simpson.g <- Reduce("+", its_simpson.list.g) / length(its_simpson.list.g)
+
+#gini
+its_gini.list.g <-  replicate(100, 1:dim(asv_ITS.g)[1], simplify = FALSE)
+for (i in 1:1000) {
+  its_gini.list.g[[i]] <- apply(as.matrix(rrarefy(asv_ITS.g,sample=170)), 1, function(x) Gini(x))
+}
+env_ITS$gini.g <- Reduce("+", its_gini.list.g) / length(its_gini.list.g)
 
 
 ```
@@ -3602,11 +3790,300 @@ Diversity of species within sites
 ```
 
 ### ITS 
-```{r ITS alpha}
 
+#### ASVs
+```{r ITS alpha sobs}
 
+#stats
+shapiro.test(resid(lm(sobs ~ Site_ID, data = env_ITS))) #check normality of residuals - not normal but high W
+shapiro.test(resid(lm(log(sobs) ~ Site_ID, data = env_ITS))) #check normality of residuals - not normal, worse
+summary(aov(sobs ~ Site_ID, data = env_ITS)) #sig
+TukeyHSD(aov(sobs ~ Site_ID, data = env_ITS)) #BM > AM, AM > BU and FM
+
+#plot
+ggplot(env_ITS, aes(x=Site_ID, y=sobs, fill=Site_ID)) +
+  geom_boxplot(coef=Inf) +
+  geom_jitter(shape=16, position=position_jitter(0.1), size = 0.85) +
+  scale_fill_manual(values = colors4) + #define colors to use
+  xlab("") + ylab("Fungal ASV Richness") + 
+  my_theme
+
+ggsave('ITS_asv_sobs.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
 
 ```
+
+```{r ITS alpha shannon}
+
+#stats
+shapiro.test(resid(lm(shannon ~ Site_ID, data = env_ITS))) #check normality of residuals - not normal
+shapiro.test(resid(lm(log(shannon) ~ Site_ID, data = env_ITS))) #check normality of residuals - not normal, worse
+summary(aov(shannon ~ Site_ID, data = env_ITS)) #sig
+TukeyHSD(aov(shannon ~ Site_ID, data = env_ITS)) #FM > AM
+
+#plot
+ggplot(env_ITS, aes(x=Site_ID, y=shannon, fill=Site_ID)) +
+  geom_boxplot(coef=Inf) +
+  geom_jitter(shape=16, position=position_jitter(0.1), size = 0.85) +
+  scale_fill_manual(values = colors4) + #define colors to use
+  xlab("") + ylab("Fungal ASV Shannon Index") + 
+  my_theme
+
+ggsave('ITS_asv_shannon.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+```
+
+```{r ITS alpha simpson}
+
+#stats
+shapiro.test(resid(lm(simpson ~ Site_ID, data = env_ITS))) #check normality of residuals - not normal
+shapiro.test(resid(lm(log(simpson) ~ Site_ID, data = env_ITS))) #check normality of residuals - not normal, worse
+summary(aov(simpson ~ Site_ID, data = env_ITS)) #sig
+TukeyHSD(aov(simpson ~ Site_ID, data = env_ITS)) #BM > AM
+
+#plot
+ggplot(env_ITS, aes(x=Site_ID, y=simpson, fill=Site_ID)) +
+  geom_boxplot(coef=Inf) +
+  geom_jitter(shape=16, position=position_jitter(0.1), size = 0.85) +
+  scale_fill_manual(values = colors4) + #define colors to use
+  xlab("") + ylab("Fungal ASV Simpson Index") + 
+  my_theme
+
+ggsave('ITS_asv_simpson.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+```
+
+
+```{r ITS alpha gini}
+
+#stats
+shapiro.test(resid(lm(gini ~ Site_ID, data = env_ITS))) #check normality of residuals - normal
+summary(aov(gini ~ Site_ID, data = env_ITS)) #sig
+TukeyHSD(aov(gini ~ Site_ID, data = env_ITS)) #none
+
+ggplot(env_ITS, aes(x=Site_ID, y=gini, fill=Site_ID)) +
+  geom_boxplot(coef=Inf) +
+  geom_jitter(shape=16, position=position_jitter(0.1), size = 0.85) +
+  scale_fill_manual(values = colors4) + #define colors to use
+  xlab("") + ylab("Fungal ASV Evenness (Gini index)") + 
+  my_theme
+
+#plot
+ggsave('ITS_asv_gini.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+```
+
+#### Species
+```{r ITS alpha sp sobs}
+
+#stats
+shapiro.test(resid(lm(sobs.s ~ Site_ID, data = env_ITS))) #check normality of residuals - not normal but high W
+shapiro.test(resid(lm(log(sobs.s) ~ Site_ID, data = env_ITS))) #check normality of residuals - not normal, worse
+summary(aov(sobs.s ~ Site_ID, data = env_ITS)) #sig
+TukeyHSD(aov(sobs.s ~ Site_ID, data = env_ITS)) #BM > AM
+
+#plot
+ggplot(env_ITS, aes(x=Site_ID, y=sobs.s, fill=Site_ID)) +
+  geom_boxplot(coef=Inf) +
+  geom_jitter(shape=16, position=position_jitter(0.1), size = 0.85) +
+  scale_fill_manual(values = colors4) + #define colors to use
+  xlab("") + ylab("Fungal Species Richness") + 
+  my_theme
+
+ggsave('ITS_sp_sobs.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+```
+
+```{r ITS alpha sp shannon}
+
+#stats
+shapiro.test(resid(lm(shannon.s ~ Site_ID, data = env_ITS))) #check normality of residuals - not normal
+shapiro.test(resid(lm(log(shannon.s) ~ Site_ID, data = env_ITS))) #check normality of residuals - not normal, worse
+summary(aov(shannon.s ~ Site_ID, data = env_ITS)) #sig
+TukeyHSD(aov(shannon.s ~ Site_ID, data = env_ITS)) #BM > AM
+
+#plot
+ggplot(env_ITS, aes(x=Site_ID, y=shannon.s, fill=Site_ID)) +
+  geom_boxplot(coef=Inf) +
+  geom_jitter(shape=16, position=position_jitter(0.1), size = 0.85) +
+  scale_fill_manual(values = colors4) + #define colors to use
+  xlab("") + ylab("Fungal Species Shannon Index") + 
+  my_theme
+
+ggsave('ITS_sp_shannon.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+```
+
+```{r ITS alpha sp simpson}
+
+#stats
+shapiro.test(resid(lm(simpson.s ~ Site_ID, data = env_ITS))) #check normality of residuals - not normal
+shapiro.test(resid(lm(log(simpson.s) ~ Site_ID, data = env_ITS))) #check normality of residuals - not normal, worse
+summary(aov(simpson.s ~ Site_ID, data = env_ITS)) #sig
+TukeyHSD(aov(simpson.s ~ Site_ID, data = env_ITS)) #BM < AM
+
+#plot
+ggplot(env_ITS, aes(x=Site_ID, y=simpson.s, fill=Site_ID)) +
+  geom_boxplot(coef=Inf) +
+  geom_jitter(shape=16, position=position_jitter(0.1), size = 0.85) +
+  scale_fill_manual(values = colors4) + #define colors to use
+  xlab("") + ylab("Fungal Species Simpson Index") + 
+  my_theme
+
+ggsave('ITS_sp_simpson.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+```
+
+
+```{r ITS alpha sp gini}
+
+#stats
+shapiro.test(resid(lm(gini.s ~ Site_ID, data = env_ITS))) #check normality of residuals - normal
+summary(aov(gini.s ~ Site_ID, data = env_ITS)) #sig
+TukeyHSD(aov(gini.s ~ Site_ID, data = env_ITS)) #AM > BM
+
+#plot
+ggplot(env_ITS, aes(x=Site_ID, y=gini.s, fill=Site_ID)) +
+  geom_boxplot(coef=Inf) +
+  geom_jitter(shape=16, position=position_jitter(0.1), size = 0.85) +
+  scale_fill_manual(values = colors4) + #define colors to use
+  xlab("") + ylab("Fungal Species Evenness (Gini index)") + 
+  my_theme
+
+ggsave('ITS_sp_gini.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+```
+
+
+#### Genus
+```{r ITS alpha g sobs}
+
+##stats
+shapiro.test(resid(lm(sobs.g ~ Site_ID, data = env_ITS))) #check normality of residuals - not normal but high W
+shapiro.test(resid(lm(log(sobs.g) ~ Site_ID, data = env_ITS))) #check normality of residuals - not normal, worse
+summary(aov(sobs.g ~ Site_ID, data = env_ITS)) #sig
+TukeyHSD(aov(sobs.g ~ Site_ID, data = env_ITS)) #BM & FM > AM
+
+#plot
+ggplot(env_ITS, aes(x=Site_ID, y=sobs.g, fill=Site_ID)) +
+  geom_boxplot(coef=Inf) +
+  geom_jitter(shape=16, position=position_jitter(0.1), size = 0.85) +
+  scale_fill_manual(values = colors4) + #define colors to use
+  xlab("") + ylab("Fungal Genus Richness") + 
+  my_theme
+
+ggsave('ITS_g_sobs.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+```
+
+```{r ITS alpha g shannon}
+
+#ASV - richness
+shapiro.test(resid(lm(shannon.g ~ Site_ID, data = env_ITS))) #check normality of residuals - not normal
+shapiro.test(resid(lm(log(shannon.g) ~ Site_ID, data = env_ITS))) #check normality of residuals - not normal, worse
+summary(aov(shannon.g ~ Site_ID, data = env_ITS)) #sig
+TukeyHSD(aov(shannon.g ~ Site_ID, data = env_ITS)) #BM & FM > AM
+
+#plot
+ggplot(env_ITS, aes(x=Site_ID, y=shannon.g, fill=Site_ID)) +
+  geom_boxplot(coef=Inf) +
+  geom_jitter(shape=16, position=position_jitter(0.1), size = 0.85) +
+  scale_fill_manual(values = colors4) + #define colors to use
+  xlab("") + ylab("Fungal Genus Shannon Index") + 
+  my_theme
+
+ggsave('ITS_g_shannon.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+```
+
+```{r ITS alpha g simpson}
+
+#ASV - richness
+shapiro.test(resid(lm(simpson.g ~ Site_ID, data = env_ITS))) #check normality of residuals - not normal
+shapiro.test(resid(lm(log(simpson.g) ~ Site_ID, data = env_ITS))) #check normality of residuals - not normal, worse
+summary(aov(simpson.g ~ Site_ID, data = env_ITS)) #sig
+TukeyHSD(aov(simpson.g ~ Site_ID, data = env_ITS)) #BU & BM > AM
+
+#plot
+ggplot(env_ITS, aes(x=Site_ID, y=simpson.g, fill=Site_ID)) +
+  geom_boxplot(coef=Inf) +
+  geom_jitter(shape=16, position=position_jitter(0.1), size = 0.85) +
+  scale_fill_manual(values = colors4) + #define colors to use
+  xlab("") + ylab("Fungal Genus Simpson Index") + 
+  my_theme
+
+ggsave('ITS_g_simpson.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+```
+
+
+```{r ITS alpha g gini}
+
+#ASV - richness
+shapiro.test(resid(lm(gini.g ~ Site_ID, data = env_ITS))) #check normality of residuals - normal
+summary(aov(gini.g ~ Site_ID, data = env_ITS)) #sig
+TukeyHSD(aov(gini.g ~ Site_ID, data = env_ITS)) #AM > BM
+
+#plot
+ggplot(env_ITS, aes(x=Site_ID, y=gini.g, fill=Site_ID)) +
+  geom_boxplot(coef=Inf) +
+  geom_jitter(shape=16, position=position_jitter(0.1), size = 0.85) +
+  scale_fill_manual(values = colors4) + #define colors to use
+  xlab("") + ylab("Fungal Genus Evenness (Gini index)") + 
+  my_theme
+
+ggsave('ITS_g_gini.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+```
+
+
 
 ## Beta diversity
 Diversity between sites
@@ -3619,11 +4096,680 @@ Diversity between sites
 ```
 
 ### ITS 
-```{r ITS beta}
 
+#### ASVs
 
+```{r ITS rarefaction curve asv, warning=FALSE}
+
+#ASV counts per site - rarefaction
+its_rare.out <- rarecurve(asv_ITS, step = 10, tidy = TRUE)
+its_rare.out$Site <- as.factor(its_rare.out$Site)
+its_rare.out$sample.label <- as.factor(its_rare.out$Sample)
+its_rare.out$label <- NA
+
+for (i in unique(its_rare.out$Site)) {
+  tmp <- its_rare.out[which(its_rare.out$Site==i),]
+  its_rare.out$label[which(its_rare.out$Sample==max(tmp$Sample)&its_rare.out$Site==i)] <- i
+}
+
+#plot rarefaction curve
+ggplot(data = its_rare.out, aes(x = Sample, y = Species, group = Site)) +
+  geom_line(color = "black", linewidth = 1) +
+  #geom_point() +
+  labs(x = "Number of reads", y = "ASVs", title = "Rarefaction curve") +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1),legend.position = 0) +
+  scale_color_discrete(name = "Site") +
+  geom_label_repel(aes(label = label),
+                   nudge_x = 1,
+                   na.rm = TRUE) + 
+  my_theme
+
+ggsave('ITS_rarecurve.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
 
 ```
+
+```{r ITS beta asv, warning=FALSE}
+
+#calculate distances
+
+#Euclidean distance
+its_euc.list <-  replicate(100, matrix(nrow = dim(asv_ITS)[1], ncol = dim(asv_ITS)[1]), simplify = FALSE)
+for (i in 1:100) {
+  its_euc.list[[i]] <- vegdist(sqrt(as.matrix(rrarefy(asv_ITS,sample=170))/170), method="euc")
+}
+asv_ITS.ml.euc <- Reduce("+", its_euc.list) / length(its_euc.list)
+
+#Jaqcard distance
+its_jaq.list <-  replicate(100, matrix(nrow = dim(asv_ITS)[1], ncol = dim(asv_ITS)[1]), simplify = FALSE)
+for (i in 1:100) {
+  its_jaq.list[[i]] <- vegdist(as.matrix(rrarefy(asv_ITS,sample=170)), method="jaccard", binary = TRUE)
+}
+asv_ITS.jaq <- Reduce("+", its_jaq.list) / length(its_jaq.list)
+
+#Bray-Curtis
+its_bray.list <-  replicate(100, matrix(nrow = dim(asv_ITS)[1], ncol = dim(asv_ITS)[1]), simplify = FALSE)
+for (i in 1:100) {
+  its_bray.list[[i]] <- vegdist(as.matrix(rrarefy(asv_ITS,sample=170))/170, method="bray")
+}
+asv_ITS.ml.bray <- Reduce("+", its_bray.list) / length(its_bray.list)
+
+
+#check beta dispersion by site for each distance metric
+mod <- betadisper(asv_ITS.ml.euc, env_ITS$Site_ID, type = "centroid")
+permutest(mod, permutations = 999) #P=0.002
+
+mod <- betadisper(asv_ITS.jaq, env_ITS$Site_ID, type = "centroid")
+permutest(mod, permutations = 999) #P=0.001
+
+mod <- betadisper(asv_ITS.ml.bray, env_ITS$Site_ID, type = "centroid")
+permutest(mod, permutations = 999) #P=0.001
+
+#PERMANOVA
+adonis2(asv_ITS.ml.euc ~ Site_ID, method = "none", data = env_ITS, permutations = 9999) #P=1e-4
+adonis2(asv_ITS.jaq ~ Site_ID, method = "none", data = env_ITS, permutations = 9999) #P=1e-4
+adonis2(asv_ITS.ml.bray ~ Site_ID, method = "none", data = env_ITS, permutations = 9999) #P=1e-4
+
+
+#check beta dispersion by pH for each distance metric
+mod <- betadisper(asv_ITS.ml.euc, env_ITS$pH, type = "centroid")
+permutest(mod, permutations = 999) #P=0.001
+
+mod <- betadisper(asv_ITS.jaq, env_ITS$pH, type = "centroid")
+permutest(mod, permutations = 999) #P=0.001
+
+mod <- betadisper(asv_ITS.ml.bray, env_ITS$pH, type = "centroid")
+permutest(mod, permutations = 999) #P=0.001
+
+#PERMANOVA
+adonis2(asv_ITS.ml.euc ~ pH, method = "none", data = env_ITS, permutations = 9999) #P=1e-4
+adonis2(asv_ITS.jaq ~ pH, method = "none", data = env_ITS, permutations = 9999) #P=1e-4
+adonis2(asv_ITS.ml.bray ~ pH, method = "none", data = env_ITS, permutations = 9999) #P=1e-4
+
+
+#check beta dispersion - plant richness
+mod <- betadisper(asv_ITS.ml.euc, env_ITS$plant_r, type = "centroid")
+permutest(mod, permutations = 999) #P=0.001
+
+mod <- betadisper(asv_ITS.jaq, env_ITS$plant_r, type = "centroid")
+permutest(mod, permutations = 999) #P=0.001
+
+mod <- betadisper(asv_ITS.ml.bray, env_ITS$plant_r, type = "centroid")
+permutest(mod, permutations = 999) #P=0.001
+
+#PERMANOVA
+adonis2(asv_ITS.ml.euc ~ plant_r, method = "none", data = env_ITS, permutations = 9999) #P=0.035
+adonis2(asv_ITS.jaq ~ plant_r, method = "none", data = env_ITS, permutations = 9999) #P=0.022
+adonis2(asv_ITS.ml.bray ~ plant_r, method = "none", data = env_ITS, permutations = 9999) #P=0.021
+
+#check beta dispersion - plant shannon and simpson
+mod <- betadisper(asv_ITS.ml.euc, env_ITS$plant_shannon, type = "centroid")
+permutest(mod, permutations = 999) #999
+
+mod <- betadisper(asv_ITS.ml.euc, env_ITS$plant_simpson, type = "centroid")
+permutest(mod, permutations = 999) #999
+
+#PERMANOVA
+adonis2(asv_ITS.ml.euc ~ plant_shannon, method = "none", data = env_ITS, permutations = 9999) #P=0.1
+adonis2(asv_ITS.jaq ~ plant_shannon, method = "none", data = env_ITS, permutations = 9999) #P=0.4
+adonis2(asv_ITS.ml.bray ~ plant_shannon, method = "none", data = env_ITS, permutations = 9999) #P=0.1
+adonis2(asv_ITS.ml.euc ~ plant_simpson, method = "none", data = env_ITS, permutations = 9999) #P=0.1
+adonis2(asv_ITS.jaq ~ plant_simpson, method = "none", data = env_ITS, permutations = 9999) #P=0.4
+adonis2(asv_ITS.ml.bray ~ plant_simpson, method = "none", data = env_ITS, permutations = 9999) #P=0.1
+
+
+#check beta dispersion - AM association
+mod <- betadisper(asv_ITS.ml.euc, env_ITS$AM_assoc, type = "centroid")
+permutest(mod, permutations = 999) #P=0.012
+
+mod <- betadisper(asv_ITS.jaq, env_ITS$AM_assoc, type = "centroid")
+permutest(mod, permutations = 999) #P=0.004
+
+mod <- betadisper(asv_ITS.ml.bray, env_ITS$AM_assoc, type = "centroid")
+permutest(mod, permutations = 999) #P=0.6
+
+#PERMANOVA
+adonis2(asv_ITS.ml.euc ~ AM_assoc, method = "none", data = env_ITS, permutations = 9999) #P=8e-4
+adonis2(asv_ITS.jaq ~ AM_assoc, method = "none", data = env_ITS, permutations = 9999) #P=2e-4
+adonis2(asv_ITS.ml.bray ~ AM_assoc, method = "none", data = env_ITS, permutations = 9999) #P=4e-4
+
+
+#check beta dispersion - biomass - probably not enough data, since only half the samples
+mod <- betadisper(asv_ITS.ml.euc, env_ITS$AM_biomass, type = "centroid")
+permutest(mod, permutations = 999) #999
+
+mod <- betadisper(asv_ITS.ml.euc, env_ITS$total_fun_biomass, type = "centroid")
+permutest(mod, permutations = 999) #999
+
+
+#check beta dispersion and PERMANOVA - nutrients
+mod <- betadisper(asv_ITS.ml.euc, env_ITS$ppm_Ca, type = "centroid")
+permutest(mod, permutations = 999) #999
+
+adonis2(asv_ITS.ml.euc ~ ppm_Ca, method = "none", data = env_ITS, permutations = 9999) #P=1e-4
+adonis2(asv_ITS.jaq ~ ppm_Ca, method = "none", data = env_ITS, permutations = 9999) #P=1e-4
+adonis2(asv_ITS.ml.bray ~ ppm_Ca, method = "none", data = env_ITS, permutations = 9999) #P=1e-4
+
+mod <- betadisper(asv_ITS.ml.euc, env_ITS$ppm_Mg, type = "centroid")
+permutest(mod, permutations = 999) #999
+
+adonis2(asv_ITS.ml.euc ~ ppm_Mg, method = "none", data = env_ITS, permutations = 9999) #P=3e-4
+adonis2(asv_ITS.jaq ~ ppm_Mg, method = "none", data = env_ITS, permutations = 9999) #P=4e-4
+adonis2(asv_ITS.ml.bray ~ ppm_Mg, method = "none", data = env_ITS, permutations = 9999) #P=3e-4
+
+mod <- betadisper(asv_ITS.ml.euc, env_ITS$ppm_Fe, type = "centroid")
+permutest(mod, permutations = 999) #999
+
+adonis2(asv_ITS.ml.euc ~ ppm_Fe, method = "none", data = env_ITS, permutations = 9999) #P=0.6
+
+mod <- betadisper(asv_ITS.ml.euc, env_ITS$ppm_Na, type = "centroid")
+permutest(mod, permutations = 999) #999
+
+adonis2(asv_ITS.ml.euc ~ ppm_Na, method = "none", data = env_ITS, permutations = 9999) #P=0.9
+
+mod <- betadisper(asv_ITS.ml.euc, env_ITS$ppm_K, type = "centroid")
+permutest(mod, permutations = 999) #999
+
+adonis2(asv_ITS.ml.euc ~ ppm_K, method = "none", data = env_ITS, permutations = 9999) #P=0.1
+adonis2(asv_ITS.jaq ~ ppm_K, method = "none", data = env_ITS, permutations = 9999) #P=0.2
+adonis2(asv_ITS.ml.bray ~ ppm_K, method = "none", data = env_ITS, permutations = 9999) #P=0.2
+
+mod <- betadisper(asv_ITS.ml.euc, env_ITS$ppm_P, type = "centroid")
+permutest(mod, permutations = 999) #999
+
+adonis2(asv_ITS.ml.euc ~ ppm_P, method = "none", data = env_ITS, permutations = 9999) #P=0.7
+
+mod <- betadisper(asv_ITS.ml.euc, env_ITS$ppm_S, type = "centroid")
+permutest(mod, permutations = 999) #999
+
+adonis2(asv_ITS.ml.euc ~ ppm_S, method = "none", data = env_ITS, permutations = 9999) #P=0.0015
+adonis2(asv_ITS.jaq ~ ppm_S, method = "none", data = env_ITS, permutations = 9999) #P=0.0054
+adonis2(asv_ITS.ml.bray ~ ppm_S, method = "none", data = env_ITS, permutations = 9999) #P=0.0026
+
+```
+
+##### NMDS
+
+```{r ITS NMDS asv, warning=FALSE}
+
+#Hellinger (square root) transform and standardize with vegan library
+asv_ITS_h_std <- asv_ITS %>%
+  dplyr::select((where(is.numeric))) %>% #select only numeric columns
+  decostand(., #call decostand transformation function
+				 method = "hellinger", #transformation method
+				 zap = FALSE, #make near zero values into zeros to avoid exaggeration
+				 na.rm = TRUE) %>% #remove NA values
+  mutate(across(where(is.numeric), ~scale(., center = TRUE, scale = TRUE)))
+
+#standardize env variables
+env_ITS_std <- env_ITS[,-c(17:30)] %>% #env file minus microbial diversity and incomplete columns
+  mutate_if(is.numeric,scale) 
+
+its_nmds_df <- asv_ITS_h_std
+
+#test how many axes are appropriate
+stress <- vector(length = 6)
+for (i in 1:6) {
+    stress[i] <- metaMDS(its_nmds_df, distance = "bray", k = i,
+                         model = "global", #calc stress on ranks of data
+                         maxit = 400, #max iterations of configuration adjustments
+                         try = 20, trymax = 20, #min and max runs
+                         autotransform = FALSE, #don't transform data
+                         weakties = TRUE, #set fitted distances as un-fixed
+                         scaling = TRUE, #re-scale ordination axes
+                         na.rm = TRUE)$stress
+}
+names(stress) <- paste0(1:6, "Dim")
+par(mar = c(3.5,3.5,1,1), mgp = c(2, 0.6, 0), cex = 0.8, las = 2)
+barplot(stress, ylab = "stress")
+
+#run NMDS with 5 axes to be reliably stress < 0.2
+set.seed(42) #set seed for reproducibility
+its_nmds <- metaMDS(its_nmds_df, 
+                distance = "bray", #data & distance measure
+                k = 3, #number of axes
+                model = "global", #calc stress on ranks of data
+                maxit = 400, #max iterations of configuration adjustments
+                try = 20, trymax = 200, #min and max runs
+                autotransform = FALSE, #don't transform data
+                weakties = TRUE, #set fitted distances as un-fixed
+                pc = TRUE, #rotate axes using PCA to orient first 2 axes as containing most of the variability
+                scaling = TRUE, #re-scale ordination axes to ‘unit root mean squares’
+                na.rm = TRUE) #remove NA values
+
+its_nmds #check "stress" value to see how well the data is represented by the ordination
+goodness(its_nmds) #check goodness of fit for each point
+stressplot(its_nmds, main = "Shepard plot") #diagnostic plot
+
+#make fit vectors with env variables and view
+#its_nmdsfit <- envfit(its_nmds, env_ITS[,-c(1:4,17:30)], #without standardization
+ #                     permutations = 999, na.rm=TRUE)
+its_nmdsfit <- envfit(its_nmds, env_ITS_std[,-c(1:4)], #with standardization
+                      permutations = 999, na.rm=TRUE)
+its_nmdsfit #check fit vectors
+
+#make df of scores, add sites
+its_nmds_scores <- as.data.frame(scores(its_nmds))
+its_nmds_scores$Site_ID = env_ITS$Site_ID 
+
+#make df of vectors, only significant vectors
+its_nmds_vectors <- as.data.frame(scores(its_nmdsfit, display = "vectors")) #extracts relevant scores from envfit
+its_nmds_vectors <- cbind(its_nmds_vectors, variable = rownames(its_nmds_vectors)) #and then gives them their names
+its_nmds_vectors <- cbind(its_nmds_vectors, pval = its_nmdsfit$vectors$pvals) # add pvalues to dataframe
+its_sig_vectors <- subset(its_nmds_vectors, pval<=0.1) #subset data to show variables somewhat significant at rounded 0.1
+
+#plot scores with ggplot
+ggplot(its_nmds_scores) + 
+  geom_point(size = 2, aes(x = NMDS1, y = NMDS2, color = Site_ID)) +
+  stat_ellipse(aes(x = NMDS1, y = NMDS2, color = Site_ID, fill = Site_ID),
+               alpha = 0.2, #transparency of ellipse fill
+               geom = "polygon") + #draw as polygon rather than just outline
+  geom_segment(data = its_sig_vectors,
+              aes(x = 0, xend = NMDS1 * 400,
+                  y = 0, yend = NMDS2 * 400), 
+              arrow = arrow(length = unit(0.25,"cm"),
+                            type = "open", angle = 20,
+                            ends = "last"),
+              color = "grey10", 
+              lwd = 0.3) +
+  geom_text_repel(data = its_sig_vectors,
+                  aes(x = NMDS1 * 400,
+                      y = NMDS2 * 400, 
+                      label = variable), 
+                  size = 3,
+                  max.overlaps = Inf) +
+  scale_color_manual(values = colors4) +
+  scale_fill_manual(values = colors4) + #match fill colors to your color scheme
+  labs(x = "NMDS1", y = "NMDS2", color = "Site", fill = "Site") +
+  coord_fixed() +
+  my_theme
+
+#save figure - name, type, folder, dimensions, resolution, background specs
+ggsave('ITS_asv_NMDS_210526.svg', path = "Figures", width = 6, height = 4, units = "in", dpi = 300, bg=NULL)
+
+```
+
+
+#### Species
+
+```{r ITS beta sp, warning=FALSE}
+
+#calculate distances
+
+#Euclidean distance
+its_euc.list.s <-  replicate(100, matrix(nrow = dim(asv_ITS.s)[1], ncol = dim(asv_ITS.s)[1]), simplify = FALSE)
+for (i in 1:100) {
+  its_euc.list.s[[i]] <- vegdist(sqrt(as.matrix(rrarefy(asv_ITS.s,sample=170))/170), method="euc")
+}
+asv_ITS.ml.euc.s <- Reduce("+", its_euc.list.s) / length(its_euc.list.s)
+
+#Jaqcard distance
+its_jaq.list.s <-  replicate(100, matrix(nrow = dim(asv_ITS.s)[1], ncol = dim(asv_ITS.s)[1]), simplify = FALSE)
+for (i in 1:100) {
+  its_jaq.list.s[[i]] <- vegdist(as.matrix(rrarefy(asv_ITS.s,sample=170)), method="jaccard", binary = TRUE)
+}
+asv_ITS.jaq.s <- Reduce("+", its_jaq.list.s) / length(its_jaq.list.s)
+
+#Bray-Curtis
+its_bray.list.s <-  replicate(100, matrix(nrow = dim(asv_ITS.s)[1], ncol = dim(asv_ITS.s)[1]), simplify = FALSE)
+for (i in 1:100) {
+  its_bray.list.s[[i]] <- vegdist(as.matrix(rrarefy(asv_ITS.s,sample=170))/170, method="bray")
+}
+asv_ITS.ml.bray.s <- Reduce("+", its_bray.list.s) / length(its_bray.list.s)
+
+
+#check beta dispersion by site for each distance metric
+mod <- betadisper(asv_ITS.ml.euc.s, env_ITS$Site_ID, type = "centroid")
+permutest(mod, permutations = 999) #P=0.001
+
+mod <- betadisper(asv_ITS.jaq.s, env_ITS$Site_ID, type = "centroid")
+permutest(mod, permutations = 999) #P=0.004
+
+mod <- betadisper(asv_ITS.ml.bray.s, env_ITS$Site_ID, type = "centroid")
+permutest(mod, permutations = 999) #P=0.001
+
+#PERMANOVA - site
+adonis2(asv_ITS.ml.euc.s ~ Site_ID, method = "none", data = env_ITS, permutations = 9999) #P=1e-4
+adonis2(asv_ITS.jaq.s ~ Site_ID, method = "none", data = env_ITS, permutations = 9999) #P=1e-4
+adonis2(asv_ITS.ml.bray.s ~ Site_ID, method = "none", data = env_ITS, permutations = 9999) #P=1e-4
+
+#PERMANOVA - pH
+adonis2(asv_ITS.ml.euc.s ~ pH, method = "none", data = env_ITS, permutations = 9999) #P=1e-4
+adonis2(asv_ITS.jaq.s ~ pH, method = "none", data = env_ITS, permutations = 9999) #P=1e-4
+adonis2(asv_ITS.ml.bray.s ~ pH, method = "none", data = env_ITS, permutations = 9999) #P=1e-4
+
+#PERMANOVA - plant richness
+adonis2(asv_ITS.ml.euc.s ~ plant_r, method = "none", data = env_ITS, permutations = 9999) #P=0.042
+adonis2(asv_ITS.jaq.s ~ plant_r, method = "none", data = env_ITS, permutations = 9999) #P=0.035
+adonis2(asv_ITS.ml.bray.s ~ plant_r, method = "none", data = env_ITS, permutations = 9999) #P=0.036
+
+#PERMANOVA - plant shannon and simpson
+adonis2(asv_ITS.ml.euc.s ~ plant_shannon, method = "none", data = env_ITS, permutations = 9999) #P=0.2
+adonis2(asv_ITS.jaq.s ~ plant_shannon, method = "none", data = env_ITS, permutations = 9999) #P=0.3
+adonis2(asv_ITS.ml.bray.s ~ plant_shannon, method = "none", data = env_ITS, permutations = 9999) #P=0.2
+adonis2(asv_ITS.ml.euc.s ~ plant_simpson, method = "none", data = env_ITS, permutations = 9999) #P=0.2
+adonis2(asv_ITS.jaq.s ~ plant_simpson, method = "none", data = env_ITS, permutations = 9999) #P=0.2
+adonis2(asv_ITS.ml.bray.s ~ plant_simpson, method = "none", data = env_ITS, permutations = 9999) #P=0.2
+
+#PERMANOVA - AM association
+adonis2(asv_ITS.ml.euc.s ~ AM_assoc, method = "none", data = env_ITS, permutations = 9999) #P=0.003
+adonis2(asv_ITS.jaq.s ~ AM_assoc, method = "none", data = env_ITS, permutations = 9999) #P=0.007
+adonis2(asv_ITS.ml.bray.s ~ AM_assoc, method = "none", data = env_ITS, permutations = 9999) #P=0.005
+
+#PERMANOVA - nutrients
+adonis2(asv_ITS.ml.euc.s ~ ppm_Ca, method = "none", data = env_ITS, permutations = 9999) #P=1e-4
+adonis2(asv_ITS.jaq.s ~ ppm_Ca, method = "none", data = env_ITS, permutations = 9999) #P=7e-4
+adonis2(asv_ITS.ml.bray.s ~ ppm_Ca, method = "none", data = env_ITS, permutations = 9999) #P=1e-4
+
+adonis2(asv_ITS.ml.euc.s ~ ppm_Mg, method = "none", data = env_ITS, permutations = 9999) #P=2e-4
+adonis2(asv_ITS.jaq.s ~ ppm_Mg, method = "none", data = env_ITS, permutations = 9999) #P=4e-4
+adonis2(asv_ITS.ml.bray.s ~ ppm_Mg, method = "none", data = env_ITS, permutations = 9999) #P=5e-4
+
+adonis2(asv_ITS.ml.euc.s ~ ppm_Fe, method = "none", data = env_ITS, permutations = 9999) #P=0.5
+
+adonis2(asv_ITS.ml.euc.s ~ ppm_Na, method = "none", data = env_ITS, permutations = 9999) #P=0.96
+
+adonis2(asv_ITS.ml.euc.s ~ ppm_K, method = "none", data = env_ITS, permutations = 9999) #P=0.3
+
+adonis2(asv_ITS.ml.euc.s ~ ppm_P, method = "none", data = env_ITS, permutations = 9999) #P=0.6
+
+adonis2(asv_ITS.ml.euc.s ~ ppm_S, method = "none", data = env_ITS, permutations = 9999) #P=0.0016
+adonis2(asv_ITS.jaq.s ~ ppm_S, method = "none", data = env_ITS, permutations = 9999) #P=0.012
+adonis2(asv_ITS.ml.bray.s ~ ppm_S, method = "none", data = env_ITS, permutations = 9999) #P=0.0048
+
+```
+
+##### NMDS
+
+```{r ITS NMDS sp, warning=FALSE}
+
+#Hellinger (square root) transform and standardize with vegan library
+asv_ITS_s_h_std <- asv_ITS.s %>%
+  dplyr::select((where(is.numeric))) %>% #select only numeric columns
+  decostand(., #call decostand transformation function
+				 method = "hellinger", #transformation method
+				 zap = FALSE, #make near zero values into zeros to avoid exaggeration
+				 na.rm = TRUE) %>% #remove NA values
+  mutate(across(where(is.numeric), ~scale(., center = TRUE, scale = TRUE)))
+
+its_nmds_df <- asv_ITS_s_h_std
+
+#test how many axes are appropriate
+stress <- vector(length = 6)
+for (i in 1:6) {
+    stress[i] <- metaMDS(its_nmds_df, distance = "bray", k = i,
+                         model = "global", #calc stress on ranks of data
+                         maxit = 400, #max iterations of configuration adjustments
+                         try = 20, trymax = 20, #min and max runs
+                         autotransform = FALSE, #don't transform data
+                         weakties = TRUE, #set fitted distances as un-fixed
+                         scaling = TRUE, #re-scale ordination axes
+                         na.rm = TRUE)$stress
+}
+names(stress) <- paste0(1:6, "Dim")
+par(mar = c(3.5,3.5,1,1), mgp = c(2, 0.6, 0), cex = 0.8, las = 2)
+barplot(stress, ylab = "stress")
+
+#run NMDS with 5 axes to be reliably stress < 0.2
+set.seed(42) #set seed for reproducibility
+its_nmds <- metaMDS(its_nmds_df, 
+                distance = "bray", #data & distance measure
+                k = 3, #number of axes
+                model = "global", #calc stress on ranks of data
+                maxit = 400, #max iterations of configuration adjustments
+                try = 20, trymax = 200, #min and max runs
+                autotransform = FALSE, #don't transform data
+                weakties = TRUE, #set fitted distances as un-fixed
+                pc = TRUE, #rotate axes using PCA to orient first 2 axes as containing most of the variability
+                scaling = TRUE, #re-scale ordination axes to ‘unit root mean squares’
+                na.rm = TRUE) #remove NA values
+
+its_nmds #check "stress" value to see how well the data is represented by the ordination
+goodness(its_nmds) #check goodness of fit for each point
+stressplot(its_nmds, main = "Shepard plot") #diagnostic plot
+
+#make fit vectors with env variables and view
+#its_nmdsfit <- envfit(its_nmds, env_ITS[,-c(1:4,17:30)], #without standardization
+ #                     permutations = 999, na.rm=TRUE)
+its_nmdsfit <- envfit(its_nmds, env_ITS_std[,-c(1:4)], #with standardization
+                      permutations = 999, na.rm=TRUE)
+its_nmdsfit #check fit vectors
+
+#make df of scores, add sites
+its_nmds_scores <- as.data.frame(scores(its_nmds))
+its_nmds_scores$Site_ID = env_ITS$Site_ID 
+
+#make df of vectors, only significant vectors
+its_nmds_vectors <- as.data.frame(scores(its_nmdsfit, display = "vectors")) #extracts relevant scores from envfit
+its_nmds_vectors <- cbind(its_nmds_vectors, variable = rownames(its_nmds_vectors)) #and then gives them their names
+its_nmds_vectors <- cbind(its_nmds_vectors, pval = its_nmdsfit$vectors$pvals) # add pvalues to dataframe
+its_sig_vectors <- subset(its_nmds_vectors, pval<=0.1) #subset data to show variables somewhat significant at rounded 0.1
+
+#plot scores with ggplot
+ggplot(its_nmds_scores) + 
+  geom_point(size = 2, aes(x = NMDS1, y = NMDS2, color = Site_ID)) +
+  stat_ellipse(aes(x = NMDS1, y = NMDS2, color = Site_ID, fill = Site_ID),
+               alpha = 0.2, #transparency of ellipse fill
+               geom = "polygon") + #draw as polygon rather than just outline
+  geom_segment(data = its_sig_vectors,
+              aes(x = 0, xend = NMDS1 * 400,
+                  y = 0, yend = NMDS2 * 400), 
+              arrow = arrow(length = unit(0.25,"cm"),
+                            type = "open", angle = 20,
+                            ends = "last"),
+              color = "grey10", 
+              lwd = 0.3) +
+  geom_text_repel(data = its_sig_vectors,
+                  aes(x = NMDS1 * 400,
+                      y = NMDS2 * 400, 
+                      label = variable), 
+                  size = 3,
+                  max.overlaps = Inf) +
+  scale_color_manual(values = colors4) +
+  scale_fill_manual(values = colors4) + #match fill colors to your color scheme
+  labs(x = "NMDS1", y = "NMDS2", color = "Site", fill = "Site") +
+  coord_fixed() +
+  my_theme
+
+#save figure - name, type, folder, dimensions, resolution, background specs
+ggsave('ITS_sp_NMDS_210526.svg', path = "Figures", width = 6, height = 4, units = "in", dpi = 300, bg=NULL)
+
+```
+
+
+
+
+#### Genus
+
+```{r ITS beta g, warning=FALSE}
+
+#calculate distances
+
+#Euclidean distance
+its_euc.list.s <-  replicate(100, matrix(nrow = dim(asv_ITS.s)[1], ncol = dim(asv_ITS.s)[1]), simplify = FALSE)
+for (i in 1:100) {
+  its_euc.list.s[[i]] <- vegdist(sqrt(as.matrix(rrarefy(asv_ITS.s,sample=170))/170), method="euc")
+}
+asv_ITS.ml.euc.s <- Reduce("+", its_euc.list.s) / length(its_euc.list.s)
+
+#Jaqcard distance
+its_jaq.list.s <-  replicate(100, matrix(nrow = dim(asv_ITS.s)[1], ncol = dim(asv_ITS.s)[1]), simplify = FALSE)
+for (i in 1:100) {
+  its_jaq.list.s[[i]] <- vegdist(as.matrix(rrarefy(asv_ITS.s,sample=170)), method="jaccard", binary = TRUE)
+}
+asv_ITS.jaq.s <- Reduce("+", its_jaq.list.s) / length(its_jaq.list.s)
+
+#Bray-Curtis
+its_bray.list.s <-  replicate(100, matrix(nrow = dim(asv_ITS.s)[1], ncol = dim(asv_ITS.s)[1]), simplify = FALSE)
+for (i in 1:100) {
+  its_bray.list.s[[i]] <- vegdist(as.matrix(rrarefy(asv_ITS.s,sample=170))/170, method="bray")
+}
+asv_ITS.ml.bray.s <- Reduce("+", its_bray.list.s) / length(its_bray.list.s)
+
+
+#check beta dispersion by site for each distance metric
+mod <- betadisper(asv_ITS.ml.euc.s, env_ITS$Site_ID, type = "centroid")
+permutest(mod, permutations = 999) #P=0.001
+
+mod <- betadisper(asv_ITS.jaq.s, env_ITS$Site_ID, type = "centroid")
+permutest(mod, permutations = 999) #P=0.004
+
+mod <- betadisper(asv_ITS.ml.bray.s, env_ITS$Site_ID, type = "centroid")
+permutest(mod, permutations = 999) #P=0.001
+
+#PERMANOVA - site
+adonis2(asv_ITS.ml.euc.s ~ Site_ID, method = "none", data = env_ITS, permutations = 9999) #P=1e-4
+adonis2(asv_ITS.jaq.s ~ Site_ID, method = "none", data = env_ITS, permutations = 9999) #P=1e-4
+adonis2(asv_ITS.ml.bray.s ~ Site_ID, method = "none", data = env_ITS, permutations = 9999) #P=1e-4
+
+#PERMANOVA - pH
+adonis2(asv_ITS.ml.euc.s ~ pH, method = "none", data = env_ITS, permutations = 9999) #P=1e-4
+adonis2(asv_ITS.jaq.s ~ pH, method = "none", data = env_ITS, permutations = 9999) #P=1e-4
+adonis2(asv_ITS.ml.bray.s ~ pH, method = "none", data = env_ITS, permutations = 9999) #P=1e-4
+
+#PERMANOVA - plant richness
+adonis2(asv_ITS.ml.euc.s ~ plant_r, method = "none", data = env_ITS, permutations = 9999) #P=0.042
+adonis2(asv_ITS.jaq.s ~ plant_r, method = "none", data = env_ITS, permutations = 9999) #P=0.035
+adonis2(asv_ITS.ml.bray.s ~ plant_r, method = "none", data = env_ITS, permutations = 9999) #P=0.036
+
+#PERMANOVA - plant shannon and simpson
+adonis2(asv_ITS.ml.euc.s ~ plant_shannon, method = "none", data = env_ITS, permutations = 9999) #P=0.2
+adonis2(asv_ITS.jaq.s ~ plant_shannon, method = "none", data = env_ITS, permutations = 9999) #P=0.3
+adonis2(asv_ITS.ml.bray.s ~ plant_shannon, method = "none", data = env_ITS, permutations = 9999) #P=0.2
+adonis2(asv_ITS.ml.euc.s ~ plant_simpson, method = "none", data = env_ITS, permutations = 9999) #P=0.2
+adonis2(asv_ITS.jaq.s ~ plant_simpson, method = "none", data = env_ITS, permutations = 9999) #P=0.2
+adonis2(asv_ITS.ml.bray.s ~ plant_simpson, method = "none", data = env_ITS, permutations = 9999) #P=0.2
+
+#PERMANOVA - AM association
+adonis2(asv_ITS.ml.euc.s ~ AM_assoc, method = "none", data = env_ITS, permutations = 9999) #P=0.003
+adonis2(asv_ITS.jaq.s ~ AM_assoc, method = "none", data = env_ITS, permutations = 9999) #P=0.007
+adonis2(asv_ITS.ml.bray.s ~ AM_assoc, method = "none", data = env_ITS, permutations = 9999) #P=0.005
+
+#PERMANOVA - nutrients
+adonis2(asv_ITS.ml.euc.s ~ ppm_Ca, method = "none", data = env_ITS, permutations = 9999) #P=1e-4
+adonis2(asv_ITS.jaq.s ~ ppm_Ca, method = "none", data = env_ITS, permutations = 9999) #P=7e-4
+adonis2(asv_ITS.ml.bray.s ~ ppm_Ca, method = "none", data = env_ITS, permutations = 9999) #P=1e-4
+
+adonis2(asv_ITS.ml.euc.s ~ ppm_Mg, method = "none", data = env_ITS, permutations = 9999) #P=2e-4
+adonis2(asv_ITS.jaq.s ~ ppm_Mg, method = "none", data = env_ITS, permutations = 9999) #P=4e-4
+adonis2(asv_ITS.ml.bray.s ~ ppm_Mg, method = "none", data = env_ITS, permutations = 9999) #P=5e-4
+
+adonis2(asv_ITS.ml.euc.s ~ ppm_Fe, method = "none", data = env_ITS, permutations = 9999) #P=0.5
+
+adonis2(asv_ITS.ml.euc.s ~ ppm_Na, method = "none", data = env_ITS, permutations = 9999) #P=0.96
+
+adonis2(asv_ITS.ml.euc.s ~ ppm_K, method = "none", data = env_ITS, permutations = 9999) #P=0.3
+
+adonis2(asv_ITS.ml.euc.s ~ ppm_P, method = "none", data = env_ITS, permutations = 9999) #P=0.6
+
+adonis2(asv_ITS.ml.euc.s ~ ppm_S, method = "none", data = env_ITS, permutations = 9999) #P=0.0016
+adonis2(asv_ITS.jaq.s ~ ppm_S, method = "none", data = env_ITS, permutations = 9999) #P=0.012
+adonis2(asv_ITS.ml.bray.s ~ ppm_S, method = "none", data = env_ITS, permutations = 9999) #P=0.0048
+
+```
+
+##### NMDS
+
+```{r ITS NMDS g, warning=FALSE}
+
+#Hellinger (square root) transform and standardize with vegan library
+asv_ITS_g_h_std <- asv_ITS.g %>%
+  dplyr::select((where(is.numeric))) %>% #select only numeric columns
+  decostand(., #call decostand transformation function
+				 method = "hellinger", #transformation method
+				 zap = FALSE, #make near zero values into zeros to avoid exaggeration
+				 na.rm = TRUE) %>% #remove NA values
+  mutate(across(where(is.numeric), ~scale(., center = TRUE, scale = TRUE)))
+
+its_nmds_df <- asv_ITS_g_h_std
+
+#test how many axes are appropriate
+stress <- vector(length = 6)
+for (i in 1:6) {
+    stress[i] <- metaMDS(its_nmds_df, distance = "bray", k = i,
+                         model = "global", #calc stress on ranks of data
+                         maxit = 400, #max iterations of configuration adjustments
+                         try = 20, trymax = 20, #min and max runs
+                         autotransform = FALSE, #don't transform data
+                         weakties = TRUE, #set fitted distances as un-fixed
+                         scaling = TRUE, #re-scale ordination axes
+                         na.rm = TRUE)$stress
+}
+names(stress) <- paste0(1:6, "Dim")
+par(mar = c(3.5,3.5,1,1), mgp = c(2, 0.6, 0), cex = 0.8, las = 2)
+barplot(stress, ylab = "stress")
+
+#run NMDS with 5 axes to be reliably stress < 0.2
+set.seed(42) #set seed for reproducibility
+its_nmds <- metaMDS(its_nmds_df, 
+                distance = "bray", #data & distance measure
+                k = 3, #number of axes
+                model = "global", #calc stress on ranks of data
+                maxit = 400, #max iterations of configuration adjustments
+                try = 20, trymax = 200, #min and max runs
+                autotransform = FALSE, #don't transform data
+                weakties = TRUE, #set fitted distances as un-fixed
+                pc = TRUE, #rotate axes using PCA to orient first 2 axes as containing most of the variability
+                scaling = TRUE, #re-scale ordination axes to ‘unit root mean squares’
+                na.rm = TRUE) #remove NA values
+
+its_nmds #check "stress" value to see how well the data is represented by the ordination
+goodness(its_nmds) #check goodness of fit for each point
+stressplot(its_nmds, main = "Shepard plot") #diagnostic plot
+
+#make fit vectors with env variables and view
+#its_nmdsfit <- envfit(its_nmds, env_ITS[,-c(1:4,17:30)], #without standardization
+ #                     permutations = 999, na.rm=TRUE)
+its_nmdsfit <- envfit(its_nmds, env_ITS_std[,-c(1:4)], #with standardization
+                      permutations = 999, na.rm=TRUE)
+its_nmdsfit #check fit vectors
+
+#make df of scores, add sites
+its_nmds_scores <- as.data.frame(scores(its_nmds))
+its_nmds_scores$Site_ID = env_ITS$Site_ID 
+
+#make df of vectors, only significant vectors
+its_nmds_vectors <- as.data.frame(scores(its_nmdsfit, display = "vectors")) #extracts relevant scores from envfit
+its_nmds_vectors <- cbind(its_nmds_vectors, variable = rownames(its_nmds_vectors)) #and then gives them their names
+its_nmds_vectors <- cbind(its_nmds_vectors, pval = its_nmdsfit$vectors$pvals) # add pvalues to dataframe
+its_sig_vectors <- subset(its_nmds_vectors, pval<=0.1) #subset data to show variables somewhat significant at rounded 0.1
+
+#plot scores with ggplot
+ggplot(its_nmds_scores) + 
+  geom_point(size = 2, aes(x = NMDS1, y = NMDS2, color = Site_ID)) +
+  stat_ellipse(aes(x = NMDS1, y = NMDS2, color = Site_ID, fill = Site_ID),
+               alpha = 0.2, #transparency of ellipse fill
+               geom = "polygon") + #draw as polygon rather than just outline
+  geom_segment(data = its_sig_vectors,
+              aes(x = 0, xend = NMDS1 * 400,
+                  y = 0, yend = NMDS2 * 400), 
+              arrow = arrow(length = unit(0.25,"cm"),
+                            type = "open", angle = 20,
+                            ends = "last"),
+              color = "grey10", 
+              lwd = 0.3) +
+  geom_text_repel(data = its_sig_vectors,
+                  aes(x = NMDS1 * 400,
+                      y = NMDS2 * 400, 
+                      label = variable), 
+                  size = 3,
+                  max.overlaps = Inf) +
+  scale_color_manual(values = colors4) +
+  scale_fill_manual(values = colors4) + #match fill colors to your color scheme
+  labs(x = "NMDS1", y = "NMDS2", color = "Site", fill = "Site") +
+  coord_fixed() +
+  my_theme
+
+#save figure - name, type, folder, dimensions, resolution, background specs
+ggsave('ITS_g_NMDS_210526.svg', path = "Figures", width = 6, height = 4, units = "in", dpi = 300, bg=NULL)
+
+```
+
+
+
 
 # Isotope and Incubation Results
 
