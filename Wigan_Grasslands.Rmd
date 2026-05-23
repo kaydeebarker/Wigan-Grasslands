@@ -73,14 +73,14 @@ colors4 <- c("#84B699", "#EF8E45", "#BF876E", "#46A9B0") #for 4 sites
 
 colors5 <- c("#84B699", "#EF8E45", "#BF876E", "#46A9B0", "#fffdf9")
 
-colors6 <- c("#8ebf9f", "#c3d0c7", #for unmanaged vs managed
-             "#f28749", "#ffbc85", 
-             "#44a6a6", "#afeeeb")
+colors6 <- c("#c3d0c7", "#8ebf9f", #for unmanaged vs managed
+             "#ffbc85", "#f28749", 
+             "#afeeeb", "#44a6a6")
 
 colors10 <- c("#7b887f", "#c25205", "#8d5744", "#00666a",  #for 4 UK survey sites vs 6 sites
-              "#8ebf9f", "#c3d0c7", 
-              "#f28749", "#ffbc85", 
-              "#44a6a6", "#afeeeb")
+              "#c3d0c7", "#8ebf9f", #for unmanaged vs managed
+              "#ffbc85", "#f28749", 
+              "#afeeeb", "#44a6a6")
 
 colors13 <- c("#7b887f", "#8ebf9f", "#c3d0c7", "#c25205", "#f28749", "#ffbc85", "#00666a", "#44a6a6", "#afeeeb", "#8d5744", "#bf846f", "#bda59c", "#fffdf9")
 
@@ -322,7 +322,7 @@ soil_metals <- site_data %>%
   dplyr::select(Site_ID, Site, Management, nutrient, ppm) #select columns to keep
 
 #order variables
-site_data$Site_ID <- factor(site_data$Site_ID, levels = order_sites)
+site_data$Site_ID <- factor(site_data$Site_ID, levels = order_IDs)
 soil_metals$Site_ID <- factor(soil_metals$Site_ID, levels = order_IDs)
 
 #read in FTIR data
@@ -525,12 +525,52 @@ diversity <- diversity %>%
 
 ```
 
-### Bacteria
+### Microbes
+
+```{r load MBC}
+
+MBC <- read_csv("Wigan_MBC.csv")
+
+MBC$Site_ID <- factor(MBC$Site_ID, levels = order_IDs)
+
+#add some site and plant data
+MBC <- MBC %>%
+  mutate(pH = MBC$pH <- site_data$pH[match(MBC$Pot, site_data$Plot_ID)]) %>%
+  mutate(ppm_Ca = MBC$ppm_Ca <- 
+           site_data$ppm_Ca1[match(MBC$Pot, site_data$Plot_ID)]) %>%
+  mutate(ppm_Mg = MBC$ppm_Mg <- 
+           site_data$ppm_Mg[match(MBC$Pot, site_data$Plot_ID)]) %>%
+  mutate(ppm_Fe = MBC$ppm_Fe <- 
+           site_data$ppm_Fe[match(MBC$Pot, site_data$Plot_ID)]) %>%
+  mutate(ppm_K = MBC$ppm_K <- 
+           site_data$ppm_K[match(MBC$Pot, site_data$Plot_ID)]) %>%
+  mutate(ppm_Na = MBC$ppm_Na <- 
+           site_data$ppm_Na[match(MBC$Pot, site_data$Plot_ID)]) %>%
+  mutate(ppm_P = MBC$ppm_P <- 
+           site_data$ppm_P1[match(MBC$Pot, site_data$Plot_ID)]) %>%
+  mutate(ppm_S = MBC$ppm_S <- 
+           site_data$ppm_S1[match(MBC$Pot, site_data$Plot_ID)]) %>%
+  mutate(plant_r = MBC$plant_r <- 
+           diversity$species_richness[match(MBC$Pot, diversity$pot)]) %>%
+  mutate(plant_shannon = MBC$plant_shannon <- 
+           diversity$shannon[match(MBC$Pot, diversity$pot)]) %>%
+  mutate(plant_simpson = MBC$plant_simpson <- 
+           diversity$simpson[match(MBC$Pot, diversity$pot)])
+
+#summarize means 13C for pots
+summary_MBC <- MBC %>%
+  dplyr::select(Site_ID, MBC_mg_g, MB13C_mg_g) %>%
+  group_by(Site_ID) %>%
+  summarise(across(where(is.numeric), summary_stats)) #run all summary stats
+
+```
+
+#### Bacteria
 ```{r load 16S}
 
 #load data
 asv_16S <- read.table('DNA/16S/asv.csv',header=TRUE,sep=',',row.names=1)
-env_16S <- read.table('DNA/16S/env-its.csv',header=TRUE,sep=',',row.names=1) #sample numbers - make into row numbers
+env_16S <- read.table('DNA/16S/env.csv',header=TRUE,sep=',',row.names=1) #sample numbers - make into row numbers
 taxa_16S <- read.table('DNA/16S/taxa.csv',header=TRUE,sep=',')
 dna_16S <- read.FASTA('DNA/16S/rep-set.fasta')
 
@@ -563,7 +603,7 @@ env_16S$gini <- Reduce("+", x16s_gini.list) / length(x16s_gini.list)
 
 ```
 
-### Fungi
+#### Fungi
 
 ```{r load AM and biomass fungi data}
 
@@ -1142,7 +1182,87 @@ summary_endbio$Site_ID <- factor(summary_endbio$Site_ID, levels = order_IDs)
 
 ```
 
+### Biodiversity data from iNaturalist occurrences
+```{r iNat}
 
+library("rgbif") #biodiversity data from iNaturalist etc.
+
+#quick look at species recorded to see if worth downloading a full dataset - no
+
+#create empty df
+spec_occurrences <- data.frame(BH = 0)
+
+#unique number of species in Bickershaw Heap WKT polygon
+spec_occurrences$BH <- occ_count(facet="speciesKey",geometry="POLYGON((-2.551392 53.503271, -2.551607 53.503022, -2.551441 53.502882, -2.550529 53.502974, -2.550759 53.503338, -2.551392 53.503271))") %>% 
+  nrow()
+
+#unique number of species in Bickershaw Unmanaged WKT polygon - count to combined df
+spec_occurrences$BU <- occ_count(facet="speciesKey",geometry="POLYGON((-2.541533 53.508047, -2.541811 53.508659, -2.54694 53.508162, -2.546017 53.506273, -2.542241 53.506898, -2.542734 53.507779, -2.541533 53.508047))") %>% 
+  nrow()
+
+#unique number of species in Bickershaw Managed WKT polygon
+spec_occurrences$BM <- occ_count(facet="speciesKey",geometry="POLYGON((-2.541168 53.505252, -2.542198 53.504742, -2.541962 53.503108, -2.541168 53.502393, -2.538679 53.502853, -2.540374 53.505316, -2.541168 53.505252))") %>% 
+  nrow()
+
+#unique number of species in Amberswood Unmanaged WKT polygon
+spec_occurrences$AU <- occ_count(facet="speciesKey",geometry="POLYGON((-2.593213 53.527599, -2.592398 53.527184, -2.589748 53.527828, -2.588911 53.528224, -2.590005 53.528664, -2.591861 53.527694, -2.592205 53.527663, -2.593213 53.527599))") %>% 
+  nrow()
+  
+#unique number of species in Amberswood Managed WKT polygon
+spec_occurrences$AM <- occ_count(facet="speciesKey",geometry="POLYGON((-2.596099 53.527879, -2.597505 53.529244, -2.60141 53.528447, -2.59964 53.527108, -2.596099 53.527879))") %>% 
+  nrow()
+
+#unique number of species in Flashes Unmanaged WKT polygon
+spec_occurrences$FU <- occ_count(facet="speciesKey",geometry="POLYGON((-2.626945 53.525239, -2.626709 53.525312, -2.627277 53.525536, -2.627476 53.525398, -2.627218 53.525306, -2.626945 53.525239))") %>% 
+  nrow()
+
+#unique number of species in Flashes Managed WKT polygon - meadow 1
+spec_occurrences$FM_1 <- occ_count(facet="speciesKey",geometry="POLYGON((-2.620658 53.525003, -2.620797 53.52552, -2.622364 53.525309, -2.621838 53.524595, -2.620658 53.525003))") %>% 
+  nrow()
+
+#unique number of species in Flashes Managed WKT polygon - meadow 2
+spec_occurrences$FM_2 <- occ_count(facet="speciesKey",geometry="POLYGON((-2.6229 53.525048, -2.62393 53.525156, -2.625282 53.524167, -2.624627 53.523849, -2.6229 53.525048))") %>% 
+  nrow()
+
+
+#pivot
+spec_occurrences <- spec_occurrences %>%
+  pivot_longer(
+		cols = BH:FM_2, #pick columns
+		names_to = "Site_ID", #name column to put original column names in
+		values_to = "sp_count") #name column to put values in
+
+#add area and species per area
+spec_occurrences <- spec_occurrences %>%
+  mutate(area_sqm = c(6953.7, #BH
+                      167639.8, #BU
+                      138069.6, #BM
+                      44167.8, #AU
+                      130887.6, #AM
+                      2158.3, #FU
+                      19767.7, #FM meadow 1
+                      26048.3)) %>% #FM meadow 2
+  mutate(sp_sqm = sp_count/area_sqm)
+
+#What was observed
+BU_sp <- occ_count(facet="scientificName", geometry="POLYGON((-2.541533 53.508047, -2.541811 53.508659, -2.54694 53.508162, -2.546017 53.506273, -2.542241 53.506898, -2.542734 53.507779, -2.541533 53.508047))")
+BM_sp <- occ_count(facet="scientificName", geometry="POLYGON((-2.541168 53.505252, -2.542198 53.504742, -2.541962 53.503108, -2.541168 53.502393, -2.538679 53.502853, -2.540374 53.505316, -2.541168 53.505252))") 
+AU_sp <- occ_count(facet="scientificName", geometry="POLYGON((-2.593213 53.527599, -2.592398 53.527184, -2.589748 53.527828, -2.588911 53.528224, -2.590005 53.528664, -2.591861 53.527694, -2.592205 53.527663, -2.593213 53.527599))") 
+AM_sp <- occ_count(facet="scientificName", geometry="POLYGON((-2.596099 53.527879, -2.597505 53.529244, -2.60141 53.528447, -2.59964 53.527108, -2.596099 53.527879))")
+FU_sp <- occ_count(facet="scientificName", geometry="POLYGON((-2.626945 53.525239, -2.626709 53.525312, -2.627277 53.525536, -2.627476 53.525398, -2.627218 53.525306, -2.626945 53.525239))")
+FM_1_sp <- occ_count(facet="scientificName", geometry="POLYGON((-2.620658 53.525003, -2.620797 53.52552, -2.622364 53.525309, -2.621838 53.524595, -2.620658 53.525003))")
+FM_2_sp <- occ_count(facet="scientificName", geometry="POLYGON((-2.6229 53.525048, -2.62393 53.525156, -2.625282 53.524167, -2.624627 53.523849, -2.6229 53.525048))")
+
+#What years were the observations
+BU_sp_yr <- occ_count(facet="year", geometry="POLYGON((-2.541533 53.508047, -2.541811 53.508659, -2.54694 53.508162, -2.546017 53.506273, -2.542241 53.506898, -2.542734 53.507779, -2.541533 53.508047))")
+BM_sp_yr <- occ_count(facet="year", geometry="POLYGON((-2.541168 53.505252, -2.542198 53.504742, -2.541962 53.503108, -2.541168 53.502393, -2.538679 53.502853, -2.540374 53.505316, -2.541168 53.505252))")
+AU_sp_yr <- occ_count(facet="year", geometry="POLYGON((-2.593213 53.527599, -2.592398 53.527184, -2.589748 53.527828, -2.588911 53.528224, -2.590005 53.528664, -2.591861 53.527694, -2.592205 53.527663, -2.593213 53.527599))")
+AM_sp_yr <- occ_count(facet="year", geometry="POLYGON((-2.596099 53.527879, -2.597505 53.529244, -2.60141 53.528447, -2.59964 53.527108, -2.596099 53.527879))")
+FU_sp_yr <- occ_count(facet="year", geometry="POLYGON((-2.626945 53.525239, -2.626709 53.525312, -2.627277 53.525536, -2.627476 53.525398, -2.627218 53.525306, -2.626945 53.525239))")
+FM1_sp_yr <- occ_count(facet="year", geometry="POLYGON((-2.620658 53.525003, -2.620797 53.52552, -2.622364 53.525309, -2.621838 53.524595, -2.620658 53.525003))")
+FM2_sp_yr <- occ_count(facet="year", geometry="POLYGON((-2.6229 53.525048, -2.62393 53.525156, -2.625282 53.524167, -2.624627 53.523849, -2.6229 53.525048))")
+
+```
 
 # Stats and Charts
 
@@ -4797,6 +4917,12 @@ ggsave('excess13C_shoots.svg', #save plot name and type - can be "eps", "pdf", "
 	dpi = 300, #set resolution
 	bg=NULL) #background from plot specifications
 
+#test differences
+shapiro.test(resid(lm(excess13C_mg ~ site_id, data = plant13C[plant13C$sample_type=='shoot', ]))) #check normality of residuals - not normal
+shapiro.test(resid(lm(log(excess13C_mg) ~ site_id, data = plant13C[plant13C$sample_type=='shoot', ]))) #check normality of residuals - high W though p-val still low
+summary(aov(log(excess13C_mg) ~ site_id, data = plant13C[plant13C$sample_type=='shoot', ])) #not sig
+
+shapiro.test(resid(lm(plant13C[plant13C$sample_type=='shoot', ]$excess13C_mg ~ site_data$pH))) #check normality of residuals - not normal
 
 ```
 
@@ -4824,9 +4950,149 @@ ggsave('excess13C_roots.svg', #save plot name and type - can be "eps", "pdf", "j
 	dpi = 300, #set resolution
 	bg=NULL) #background from plot specifications
 
+#test differences
+shapiro.test(resid(lm(excess13C_mg ~ site_id, data = plant13C[plant13C$sample_type=='root', ]))) #check normality of residuals - not normal
+shapiro.test(resid(lm(log(excess13C_mg) ~ site_id, data = plant13C[plant13C$sample_type=='root', ]))) #check normality of residuals - high W though p-val still low
+summary(aov(log(excess13C_mg) ~ site_id, data = plant13C[plant13C$sample_type=='root', ])) #not sig
 
 ```
 
+## Microbial biomass C and 13C
+```{r MBC}
+
+#bar plot with error bars
+summary_MBC %>%
+ggplot(aes(x=Site_ID, y=MBC_mg_g_mean, fill=Site_ID)) + 
+	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
+  scale_fill_manual(values=colors4) + #define colors to use
+  scale_y_continuous(breaks = pretty) +
+  geom_errorbar(aes(ymin=MBC_mg_g_mean-MBC_mg_g_se, 
+                    ymax=MBC_mg_g_mean+MBC_mg_g_se), 
+                color = "grey10", width = 0.7, position = "dodge") + 
+  #ggtitle("") + #add a graph title
+  xlab("") + ylab(expression("Microbial Biomass Carbon (mg/g soil)")) + #define/change X and Y labels
+  my_theme +
+  theme(legend.position = "none")
+
+#save figure
+ggsave('MBC.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 6, height = 4, units = "in", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
+#test differences
+shapiro.test(resid(lm(MBC_mg_g ~ Site_ID, data = MBC))) #check normality of residuals - not normal
+shapiro.test(resid(lm(log(MBC_mg_g) ~ Site_ID, data = MBC))) #check normality of residuals - not normal, slightly better
+summary(aov(MB13C_mg_g ~ Site_ID, data = MBC)) #not sig, not close
+
+shapiro.test(resid(lm(MBC_mg_g ~ pH, data = MBC))) #check normality of residuals - not normal
+shapiro.test(resid(lm(log(MBC_mg_g) ~ pH, data = MBC))) #check normality of residuals - not normal, slightly better
+summary(lm(log(MBC_mg_g) ~ pH, data = MBC)) #sig
+
+shapiro.test(resid(lm(MBC_mg_g ~ ppm_Ca, data = MBC))) #check normality of residuals - normal
+summary(lm(MBC_mg_g ~ ppm_Ca, data = MBC)) #sig
+
+shapiro.test(resid(lm(MBC_mg_g ~ ppm_Mg, data = MBC))) #check normality of residuals - not normal
+shapiro.test(resid(lm(log(MBC_mg_g) ~ ppm_Mg, data = MBC))) #check normality of residuals - not normal, slightly better
+summary(lm(log(MBC_mg_g) ~ ppm_Mg, data = MBC)) #sig
+
+shapiro.test(resid(lm(MBC_mg_g ~ ppm_Fe, data = MBC))) #check normality of residuals - not normal
+shapiro.test(resid(lm(log(MBC_mg_g) ~ ppm_Fe, data = MBC))) #check normality of residuals - not normal, closer
+summary(lm(log(MBC_mg_g) ~ ppm_Fe, data = MBC)) #not sig
+
+shapiro.test(resid(lm(MBC_mg_g ~ ppm_K, data = MBC))) #check normality of residuals - not normal
+shapiro.test(resid(lm(log(MBC_mg_g) ~ ppm_K, data = MBC))) #check normality of residuals - not normal, closer
+summary(lm(log(MBC_mg_g) ~ ppm_K, data = MBC)) #not sig
+
+shapiro.test(resid(lm(MBC_mg_g ~ ppm_Na, data = MBC))) #check normality of residuals - not normal
+shapiro.test(resid(lm(log(MBC_mg_g) ~ ppm_Na, data = MBC))) #check normality of residuals - not normal, closer
+summary(lm(log(MBC_mg_g) ~ ppm_Na, data = MBC)) #not sig
+
+shapiro.test(resid(lm(MBC_mg_g ~ ppm_P, data = MBC))) #check normality of residuals - not normal
+shapiro.test(resid(lm(log(MBC_mg_g) ~ ppm_P, data = MBC))) #check normality of residuals - not normal, closer
+summary(lm(log(MBC_mg_g) ~ ppm_P, data = MBC)) #not sig
+
+shapiro.test(resid(lm(MBC_mg_g ~ ppm_S, data = MBC))) #check normality of residuals - not normal
+shapiro.test(resid(lm(log(MBC_mg_g) ~ ppm_S, data = MBC))) #check normality of residuals - not normal, closer
+summary(lm(log(MBC_mg_g) ~ ppm_S, data = MBC)) #not sig
+
+shapiro.test(resid(lm(MBC_mg_g ~ plant_r, data = MBC))) #check normality of residuals - not normal
+shapiro.test(resid(lm(log(MBC_mg_g) ~ plant_r, data = MBC))) #check normality of residuals - not normal, closer
+summary(lm(log(MBC_mg_g) ~ plant_r, data = MBC)) #not sig
+
+shapiro.test(resid(lm(MBC_mg_g ~ plant_shannon, data = MBC))) #check normality of residuals - not normal
+shapiro.test(resid(lm(log(MBC_mg_g) ~ plant_shannon, data = MBC))) #check normality of residuals - not normal, closer
+summary(lm(log(MBC_mg_g) ~ plant_shannon, data = MBC)) #not sig
+
+shapiro.test(resid(lm(MBC_mg_g ~ plant_simpson, data = MBC))) #check normality of residuals - not normal
+shapiro.test(resid(lm(log(MBC_mg_g) ~ plant_simpson, data = MBC))) #check normality of residuals - not normal, closer
+summary(lm(log(MBC_mg_g) ~ plant_simpson, data = MBC)) #not sig
+
+```
+
+```{r MB13C}
+
+#bar plot with error bars
+summary_MBC %>%
+ggplot(aes(x=Site_ID, y=MB13C_mg_g_mean, fill=Site_ID)) + 
+	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
+  scale_fill_manual(values=colors4) + #define colors to use
+  scale_y_continuous(breaks = pretty) +
+  geom_errorbar(aes(ymin=MB13C_mg_g_mean-MB13C_mg_g_se, 
+                    ymax=MB13C_mg_g_mean+MB13C_mg_g_se), 
+                color = "grey10", width = 0.7, position = "dodge") + 
+  #ggtitle("") + #add a graph title
+  xlab("") + ylab(expression("Microbial Biomass "^13*"C (mg/g soil)")) + #define/change X and Y labels
+  my_theme +
+  theme(legend.position = "none")
+
+#save figure
+ggsave('MB13C.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 6, height = 4, units = "in", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
+#test differences
+shapiro.test(resid(lm(MB13C_mg_g ~ Site_ID, data = MBC))) #check normality of residuals - normal
+summary(aov(MB13C_mg_g ~ Site_ID, data = MBC)) #not sig
+
+shapiro.test(resid(lm(MB13C_mg_g ~ pH, data = MBC))) #check normality of residuals - normal
+summary(aov(MB13C_mg_g ~ pH, data = MBC)) #not sig
+
+shapiro.test(resid(lm(MB13C_mg_g ~ ppm_Ca, data = MBC))) #check normality of residuals - normal
+summary(lm(MB13C_mg_g ~ ppm_Ca, data = MBC)) #not sig
+
+shapiro.test(resid(lm(MB13C_mg_g ~ ppm_Mg, data = MBC))) #check normality of residuals - normal
+summary(lm(MB13C_mg_g ~ ppm_Mg, data = MBC)) #not sig
+
+shapiro.test(resid(lm(MB13C_mg_g ~ ppm_Fe, data = MBC))) #check normality of residuals - normal
+summary(lm(MB13C_mg_g ~ ppm_Fe, data = MBC)) #not sig, almost
+
+shapiro.test(resid(lm(MB13C_mg_g ~ ppm_K, data = MBC))) #check normality of residuals - normal
+summary(lm(MB13C_mg_g ~ ppm_K, data = MBC)) #not sig
+
+shapiro.test(resid(lm(MB13C_mg_g ~ ppm_Na, data = MBC))) #check normality of residuals - normal
+summary(lm(MB13C_mg_g ~ ppm_Na, data = MBC)) #not sig
+
+shapiro.test(resid(lm(MB13C_mg_g ~ ppm_P, data = MBC))) #check normality of residuals - normal
+summary(lm(MB13C_mg_g ~ ppm_P, data = MBC)) #not sig
+
+shapiro.test(resid(lm(MB13C_mg_g ~ ppm_S, data = MBC))) #check normality of residuals - normal
+summary(lm(log(MB13C_mg_g) ~ ppm_S, data = MBC)) #not sig
+
+shapiro.test(resid(lm(MB13C_mg_g ~ plant_r, data = MBC))) #check normality of residuals - normal
+summary(lm(MB13C_mg_g ~ plant_r, data = MBC)) #not sig
+
+shapiro.test(resid(lm(MB13C_mg_g ~ plant_shannon, data = MBC))) #check normality of residuals - normal
+summary(lm(MB13C_mg_g ~ plant_shannon, data = MBC)) #not sig
+
+shapiro.test(resid(lm(MB13C_mg_g ~ plant_simpson, data = MBC))) #check normality of residuals - normal
+summary(lm(MB13C_mg_g ~ plant_simpson, data = MBC)) #not sig
+
+
+```
 
 ## Soil isotopes
 
