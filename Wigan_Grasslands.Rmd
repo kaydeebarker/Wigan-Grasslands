@@ -121,6 +121,8 @@ order_sites <- c("Bickershaw", "Amberswood", "Flashes")
 
 order_IDs <- c("BU", "BM", "AU", "AM", "FU", "FM")
 
+order_IDs_4 <- c("BU", "BM", "AM", "FM")
+
 order_management <- c("Unmanaged", "4 Years", "15 Years", "23 Years")
 
 order_mgmt <- c("0 yrs", "4 yrs", "15 yrs", "23 yrs")
@@ -129,6 +131,15 @@ order_mgmt <- c("0 yrs", "4 yrs", "15 yrs", "23 yrs")
 ```
 
 ### Write functions to determine differences
+
+First, evaluate_group_sizes() is a diagnostic to determine if difference tests can be run. Similarly, summarize_group_sizes() will output the number of observations for each group.
+The differences() function will:
+- Filter out groups with <2 observations
+- Use shapiro.test() on ANOVA residuals to test the normality of the distribution, and output to "Distribution" whether the residual distribution is normal (P>0.05), has minor non-normality (W>0.9 but P<0.05), or has major non-normality (W<0.9, P<0.01)
+- Use bartlett.test() if residuals are normally distributed or leveneTest() if not to test for homogeneity of variance in the data, and output to "Variance" whether the variance is homogeneous (P>0.05) or heterogeneous (P<0.05)
+- If data meet parametric assumptions (normal distribution or minor non-normality, and homogeneity of variance), then procede with ANOVA and Tukey's HSD post hoc test. Otherwise (major non-normality and/or heterogeneity of variance), use Kruskal-Wallis and Dunn's Test
+- Tell which factor group has a higher mean (if parametric) or median (non-parametric) value for the continuous variable in a Comparison column
+
 
 ```{r comparisons stats - set up function}
 
@@ -141,6 +152,11 @@ evaluate_group_sizes <- function(data, factors, continuous_vars) {
   for (cont_var in continuous_vars) {
     for (factor in factors) {
       filtered_data <- na.omit(data[, c(factor, cont_var)]) #remove NA values for continuous variable and factor
+
+      #drop unused factor levels
+      if (is.factor(filtered_data[[factor]])) {
+        filtered_data[[factor]] <- droplevels(filtered_data[[factor]])
+      }
 
       group_sizes <- table(filtered_data[[factor]]) #calculate group sizes
       
@@ -171,100 +187,194 @@ evaluate_group_sizes <- function(data, factors, continuous_vars) {
   }
 }
 
-#analysis function with Bartlett's test, group size evaluation, and NA omission
-differences_function <- function(data, factors, continuous_vars) {
+summarize_group_sizes <- function(data, factors, continuous_vars) {
+  group_summary <- list()
+  
+  for (cont_var in continuous_vars) {
+    for (factor in factors) {
+      filtered_data <- na.omit(data[, c(factor, cont_var)])
+      
+      group_sizes <- table(filtered_data[[factor]])
+      
+      group_summary[[paste(cont_var, factor, sep = "_")]] <- data.frame(
+        Continuous_Var = cont_var,
+        Factor = factor,
+        Group = names(group_sizes),
+        Observations = as.numeric(group_sizes)
+      )
+    }
+  }
+  
+  return(bind_rows(group_summary))
+}
+
+#analysis function with Shapiro test, Levene test, Bartlett's test, group size evaluation, and NA omission
+differences <- function(data, factors, continuous_vars) {
   results_list <- list()
 
   for (cont_var in continuous_vars) {
     for (factor in factors) {
-      # Remove NA values for the current continuous variable and factor
+      #remove NA values for the current continuous variable and factor
       filtered_data <- na.omit(data[, c(factor, cont_var)])
 
-      # Check if all groups for the factor have at least 2 observations
+      #check if all groups for the factor have at least 2 observations
       group_sizes <- table(filtered_data[[factor]])
       if (any(group_sizes < 2)) {
-        # If a group has fewer than 2 observations, skip Bartlett's test and add a note
+        #if a group has fewer than 2 observations, skip analysis and add a note
         results_list[[paste(cont_var, factor, sep = "_")]] <- data.frame(
           Comparison = NA,
-          P_Value = NA,
-          Continuous_Var = cont_var,
           Factor = factor,
-          Test = "Skipped (Insufficient group size for Bartlett's test)",
+          Continuous_Var = cont_var,
+          Distribution = "Skipped",
+          Variance = "Skipped",
+          Test = "Skipped (Insufficient group size)",
+          P_Value = NA,
           Significance = "Not significant"
         )
         next
       }
 
-      #Bartlett's test for homogeneity of variances
-      bartlett <- bartlett.test(as.formula(paste(cont_var, "~", factor)), data = filtered_data)
+      #step 1: test normality using Shapiro-Wilk test on residuals
+      anova_res <- aov(as.formula(paste(cont_var, "~", factor)), data = filtered_data)
+      residuals <- residuals(anova_res)
+      shapiro <- shapiro.test(residuals)
+      
+      #determine normality category
+      if (shapiro$p.value > 0.05) {
+        distribution_status <- "Normal"
+      } else if (shapiro$statistic > 0.9) {
+        distribution_status <- "Minor non-normality"
+      } else {
+        distribution_status <- "Major non-normality"
+      }
 
-      if (bartlett$p.value > 0.05) { #for homogeneous variances: ANOVA and Tukey's HSD
-        anova_res <- aov(as.formula(paste(cont_var, "~", factor)), data = filtered_data)
+      #step 2: test homogeneity of variances
+      #use Bartlett's test if normally distributed, Levene's test if not
+      if (distribution_status == "Normal") {
+        bartlett <- bartlett.test(as.formula(paste(cont_var, "~", factor)), data = filtered_data)
+        variance_test_pvalue <- bartlett$p.value
+        variance_test_name <- "Bartlett"
+      } else {
+        levene <- car::leveneTest(as.formula(paste(cont_var, "~", factor)), data = filtered_data)
+        variance_test_pvalue <- levene$`Pr(>F)`[1]
+        variance_test_name <- "Levene"
+      }
+      
+      #determine homogeneity status
+      variance_status <- ifelse(variance_test_pvalue > 0.05, "Homogeneous", "Heterogeneous")
+
+      #step 3: decide which statistical test to use based on parametric assumptions
+      #parametric assumptions met: normal distribution (or minor non-normality) AND homogeneous variances
+      use_parametric <- (distribution_status %in% c("Normal", "Minor non-normality")) && (variance_status == "Homogeneous")
+
+      if (use_parametric) {
+        #ANOVA and Tukey's HSD
         tukey <- TukeyHSD(anova_res)
 
         #extract pairwise comparisons and P-values
-        if (!is.null(tukey$comparison)) {
+        if (!is.null(tukey[[1]])) {
+          #calculate group means for ordering comparisons
+          group_means <- tapply(filtered_data[[cont_var]], filtered_data[[factor]], mean, na.rm = TRUE)
+          
+          comparisons <- rownames(tukey[[1]])
+          p_values <- tukey[[1]][, "p adj"]
+          
+          #reorder comparisons so higher mean is listed first
+          reordered_comparisons <- sapply(comparisons, function(comp) {
+            groups <- strsplit(comp, "-")[[1]]
+            group1 <- trimws(groups[1])
+            group2 <- trimws(groups[2])
+            
+            if (group_means[group1] > group_means[group2]) {
+              paste(group1, ">", group2)
+            } else {
+              paste(group2, ">", group1)
+            }
+          })
+          
           sig_pairs <- data.frame(
-            Comparison = rownames(tukey$comparison),
-            P_Value = tukey$comparison[, "pvalue"]
-          ) %>%
-            mutate(
-              Continuous_Var = cont_var,
-              Factor = factor,
-              Test = "Tukey's HSD",
-              Significance = case_when(
-                P_Value <= 0.001 ~ "***",
-                P_Value <= 0.01 ~ "**",
-                P_Value <= 0.05 ~ "*",
-                TRUE ~ "Not significant"
-              )
+            Comparison = reordered_comparisons,
+            Factor = factor,
+            Continuous_Var = cont_var,
+            Distribution = distribution_status,
+            Variance = variance_status,
+            Test = "Tukey's HSD (ANOVA)",
+            P_Value = p_values,
+            Significance = case_when(
+              p_values <= 0.001 ~ "***",
+              p_values <= 0.01 ~ "**",
+              p_values <= 0.05 ~ "*",
+              TRUE ~ "Not significant"
             )
+          )
 
           results_list[[paste(cont_var, factor, sep = "_")]] <- sig_pairs
         } else {
           #if no valid groupings are present, return an empty dataframe
           results_list[[paste(cont_var, factor, sep = "_")]] <- data.frame(
             Comparison = NA,
-            P_Value = NA,
-            Continuous_Var = cont_var,
             Factor = factor,
+            Continuous_Var = cont_var,
+            Distribution = distribution_status,
+            Variance = variance_status,
             Test = "Tukey's HSD (No significant groupings)",
+            P_Value = NA,
             Significance = "Not significant"
           )
         }
       } else {
-        #heterogeneous variances: Kruskal-Wallis and Dunn's Test
+        #Kruskal-Wallis and Dunn's Test for non-parametric data
         kruskal <- kruskal.test(as.formula(paste(cont_var, "~", factor)), data = filtered_data)
 
         if (kruskal$p.value < 0.05) { #Dunn's Test if Kruskal-Wallis is significant
           dunn <- dunn.test(filtered_data[[cont_var]], filtered_data[[factor]], method = "bonferroni", kw = FALSE)
 
-          #extract pairwise comparisons and P-values
+          #calculate group medians for ordering comparisons
+          group_medians <- tapply(filtered_data[[cont_var]], filtered_data[[factor]], median, na.rm = TRUE)
+          
+          comparisons <- dunn$comparisons
+          p_values <- dunn$P.adjusted
+          
+          #reorder comparisons so higher median is listed first
+          reordered_comparisons <- sapply(comparisons, function(comp) {
+            groups <- strsplit(comp, " - ")[[1]]
+            group1 <- trimws(groups[1])
+            group2 <- trimws(groups[2])
+            
+            if (group_medians[group1] > group_medians[group2]) {
+              paste(group1, ">", group2)
+            } else {
+              paste(group2, ">", group1)
+            }
+          })
+          
           sig_pairs <- data.frame(
-            Comparison = dunn$comparisons,
-            P_Value = dunn$P.adjusted
-          ) %>%
-            filter(P_Value < 1) %>% #include all comparisons
-            mutate(
-              Continuous_Var = cont_var,
-              Factor = factor,
-              Test = "Dunn's Test",
-              Significance = case_when(
-                P_Value <= 0.001 ~ "***",
-                P_Value <= 0.01 ~ "**",
-                P_Value <= 0.05 ~ "*",
-                TRUE ~ "Not significant"
-              )
+            Comparison = reordered_comparisons,
+            Factor = factor,
+            Continuous_Var = cont_var,
+            Distribution = distribution_status,
+            Variance = variance_status,
+            Test = "Dunn's Test (Kruskal-Wallis)",
+            P_Value = p_values,
+            Significance = case_when(
+              p_values <= 0.001 ~ "***",
+              p_values <= 0.01 ~ "**",
+              p_values <= 0.05 ~ "*",
+              TRUE ~ "Not significant"
             )
+          ) %>%
+            filter(P_Value < 1)
 
           results_list[[paste(cont_var, factor, sep = "_")]] <- sig_pairs
         } else {
           results_list[[paste(cont_var, factor, sep = "_")]] <- data.frame(
             Comparison = NA,
-            P_Value = NA,
-            Continuous_Var = cont_var,
             Factor = factor,
+            Continuous_Var = cont_var,
+            Distribution = distribution_status,
+            Variance = variance_status,
             Test = "Kruskal-Wallis (NS)",
+            P_Value = NA,
             Significance = "Not significant"
           )
         }
@@ -274,6 +384,7 @@ differences_function <- function(data, factors, continuous_vars) {
 
   #combine results for all factors and continuous variables
   results_df <- bind_rows(results_list, .id = "Analysis_Combination")
+  
   return(results_df)
 }
 
@@ -288,6 +399,9 @@ differences_function <- function(data, factors, continuous_vars) {
 #run the analysis
 #var_diff <- differences_function(data, factors, continuous_vars)
 
+#filter only significant differences
+#var_sigdiff <- var_diff %>%
+#  filter(P_Value <= 0.05)
 
 ```
 
@@ -303,7 +417,7 @@ site_data <- read_csv("Wigan_sitedata2023.csv") %>%
 
 #calc means and standard error for site data
 site_means <- site_data %>%
-  group_by(Site, Management) %>%
+  group_by(Site_ID) %>%
     dplyr::select(!Mgmt_time) %>%
     dplyr::select(!Collar_Lat) %>%
     dplyr::select(!Collar_Long) %>%
@@ -321,9 +435,18 @@ soil_metals <- site_data %>%
 		  values_to = "ppm") %>% #name column to put values in
   dplyr::select(Site_ID, Site, Management, nutrient, ppm) #select columns to keep
 
+#metals means only
+metals_means <- site_data[,c(2,13:37)] %>%
+  group_by(Site_ID) %>%
+  rename_all(~stringr::str_replace(.,"ppm_","")) %>% #remove prefix from column names
+  summarise(across(where(is.numeric), ~mean(., na.rm=TRUE))) #means
+
+#write csv
+#write.csv(metals_means, "metals_means.csv") #saves as csv in current workspace
+
 #order variables
-site_data$Site_ID <- factor(site_data$Site_ID, levels = order_IDs)
-soil_metals$Site_ID <- factor(soil_metals$Site_ID, levels = order_IDs)
+site_data$Site_ID <- factor(site_data$Site_ID, levels = order_IDs_4)
+soil_metals$Site_ID <- factor(soil_metals$Site_ID, levels = order_IDs_4)
 
 #read in FTIR data
 FTIR <- read_csv("FTIR_Sam.csv")
@@ -333,7 +456,7 @@ FTIR <- FTIR[,-1] #remove column with row numbers
 
 #order variable
 FTIR$Site <- factor(FTIR$Site, levels = order_sites)
-FTIR$Site_ID <- factor(FTIR$Site_ID, levels = order_IDs)
+FTIR$Site_ID <- factor(FTIR$Site_ID, levels = order_IDs_4)
 
 #pivot
 FTIR_long <- FTIR %>%
@@ -347,7 +470,7 @@ FTIR_standardized <- FTIR %>%
   mutate_if(is.numeric,scale)
 
 FTIR_standardized$Site <- factor(FTIR_standardized$Site, levels = order_sites)
-FTIR_standardized$Site_ID <- factor(FTIR_standardized$Site_ID, levels = order_IDs)
+FTIR_standardized$Site_ID <- factor(FTIR_standardized$Site_ID, levels = order_IDs_4)
 
 #numeric values only for prcomp
 FTIR_standardized_num <- FTIR_standardized[,-c(1,2)] #remove non-numeric columns for PCA
@@ -1361,26 +1484,34 @@ summary(aov(adj_BD ~ Management * Site, data = SOM_2026)) #ANOVA - none signific
 #function 1 evaluate_group_sizes
 #function2 differences_function
 
-# Define what to analyze
+#define what to analyze
 factors <- "Site_ID" #predictor variable
 continuous_vars <- c("ppm_Al", "ppm_B", "ppm_Ba", "ppm_Ca1", "ppm_Ca2", "ppm_Cd", "ppm_Co", "ppm_Cr", "ppm_Cu",
                      "ppm_Fe", "ppm_K", "ppm_Li", "ppm_Mg", "ppm_Mn", "ppm_Na", "ppm_Ni", "ppm_P1", "ppm_P2",
                      "ppm_Pb", "ppm_S1", "ppm_S2", "ppm_Si", "ppm_Sr1", "ppm_Sr2", "ppm_Zn") #response variables
 data <- site_data
+#data$Site_ID <- as.character(data$Site_ID) #convert factor to character
 
-# Evaluate group sizes
+#evaluate group sizes
 evaluate_group_sizes(data, factors, continuous_vars) 
+summarize_group_sizes(data, factors, continuous_vars) 
 
-# Run the analysis
-metals_diff <- differences_function(data, factors, continuous_vars)
+#run the analysis
+metals_diff <- differences(data, factors, continuous_vars)
 
+#filter only significant
+metals_sigdiff <- metals_diff %>%
+  filter(P_Value <= 0.05)
+
+#write csv
+#write.csv(metals_sigdiff, "metals_sigdiff.csv") #saves as csv in current workspace
 
 ```
 
 ```{r metals chart, warning=FALSE}
 
 soil_metals$Site <- factor(soil_metals$Site, levels = order_sites)
-soil_metals$Site_ID <- factor(soil_metals$Site_ID, levels = order_IDs)
+soil_metals$Site_ID <- factor(soil_metals$Site_ID, levels = order_IDs_4)
 soil_metals$Management <- factor(soil_metals$Management, levels = order_management)
 
 #plot metals
@@ -1407,24 +1538,25 @@ ggsave('metals_all_240426.svg', #save plot name and type - can be "eps", "pdf", 
 
 ```
 
-```{r metals chart 2}
+```{r metals significant chart}
 
 #plot metals
 soil_metals %>%
-  filter(nutrient == "Ca1" | nutrient == "Li" | nutrient == "Mg" | 
-           nutrient == "Pb" | nutrient == "S1") %>% #filter for significant nutrients
+  filter(nutrient == "Ca1" | nutrient == "Co" | nutrient == "Cr" | nutrient == "Cu" |
+           nutrient == "Li" | nutrient == "Mg" | nutrient == "Mn" | 
+           nutrient == "Pb" | nutrient == "S1" | nutrient == "Sr1" | nutrient == "Zn") %>% #filter for significant nutrients
 ggplot(aes(x=nutrient, y=ppm, fill=nutrient)) + 
   geom_boxplot() +
   facet_wrap(~Site_ID, scales = "free_y", nrow=1) + #create a separate plot for each site
-  scale_fill_manual(values=colors5) + #define colors to use
+  scale_fill_manual(values=colors13) + #define colors to use
   #ggtitle("Soil Metals per site") + #add a graph title
-  xlab("") + ylab("Nutrient (ppm)") + #define/change X and Y labels
+  xlab("") + ylab("Concentration (mg/kg soil)") + #define/change X and Y labels
   theme(axis.text.x = element_text(angle=90), #set angle of variable labels
         panel.grid.major.y = element_line(color = "grey40", size = 0.25)) + 
   my_theme
 
 #save figure
-ggsave('metals_sig_240426.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+ggsave('metals_sig_170626.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
 	path = "Figures", #save to folder within working directory
 	width = 6, height = 4, units = "in", #set dimensions for figure
 	dpi = 300, #set resolution
@@ -1432,17 +1564,48 @@ ggsave('metals_sig_240426.svg', #save plot name and type - can be "eps", "pdf", 
 
 ```
 
-```{r metals chart 3}
+```{r metals significant chart 2}
 
 #plot metals
 soil_metals %>%
-  filter(nutrient == "Cd" | nutrient == "Cr" | nutrient == "Ni" | nutrient == "Pb") %>% #filter for heavy metals with health concerns
+  filter(nutrient == "Ca1" | nutrient == "Co" | nutrient == "Cr" | nutrient == "Cu" |
+           nutrient == "Li" | nutrient == "Mg" | nutrient == "Mn" | 
+           nutrient == "Pb" | nutrient == "S1" | nutrient == "Sr1" | nutrient == "Zn") %>% #filter for significant nutrients
+ggplot(aes(x=Site_ID, y=ppm, fill=Site_ID)) + 
+  geom_boxplot() +
+  facet_wrap(~nutrient, scales = "free", nrow=2) + #create a separate plot for each site
+  scale_fill_manual(values=colors4) + #define colors to use
+  #ggtitle("Soil Metals per site") + #add a graph title
+  xlab("Site") + ylab("Concentration (ppm)") + #define/change X and Y labels
+  theme(axis.text.x = element_text(angle=90), #set angle of variable labels
+        panel.grid.major.y = element_line(color = "grey40", size = 0.25)) + 
+  scale_x_discrete(labels = "", "", "", "") + #remove x axis labels
+  my_theme +
+  theme(legend.position='bottom') #remove legend
+
+#save figure
+ggsave('metals_sig2_170626.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 8, height = 4, units = "in", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
+```
+
+
+```{r metals chart health}
+
+#plot regulated metals
+soil_metals$Site_ID <- factor(soil_metals$Site_ID, levels = order_IDs_4)
+
+soil_metals %>%
+  filter(nutrient == "Cd" | nutrient == "Cr" | nutrient == "Cu" | nutrient == "Ni" | nutrient == "Pb" | nutrient == "Zn") %>% #filter for heavy metals with health concerns
 ggplot(aes(x=Site, y=ppm, fill=Site_ID)) + 
   geom_boxplot(width=2) +
   facet_wrap(~nutrient, scales = "free_y", nrow=1) + #create a separate plot for each site
   scale_fill_manual(values=colors5) + #define colors to use
   #ggtitle("Soil Metals per site") + #add a graph title
-  xlab("Site") + ylab("Nutrient (ppm)") + #define/change X and Y labels
+  xlab("Site") + ylab("Concentration (mg/kg soil)") + #define/change X and Y labels
   theme(axis.text.x = element_text(angle=90), #set angle of variable labels
         panel.grid.major.y = element_line(color = "grey40", size = 0.25)) + 
   scale_x_discrete(labels = "", "", "", "") + #remove x axis labels
@@ -1450,41 +1613,15 @@ ggplot(aes(x=Site, y=ppm, fill=Site_ID)) +
   theme(legend.position='bottom') #remove legend
 
 #save figure
-ggsave('metals_health_130426.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+ggsave('metals_health_170626.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
 	path = "Figures", #save to folder within working directory
-	width = 8, height = 4, units = "in", #set dimensions for figure
+	width = 10, height = 4, units = "in", #set dimensions for figure
 	dpi = 300, #set resolution
 	bg=NULL) #background from plot specifications
 
 ```
 
 
-```{r metals chart 4}
-
-#plot metals
-soil_metals %>%
-  filter(nutrient == "Ca1" | nutrient == "Li" | nutrient == "Mg" | 
-           nutrient == "Pb" | nutrient == "S1") %>% #filter for significant nutrients
-ggplot(aes(x=Site_ID, y=ppm, fill=Site_ID)) + 
-  geom_boxplot() +
-  facet_wrap(~nutrient, scales = "free", nrow=1) + #create a separate plot for each site
-  scale_fill_manual(values=colors5) + #define colors to use
-  #ggtitle("Soil Metals per site") + #add a graph title
-  xlab("Site") + ylab("Nutrient (ppm)") + #define/change X and Y labels
-  theme(axis.text.x = element_text(angle=90), #set angle of variable labels
-        panel.grid.major.y = element_line(color = "grey40", size = 0.25)) + 
-  scale_x_discrete(labels = "", "", "", "") + #remove x axis labels
-  my_theme +
-  theme(legend.position='bottom') #remove legend
-
-#save figure
-ggsave('metals_sig2_240426.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
-	path = "Figures", #save to folder within working directory
-	width = 8, height = 4, units = "in", #set dimensions for figure
-	dpi = 300, #set resolution
-	bg=NULL) #background from plot specifications
-
-```
 
 
 ## FTIR compounds
@@ -1516,6 +1653,7 @@ FTIR_summary <- FTIR_stbl_lbl %>%
                                  se = ~ std.error(., na.rm=TRUE))))
 
 shapiro.test(resid(lm(ar_al ~ site_id, data = FTIR_stbl_lbl))) #check normality of residuals - normal
+bartlett.test(ar_al ~ site_id, data = FTIR_stbl_lbl)
 summary(aov(ar_al ~ site_id, data = FTIR_stbl_lbl)) #ANOVA - significant
 TukeyHSD(aov(ar_al ~ site_id, data = FTIR_stbl_lbl)) #Flashes vs. all, Amberswood vs. Bickershaw 1
 
@@ -4922,7 +5060,7 @@ shapiro.test(resid(lm(excess13C_mg ~ site_id, data = plant13C[plant13C$sample_ty
 shapiro.test(resid(lm(log(excess13C_mg) ~ site_id, data = plant13C[plant13C$sample_type=='shoot', ]))) #check normality of residuals - high W though p-val still low
 summary(aov(log(excess13C_mg) ~ site_id, data = plant13C[plant13C$sample_type=='shoot', ])) #not sig
 
-shapiro.test(resid(lm(plant13C[plant13C$sample_type=='shoot', ]$excess13C_mg ~ site_data$pH))) #check normality of residuals - not normal
+#shapiro.test(resid(lm(plant13C[plant13C$sample_type=='shoot', ]$excess13C_mg ~ site_data$pH))) #check normality of residuals - not normal
 
 ```
 
