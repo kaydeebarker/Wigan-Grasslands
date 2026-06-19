@@ -30,7 +30,7 @@ datalib <- c("dplyr", "tidyr", "readr", "readxl", "stringr", "tibble", "reshape2
 vislib <- c("ggplot2", "ggthemes", "ggfortify", "ggrepel", "ggsignif", "plotrix", "RColorBrewer", "Cairo", "sjPlot", "multcompView")
 
 ##3. For calculation and stats functions, including ecology and microbial-specific libraries
-statlib <- c("car", "MASS", "rcompanion", "zoo", "lme4", "MuMIn", "emmeans", "ARTool", "dunn.test", "performance", "see", "corrplot", "BAT", "vegan", "ape")
+statlib <- c("car", "MASS", "rcompanion", "zoo", "lme4", "MuMIn", "emmeans", "ARTool", "rcompanion", "dunn.test", "performance", "see", "corrplot", "BAT", "vegan", "ape")
 
 #Install packages as needed - commented out, but remove # and adjust as neededas a group:
 #lapply(c(datalib, vislib, statlib), install.packages)
@@ -132,16 +132,26 @@ order_mgmt <- c("0 yrs", "4 yrs", "15 yrs", "23 yrs")
 
 ### Write functions to determine differences
 
-First, evaluate_group_sizes() is a diagnostic to determine if difference tests can be run. Similarly, summarize_group_sizes() will output the number of observations for each group.
+First, evaluate_group_sizes() is a diagnostic to determine if difference tests can be run. 
+
+Similarly, summarize_group_sizes() will output the number of observations for each group.
+
 The differences() function will:
 - Filter out groups with <2 observations
 - Use shapiro.test() on ANOVA residuals to test the normality of the distribution, and output to "Distribution" whether the residual distribution is normal (P>0.05), has minor non-normality (W>0.9 but P<0.05), or has major non-normality (W<0.9, P<0.01)
 - Use bartlett.test() if residuals are normally distributed or leveneTest() if not to test for homogeneity of variance in the data, and output to "Variance" whether the variance is homogeneous (P>0.05) or heterogeneous (P<0.05)
-- If data meet parametric assumptions (normal distribution or minor non-normality, and homogeneity of variance), then procede with ANOVA and Tukey's HSD post hoc test. Otherwise (major non-normality and/or heterogeneity of variance), use Kruskal-Wallis and Dunn's Test
+- If data meet parametric assumptions (normal distribution or minor non-normality, and homogeneity of variance), then procede with one-way ANOVA and Tukey's HSD post hoc test, or otherwise (major non-normality and/or heterogeneity of variance), use Kruskal-Wallis and Dunn's Test
+- Output tests used, P-values for the post hoc tests, and significance level indicators for a quick look
 - Tell which factor group has a higher mean (if parametric) or median (non-parametric) value for the continuous variable in a Comparison column
 
+The differences_multifactor() function will accept a vector of factors (1-3) and runs the same tests as differences() with these differences: 
+- Uses a model formula to assess all factors and interactions
+- Uses two-way or three-way ANOVA for parametric data, and Aligned Ranks Transformation (ART) ANOVA for non-parametric
 
-```{r comparisons stats - set up function}
+Uses car, lme4, emmeans, and ARTool packages.
+
+
+```{r set up group size functions}
 
 #pairwise comparisons
 
@@ -388,6 +398,197 @@ differences <- function(data, factors, continuous_vars) {
   return(results_df)
 }
 
+#analysis function for multifactor models with Shapiro test, Levene test, Bartlett's test, group size evaluation, and NA omission
+differences_multifactor <- function(data, factors, continuous_vars) {
+  results_list <- list()
+
+  for (cont_var in continuous_vars) {
+    # Create formula with all factors
+    factor_formula <- paste(factors, collapse = " * ")
+    full_formula <- as.formula(paste(cont_var, "~", factor_formula))
+    
+    # Remove NA values for the current continuous variable and all factors
+    cols_needed <- c(factors, cont_var)
+    filtered_data <- na.omit(data[, cols_needed])
+
+    # Check if all groups for each factor have at least 2 observations
+    insufficient_groups <- FALSE
+    for (factor in factors) {
+      group_sizes <- table(filtered_data[[factor]])
+      if (any(group_sizes < 2)) {
+        insufficient_groups <- TRUE
+        break
+      }
+    }
+    
+    if (insufficient_groups) {
+      # If any factor has groups with fewer than 2 observations, skip analysis and add a note
+      results_list[[cont_var]] <- data.frame(
+        Comparison = NA,
+        Factors = paste(factors, collapse = " * "),
+        Continuous_Var = cont_var,
+        Distribution = "Skipped",
+        Variance = "Skipped",
+        Test = "Skipped (Insufficient group size)",
+        P_Value = NA,
+        Significance = "Not significant"
+      )
+      next
+    }
+
+    # Step 1: Test normality using Shapiro-Wilk test on residuals
+    anova_res <- aov(full_formula, data = filtered_data)
+    residuals <- residuals(anova_res)
+    shapiro <- shapiro.test(residuals)
+    
+    # Determine normality category
+    if (shapiro$p.value > 0.05) {
+      distribution_status <- "Normal"
+    } else if (shapiro$statistic > 0.9) {
+      distribution_status <- "Minor non-normality"
+    } else {
+      distribution_status <- "Major non-normality"
+    }
+
+    # Step 2: Test homogeneity of variances
+    # Create interaction groups for both Bartlett and Levene tests
+    if (length(factors) == 1) {
+      interaction_groups <- filtered_data[[factors[1]]]
+    } else if (length(factors) == 2) {
+      interaction_groups <- interaction(filtered_data[[factors[1]]], filtered_data[[factors[2]]])
+    } else if (length(factors) == 3) {
+      interaction_groups <- interaction(filtered_data[[factors[1]]], filtered_data[[factors[2]]], filtered_data[[factors[3]]])
+    }
+    
+    # Use Bartlett's test if normally distributed, Levene's test if not
+    if (distribution_status == "Normal") {
+      bartlett <- bartlett.test(filtered_data[[cont_var]], interaction_groups)
+      variance_test_pvalue <- bartlett$p.value
+    } else {
+      levene <- car::leveneTest(filtered_data[[cont_var]], interaction_groups)
+      variance_test_pvalue <- levene$`Pr(>F)`[1]
+    }
+
+    # Step 3: Decide which statistical test to use
+    # Parametric assumptions met: Normal distribution (or minor non-normality) AND homogeneous variances
+    use_parametric <- (distribution_status %in% c("Normal", "Minor non-normality")) && (variance_status == "Homogeneous")
+
+    if (use_parametric) {
+      # ANOVA and Tukey's HSD
+      tukey <- TukeyHSD(anova_res)
+
+      # Extract pairwise comparisons and P-values for each factor
+      for (i in seq_along(tukey)) {
+        factor_name <- names(tukey)[i]
+        
+        if (!is.null(tukey[[i]])) {
+          # Calculate group means for ordering comparisons
+          group_means <- tapply(filtered_data[[cont_var]], filtered_data[[factor_name]], mean, na.rm = TRUE)
+          
+          comparisons <- rownames(tukey[[i]])
+          p_values <- tukey[[i]][, "p adj"]
+          
+          # Reorder comparisons so higher mean is listed first
+          reordered_comparisons <- sapply(comparisons, function(comp) {
+            groups <- strsplit(comp, "-")[[1]]
+            group1 <- trimws(groups[1])
+            group2 <- trimws(groups[2])
+            
+            if (group_means[group1] > group_means[group2]) {
+              paste(group1, ">", group2)
+            } else {
+              paste(group2, ">", group1)
+            }
+          })
+          
+          sig_pairs <- data.frame(
+            Comparison = reordered_comparisons,
+            Factors = paste(factors, collapse = " * "),
+            Continuous_Var = cont_var,
+            Distribution = distribution_status,
+            Variance = variance_status,
+            Test = paste("Tukey's HSD (ANOVA) -", factor_name),
+            P_Value = p_values,
+            Significance = case_when(
+              p_values <= 0.001 ~ "***",
+              p_values <= 0.01 ~ "**",
+              p_values <= 0.05 ~ "*",
+              TRUE ~ "Not significant"
+            )
+          )
+
+          results_list[[paste(cont_var, factor_name, sep = "_")]] <- sig_pairs
+        }
+      }
+    } else {
+      # Kruskal-Wallis and Dunn's Test for each factor
+      for (factor in factors) {
+        kruskal <- kruskal.test(as.formula(paste(cont_var, "~", factor)), data = filtered_data)
+
+        if (kruskal$p.value < 0.05) { # Dunn's Test if Kruskal-Wallis is significant
+          dunn <- dunn.test(filtered_data[[cont_var]], filtered_data[[factor]], method = "bonferroni", kw = FALSE)
+
+          # Calculate group medians for ordering comparisons
+          group_medians <- tapply(filtered_data[[cont_var]], filtered_data[[factor]], median, na.rm = TRUE)
+          
+          comparisons <- dunn$comparisons
+          p_values <- dunn$P.adjusted
+          
+          # Reorder comparisons so higher median is listed first
+          reordered_comparisons <- sapply(comparisons, function(comp) {
+            groups <- strsplit(comp, " - ")[[1]]
+            group1 <- trimws(groups[1])
+            group2 <- trimws(groups[2])
+            
+            if (group_medians[group1] > group_medians[group2]) {
+              paste(group1, ">", group2)
+            } else {
+              paste(group2, ">", group1)
+            }
+          })
+          
+          sig_pairs <- data.frame(
+            Comparison = reordered_comparisons,
+            Factors = paste(factors, collapse = " * "),
+            Continuous_Var = cont_var,
+            Distribution = distribution_status,
+            Variance = variance_status,
+            Test = paste("Dunn's Test (Kruskal-Wallis) -", factor),
+            P_Value = p_values,
+            Significance = case_when(
+              p_values <= 0.001 ~ "***",
+              p_values <= 0.01 ~ "**",
+              p_values <= 0.05 ~ "*",
+              TRUE ~ "Not significant"
+            )
+          ) %>%
+            filter(P_Value < 1)
+
+          results_list[[paste(cont_var, factor, sep = "_")]] <- sig_pairs
+        } else {
+          results_list[[paste(cont_var, factor, sep = "_")]] <- data.frame(
+            Comparison = NA,
+            Factors = paste(factors, collapse = " * "),
+            Continuous_Var = cont_var,
+            Distribution = distribution_status,
+            Variance = variance_status,
+            Test = paste("Kruskal-Wallis (NS) -", factor),
+            P_Value = NA,
+            Significance = "Not significant"
+          )
+        }
+      }
+    }
+  }
+
+  # Combine results for all factors and continuous variables
+  results_df <- bind_rows(results_list, .id = "Analysis_Combination")
+  
+  return(results_df)
+}
+
+#use case example:
+
 #define what to analyze
 #factors <- "Site" #predictor variable
 #continuous_vars <- c("var1","var2","var3") #response variables
@@ -405,6 +606,572 @@ differences <- function(data, factors, continuous_vars) {
 
 ```
 
+```{r set up one-way pairwise comparison function}
+
+#pairwise comparisons
+
+#analysis function with Shapiro test, Levene test, Bartlett's test, group size evaluation, and NA omission
+differences <- function(data, factors, continuous_vars) {
+  results_list <- list()
+
+  for (cont_var in continuous_vars) {
+    for (factor in factors) {
+      #remove NA values for the current continuous variable and factor
+      filtered_data <- na.omit(data[, c(factor, cont_var)])
+
+      #check if all groups for the factor have at least 2 observations
+      group_sizes <- table(filtered_data[[factor]])
+      if (any(group_sizes < 2)) {
+        #if a group has fewer than 2 observations, skip analysis and add a note
+        results_list[[paste(cont_var, factor, sep = "_")]] <- data.frame(
+          Comparison = NA,
+          Factor = factor,
+          Continuous_Var = cont_var,
+          Distribution = "Skipped",
+          Variance = "Skipped",
+          Test = "Skipped (Insufficient group size)",
+          P_Value = NA,
+          Significance = "Not significant"
+        )
+        next
+      }
+
+      #step 1: test normality using Shapiro-Wilk test on residuals
+      anova_res <- aov(as.formula(paste(cont_var, "~", factor)), data = filtered_data)
+      residuals <- residuals(anova_res)
+      shapiro <- shapiro.test(residuals)
+      
+      #determine normality category
+      if (shapiro$p.value > 0.05) {
+        distribution_status <- "Normal"
+      } else if (shapiro$statistic > 0.9) {
+        distribution_status <- "Minor non-normality"
+      } else {
+        distribution_status <- "Major non-normality"
+      }
+
+      #step 2: test homogeneity of variances
+      #use Bartlett's test if normally distributed, Levene's test if not
+      if (distribution_status == "Normal") {
+        bartlett <- bartlett.test(as.formula(paste(cont_var, "~", factor)), data = filtered_data)
+        variance_test_pvalue <- bartlett$p.value
+        variance_test_name <- "Bartlett"
+      } else {
+        levene <- car::leveneTest(as.formula(paste(cont_var, "~", factor)), data = filtered_data)
+        variance_test_pvalue <- levene$`Pr(>F)`[1]
+        variance_test_name <- "Levene"
+      }
+      
+      #determine homogeneity status
+      variance_status <- ifelse(variance_test_pvalue > 0.05, "Homogeneous", "Heterogeneous")
+
+      #step 3: decide which statistical test to use based on parametric assumptions
+      #parametric assumptions met: normal distribution (or minor non-normality) AND homogeneous variances
+      use_parametric <- (distribution_status %in% c("Normal", "Minor non-normality")) && (variance_status == "Homogeneous")
+
+      if (use_parametric) {
+        #ANOVA and Tukey's HSD
+        tukey <- TukeyHSD(anova_res)
+
+        #extract pairwise comparisons and P-values
+        if (!is.null(tukey[[1]])) {
+          #calculate group means for ordering comparisons
+          group_means <- tapply(filtered_data[[cont_var]], filtered_data[[factor]], mean, na.rm = TRUE)
+          
+          comparisons <- rownames(tukey[[1]])
+          p_values <- tukey[[1]][, "p adj"]
+          
+          #reorder comparisons so higher mean is listed first
+          reordered_comparisons <- sapply(comparisons, function(comp) {
+            groups <- strsplit(comp, "-")[[1]]
+            group1 <- trimws(groups[1])
+            group2 <- trimws(groups[2])
+            
+            if (group_means[group1] > group_means[group2]) {
+              paste(group1, ">", group2)
+            } else {
+              paste(group2, ">", group1)
+            }
+          })
+          
+          sig_pairs <- data.frame(
+            Comparison = reordered_comparisons,
+            Factor = factor,
+            Continuous_Var = cont_var,
+            Distribution = distribution_status,
+            Variance = variance_status,
+            Test = "Tukey's HSD (ANOVA)",
+            P_Value = p_values,
+            Significance = case_when(
+              p_values <= 0.001 ~ "***",
+              p_values <= 0.01 ~ "**",
+              p_values <= 0.05 ~ "*",
+              TRUE ~ "Not significant"
+            )
+          )
+
+          results_list[[paste(cont_var, factor, sep = "_")]] <- sig_pairs
+        } else {
+          #if no valid groupings are present, return an empty dataframe
+          results_list[[paste(cont_var, factor, sep = "_")]] <- data.frame(
+            Comparison = NA,
+            Factor = factor,
+            Continuous_Var = cont_var,
+            Distribution = distribution_status,
+            Variance = variance_status,
+            Test = "Tukey's HSD (No significant groupings)",
+            P_Value = NA,
+            Significance = "Not significant"
+          )
+        }
+      } else {
+        #Kruskal-Wallis and Dunn's Test for non-parametric data
+        kruskal <- kruskal.test(as.formula(paste(cont_var, "~", factor)), data = filtered_data)
+
+        if (kruskal$p.value < 0.05) { #Dunn's Test if Kruskal-Wallis is significant
+          dunn <- dunn.test(filtered_data[[cont_var]], filtered_data[[factor]], method = "bonferroni", kw = FALSE)
+
+          #calculate group medians for ordering comparisons
+          group_medians <- tapply(filtered_data[[cont_var]], filtered_data[[factor]], median, na.rm = TRUE)
+          
+          comparisons <- dunn$comparisons
+          p_values <- dunn$P.adjusted
+          
+          #reorder comparisons so higher median is listed first
+          reordered_comparisons <- sapply(comparisons, function(comp) {
+            groups <- strsplit(comp, " - ")[[1]]
+            group1 <- trimws(groups[1])
+            group2 <- trimws(groups[2])
+            
+            if (group_medians[group1] > group_medians[group2]) {
+              paste(group1, ">", group2)
+            } else {
+              paste(group2, ">", group1)
+            }
+          })
+          
+          sig_pairs <- data.frame(
+            Comparison = reordered_comparisons,
+            Factor = factor,
+            Continuous_Var = cont_var,
+            Distribution = distribution_status,
+            Variance = variance_status,
+            Test = "Dunn's Test (Kruskal-Wallis)",
+            P_Value = p_values,
+            Significance = case_when(
+              p_values <= 0.001 ~ "***",
+              p_values <= 0.01 ~ "**",
+              p_values <= 0.05 ~ "*",
+              TRUE ~ "Not significant"
+            )
+          ) %>%
+            filter(P_Value < 1)
+
+          results_list[[paste(cont_var, factor, sep = "_")]] <- sig_pairs
+        } else {
+          results_list[[paste(cont_var, factor, sep = "_")]] <- data.frame(
+            Comparison = NA,
+            Factor = factor,
+            Continuous_Var = cont_var,
+            Distribution = distribution_status,
+            Variance = variance_status,
+            Test = "Kruskal-Wallis (NS)",
+            P_Value = NA,
+            Significance = "Not significant"
+          )
+        }
+      }
+    }
+  }
+
+  #combine results for all factors and continuous variables
+  results_df <- bind_rows(results_list, .id = "Analysis_Combination")
+  
+  return(results_df)
+}
+
+#use case example:
+
+#define what to analyze
+#factors <- "pred" #predictor variable
+#continuous_vars <- c("var1","var2","var3") #response variables
+#data <- dataframe
+
+#evaluate group sizes
+#evaluate_group_sizes(data, factors, continuous_vars) 
+
+#run the analysis
+#var_diff <- differences(data, factors, continuous_vars)
+
+#filter only significant differences
+#var_sigdiff <- var_diff %>%
+#  filter(P_Value <= 0.05)
+
+```
+
+```{r set up multifactoral/lme function}
+
+#analysis function for multifactor models with interactions, Shapiro test, Levene test, Bartlett's test, group size evaluation, and NA omission
+differences_multifactor <- function(data, factors, continuous_vars, random_var = NULL) {
+  results_list <- list()
+
+  for (cont_var in continuous_vars) {
+    # Create formula with all factors and interactions
+    factor_formula <- paste(factors, collapse = " * ")
+    
+    # Remove NA values for the current continuous variable and all factors
+    cols_needed <- c(factors, cont_var)
+    if (!is.null(random_var)) {
+      cols_needed <- c(cols_needed, random_var)
+    }
+    filtered_data <- na.omit(data[, cols_needed])
+
+    # Check if all groups for each factor have at least 2 observations
+    insufficient_groups <- FALSE
+    for (factor in factors) {
+      group_sizes <- table(filtered_data[[factor]])
+      if (any(group_sizes < 2)) {
+        insufficient_groups <- TRUE
+        break
+      }
+    }
+    
+    if (insufficient_groups) {
+      # If any factor has groups with fewer than 2 observations, skip analysis and add a note
+      results_list[[cont_var]] <- data.frame(
+        Comparison = NA,
+        Factors = paste(factors, collapse = " * "),
+        Continuous_Var = cont_var,
+        Distribution = "Skipped",
+        Variance = "Skipped",
+        Test = "Skipped (Insufficient group size)",
+        P_Value = NA,
+        Significance = "Not significant"
+      )
+      next
+    }
+
+    # Step 1: Test normality using Shapiro-Wilk test on residuals
+    if (is.null(random_var)) {
+      full_formula <- as.formula(paste(cont_var, "~", factor_formula))
+      anova_res <- aov(full_formula, data = filtered_data)
+    } else {
+      full_formula <- as.formula(paste(cont_var, "~", factor_formula, "+ (1|", random_var, ")"))
+      anova_res <- lme4::lmer(full_formula, data = filtered_data, REML = TRUE, na.action = na.omit)
+    }
+    
+    residuals <- residuals(anova_res)
+    shapiro <- shapiro.test(residuals)
+    
+    # Determine normality category
+    if (shapiro$p.value > 0.05) {
+      distribution_status <- "Normal"
+    } else if (shapiro$statistic > 0.9) {
+      distribution_status <- "Minor non-normality"
+    } else {
+      distribution_status <- "Major non-normality"
+    }
+
+    # Step 2: Test homogeneity of variances
+    # Create interaction groups for both Bartlett and Levene tests
+    if (length(factors) == 1) {
+      interaction_groups <- filtered_data[[factors[1]]]
+    } else if (length(factors) == 2) {
+      interaction_groups <- interaction(filtered_data[[factors[1]]], filtered_data[[factors[2]]])
+    } else if (length(factors) == 3) {
+      interaction_groups <- interaction(filtered_data[[factors[1]]], filtered_data[[factors[2]]], filtered_data[[factors[3]]])
+    }
+    
+    # Use Bartlett's test if normally distributed, Levene's test if not
+    if (distribution_status == "Normal") {
+      bartlett <- bartlett.test(filtered_data[[cont_var]], interaction_groups)
+      variance_test_pvalue <- bartlett$p.value
+    } else {
+      levene <- car::leveneTest(filtered_data[[cont_var]], interaction_groups)
+      variance_test_pvalue <- levene$`Pr(>F)`[1]
+    }
+    
+    # Determine homogeneity status
+    variance_status <- ifelse(variance_test_pvalue > 0.05, "Homogeneous", "Heterogeneous")
+
+    # Step 3: Decide which statistical test to use
+    # Parametric assumptions met: Normal distribution (or minor non-normality) AND homogeneous variances
+    use_parametric <- (distribution_status %in% c("Normal", "Minor non-normality")) && (variance_status == "Homogeneous")
+
+    if (use_parametric) {
+      # Run Type III ANOVA
+      if (is.null(random_var)) {
+        full_formula <- as.formula(paste(cont_var, "~", factor_formula))
+        lm_model <- lm(full_formula, data = filtered_data)
+      } else {
+        full_formula <- as.formula(paste(cont_var, "~", factor_formula, "+ (1|", random_var, ")"))
+        lm_model <- lme4::lmer(full_formula, data = filtered_data, REML = TRUE, na.action = na.omit)
+      }
+      
+      anova_results <- car::Anova(lm_model, type = 3)
+      
+      # Extract main effects and interactions from Type III ANOVA
+      anova_df <- as.data.frame(anova_results)
+      anova_df$Term <- rownames(anova_df)
+      anova_df <- anova_df[!(rownames(anova_df) == "(Intercept)"), ] # Remove intercept
+      
+      for (idx in seq_len(nrow(anova_df))) {
+        term_name <- anova_df$Term[idx]
+        p_value <- anova_df$`Pr(>F)`[idx]
+        
+        sig_label <- case_when(
+          p_value <= 0.001 ~ "***",
+          p_value <= 0.01 ~ "**",
+          p_value <= 0.05 ~ "*",
+          TRUE ~ "Not significant"
+        )
+        
+        results_list[[paste(cont_var, term_name, sep = "_")]] <- data.frame(
+          Comparison = term_name,
+          Factors = paste(factors, collapse = " * "),
+          Continuous_Var = cont_var,
+          Distribution = distribution_status,
+          Variance = variance_status,
+          Test = "Type III ANOVA",
+          P_Value = p_value,
+          Significance = sig_label
+        )
+      }
+      
+      # ANOVA and Tukey's HSD for pairwise comparisons
+      if (is.null(random_var)) {
+        full_formula <- as.formula(paste(cont_var, "~", factor_formula))
+        anova_res <- aov(full_formula, data = filtered_data)
+        tukey <- TukeyHSD(anova_res)
+      } else {
+        # For mixed models, use emmeans for post-hoc comparisons
+        tukey_list <- list()
+        for (factor in factors) {
+          emmeans_result <- emmeans::emmeans(lm_model, as.formula(paste("~", factor)))
+          tukey_list[[factor]] <- pairs(emmeans_result, adjust = "tukey")
+        }
+        tukey <- tukey_list
+      }
+
+      # Extract pairwise comparisons and P-values for each factor
+      if (is.null(random_var)) {
+        for (i in seq_along(tukey)) {
+          factor_name <- names(tukey)[i]
+          
+          if (!is.null(tukey[[i]])) {
+            # Calculate group means for ordering comparisons
+            group_means <- tapply(filtered_data[[cont_var]], filtered_data[[factor_name]], mean, na.rm = TRUE)
+            
+            comparisons <- rownames(tukey[[i]])
+            p_values <- tukey[[i]][, "p adj"]
+            
+            # Reorder comparisons so higher mean is listed first
+            reordered_comparisons <- sapply(comparisons, function(comp) {
+              groups <- strsplit(comp, "-")[[1]]
+              group1 <- trimws(groups[1])
+              group2 <- trimws(groups[2])
+              
+              if (group_means[group1] > group_means[group2]) {
+                paste(group1, ">", group2)
+              } else {
+                paste(group2, ">", group1)
+              }
+            })
+            
+            sig_pairs <- data.frame(
+              Comparison = reordered_comparisons,
+              Factors = paste(factors, collapse = " * "),
+              Continuous_Var = cont_var,
+              Distribution = distribution_status,
+              Variance = variance_status,
+              Test = paste("Tukey's HSD -", factor_name),
+              P_Value = p_values,
+              Significance = case_when(
+                p_values <= 0.001 ~ "***",
+                p_values <= 0.01 ~ "**",
+                p_values <= 0.05 ~ "*",
+                TRUE ~ "Not significant"
+              )
+            )
+
+            results_list[[paste(cont_var, "tukey", factor_name, sep = "_")]] <- sig_pairs
+          }
+        }
+      } else {
+        # For mixed models with emmeans
+        for (factor in factors) {
+          tukey_result <- tukey[[factor]]
+          p_values <- tukey_result@test$p.value
+          comparisons <- as.character(tukey_result@grid$contrast)
+          
+          # Calculate group means for ordering comparisons
+          group_means <- tapply(filtered_data[[cont_var]], filtered_data[[factor]], mean, na.rm = TRUE)
+          
+          # Reorder comparisons so higher mean is listed first
+          reordered_comparisons <- sapply(comparisons, function(comp) {
+            groups <- strsplit(comp, " - ")[[1]]
+            group1 <- trimws(groups[1])
+            group2 <- trimws(groups[2])
+            
+            if (group_means[group1] > group_means[group2]) {
+              paste(group1, ">", group2)
+            } else {
+              paste(group2, ">", group1)
+            }
+          })
+          
+          sig_pairs <- data.frame(
+            Comparison = reordered_comparisons,
+            Factors = paste(factors, collapse = " * "),
+            Continuous_Var = cont_var,
+            Distribution = distribution_status,
+            Variance = variance_status,
+            Test = paste("Tukey's HSD -", factor),
+            P_Value = p_values,
+            Significance = case_when(
+              p_values <= 0.001 ~ "***",
+              p_values <= 0.01 ~ "**",
+              p_values <= 0.05 ~ "*",
+              TRUE ~ "Not significant"
+            )
+          )
+          
+          results_list[[paste(cont_var, "tukey", factor, sep = "_")]] <- sig_pairs
+        }
+      }
+    } else {
+      # Run ART ANOVA for non-parametric
+      # ARTool requires factors to be of class factor, not character
+      art_data <- filtered_data
+      for (factor in factors) {
+        if (!is.factor(art_data[[factor]])) {
+          art_data[[factor]] <- as.factor(art_data[[factor]])
+        }
+      }
+      
+      # Create the formula and run ART
+      full_formula <- as.formula(paste(cont_var, "~", factor_formula))
+      art_result <- ARTool::art(full_formula, data = art_data)
+      
+      # Extract ART ANOVA results
+      art_anova <- anova(art_result)
+      art_df <- as.data.frame(art_anova)
+      art_df$Term <- rownames(art_df)
+      
+      for (idx in seq_len(nrow(art_df))) {
+        term_name <- art_df$Term[idx]
+        p_value <- art_df$`Pr(>F)`[idx]
+        
+        sig_label <- case_when(
+          p_value <= 0.001 ~ "***",
+          p_value <= 0.01 ~ "**",
+          p_value <= 0.05 ~ "*",
+          TRUE ~ "Not significant"
+        )
+        
+        results_list[[paste(cont_var, "art", term_name, sep = "_")]] <- data.frame(
+          Comparison = term_name,
+          Factors = paste(factors, collapse = " * "),
+          Continuous_Var = cont_var,
+          Distribution = distribution_status,
+          Variance = variance_status,
+          Test = "ART ANOVA",
+          P_Value = p_value,
+          Significance = sig_label
+        )
+      }
+      
+      # Kruskal-Wallis and Dunn's Test for pairwise comparisons
+      for (factor in factors) {
+        kruskal <- kruskal.test(as.formula(paste(cont_var, "~", factor)), data = filtered_data)
+
+        if (kruskal$p.value < 0.05) { # Dunn's Test if Kruskal-Wallis is significant
+          dunn <- dunn.test(filtered_data[[cont_var]], filtered_data[[factor]], method = "bonferroni", kw = FALSE)
+
+          # Calculate group medians for ordering comparisons
+          group_medians <- tapply(filtered_data[[cont_var]], filtered_data[[factor]], median, na.rm = TRUE)
+          
+          comparisons <- dunn$comparisons
+          p_values <- dunn$P.adjusted
+          
+          # Reorder comparisons so higher median is listed first
+          reordered_comparisons <- sapply(comparisons, function(comp) {
+            groups <- strsplit(comp, " - ")[[1]]
+            group1 <- trimws(groups[1])
+            group2 <- trimws(groups[2])
+            
+            if (group_medians[group1] > group_medians[group2]) {
+              paste(group1, ">", group2)
+            } else {
+              paste(group2, ">", group1)
+            }
+          })
+          
+          sig_pairs <- data.frame(
+            Comparison = reordered_comparisons,
+            Factors = paste(factors, collapse = " * "),
+            Continuous_Var = cont_var,
+            Distribution = distribution_status,
+            Variance = variance_status,
+            Test = paste("Dunn's Test -", factor),
+            P_Value = p_values,
+            Significance = case_when(
+              p_values <= 0.001 ~ "***",
+              p_values <= 0.01 ~ "**",
+              p_values <= 0.05 ~ "*",
+              TRUE ~ "Not significant"
+            )
+          ) %>%
+            filter(P_Value < 1)
+
+          results_list[[paste(cont_var, "dunn", factor, sep = "_")]] <- sig_pairs
+        } else {
+          results_list[[paste(cont_var, "dunn", factor, sep = "_")]] <- data.frame(
+            Comparison = NA,
+            Factors = paste(factors, collapse = " * "),
+            Continuous_Var = cont_var,
+            Distribution = distribution_status,
+            Variance = variance_status,
+            Test = paste("Kruskal-Wallis (NS) -", factor),
+            P_Value = NA,
+            Significance = "Not significant"
+          )
+        }
+      }
+    }
+  }
+
+  # Combine results for all factors and continuous variables
+  results_df <- bind_rows(results_list, .id = "Analysis_Combination")
+  
+  return(results_df)
+}
+
+#use case example:
+
+#define what to analyze
+#factors <- c("pred1", "pred2") #predictor variable
+#continuous_vars <- c("var1","var2","var3") #response variables
+#data <- dataframe
+
+#evaluate group sizes
+#evaluate_group_sizes(data, factors, continuous_vars) 
+
+#run the analysis - no random variable
+#var_diff <- differences_multifactor(data, factors, continuous_vars)
+
+#filter only significant differences
+#var_sigdiff <- var_diff %>%
+#  filter(P_Value <= 0.05)
+
+#run analysis with linear mixed-effects model
+#var_diff_lme <- differences_multifactor(data, factors, continuous_vars, random_var = "Site")
+
+#filter only significant differences
+#var_sigdiff_lme <- var_diff_lme %>%
+#  filter(P_Value <= 0.05)
+
+```
 
 ## Load data
 
@@ -1306,7 +2073,7 @@ summary_endbio$Site_ID <- factor(summary_endbio$Site_ID, levels = order_IDs)
 ```
 
 ### Biodiversity data from iNaturalist occurrences
-```{r iNat}
+```{r iNat, eval=FALSE}
 
 library("rgbif") #biodiversity data from iNaturalist etc.
 
@@ -1581,7 +2348,7 @@ ggplot(aes(x=Site_ID, y=ppm, fill=Site_ID)) +
         panel.grid.major.y = element_line(color = "grey40", size = 0.25)) + 
   scale_x_discrete(labels = "", "", "", "") + #remove x axis labels
   my_theme +
-  theme(legend.position='bottom') #remove legend
+  theme(legend.position='bottom') #move legend
 
 #save figure
 ggsave('metals_sig2_170626.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
@@ -1600,17 +2367,17 @@ soil_metals$Site_ID <- factor(soil_metals$Site_ID, levels = order_IDs_4)
 
 soil_metals %>%
   filter(nutrient == "Cd" | nutrient == "Cr" | nutrient == "Cu" | nutrient == "Ni" | nutrient == "Pb" | nutrient == "Zn") %>% #filter for heavy metals with health concerns
-ggplot(aes(x=Site, y=ppm, fill=Site_ID)) + 
-  geom_boxplot(width=2) +
-  facet_wrap(~nutrient, scales = "free_y", nrow=1) + #create a separate plot for each site
-  scale_fill_manual(values=colors5) + #define colors to use
+ggplot(aes(x=Site_ID, y=ppm, fill=Site_ID)) + 
+  geom_boxplot() +
+  facet_wrap(~nutrient, scales = "free", nrow=1) + #create a separate plot for each site
+  scale_fill_manual(values=colors4) + #define colors to use
   #ggtitle("Soil Metals per site") + #add a graph title
-  xlab("Site") + ylab("Concentration (mg/kg soil)") + #define/change X and Y labels
+  xlab("Site") + ylab("Concentration (ppm)") + #define/change X and Y labels
   theme(axis.text.x = element_text(angle=90), #set angle of variable labels
         panel.grid.major.y = element_line(color = "grey40", size = 0.25)) + 
   scale_x_discrete(labels = "", "", "", "") + #remove x axis labels
   my_theme +
-  theme(legend.position='bottom') #remove legend
+  theme(legend.position='bottom') #move legend
 
 #save figure
 ggsave('metals_health_170626.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
@@ -2531,54 +3298,61 @@ ggsave('MAOM-C_comparison_adjBD_2026.svg', #save plot name and type - can be "ep
 ## SOM Stats
 
 ### Compare years
-```{r SOM years}
 
+```{r SOM years only}
+
+#match data
 SOM_multiyr_match <- SOM_multiyr %>%
-  filter(Site_ID != "AU" & Site_ID != "FU")
+  filter(Site_ID != "AU" & Site_ID != "FU") %>%
+  mutate(Site_ID = droplevels(Site_ID)) %>% #drop unused factor levels
+  mutate(Sample_yr_ch = paste0("_", Sample_year)) #force to character variable (as.factor and as.character weren't working)
 
-#SOM-C
-shapiro.test(resid(lm(SOM_perC ~ Sample_year, data = SOM_multiyr))) #check normality of residuals - not normal
-shapiro.test(resid(lm(log(SOM_perC) ~ Sample_year, data = SOM_multiyr))) #check normality of residuals - not normal but closer
-summary(aov(log(SOM_perC) ~ Sample_year, data = SOM_multiyr)) #not sig
+#define what to analyze
+factors <- "Sample_yr_ch" #predictor variable
+continuous_vars <- c("SOM_perC", "SOM_C_kgm2_7cm", "SOM_perN", "SOM_CN",
+                     "POM_perC", "POM_C_kgm2_7cm", "POM_perN",
+                     "MAOM_perC", "MAOM_C_kgm2_7cm", "MAOM_perN", "fMAOM_C") #response variables
+data <- SOM_multiyr_match
 
-shapiro.test(resid(lm(SOM_C_kgm2_7cm ~ Sample_year, data = SOM_multiyr))) #check normality of residuals - not normal
-shapiro.test(resid(lm(log(SOM_C_kgm2_7cm) ~ Sample_year, data = SOM_multiyr))) #check normality of residuals - not normal but closer
-summary(aov(log(SOM_C_kgm2_7cm) ~ Sample_year, data = SOM_multiyr)) #not sig
+#evaluate group sizes
+evaluate_group_sizes(data, factors, continuous_vars) 
+summarize_group_sizes(data, factors, continuous_vars) 
 
-#POM-C
-shapiro.test(resid(lm(POM_perC ~ Sample_year, data = SOM_multiyr))) #check normality of residuals - not normal
-shapiro.test(resid(lm(log(POM_perC) ~ Sample_year, data = SOM_multiyr))) #check normality of residuals - not normal but closer
-summary(aov(log(POM_perC) ~ Sample_year, data = SOM_multiyr)) #not sig
+#run the analysis
+SOMyr_diff <- differences(data, factors, continuous_vars)
 
-shapiro.test(resid(lm(POM_perC ~ Sample_year * Site_ID, data = SOM_multiyr_match))) #almost normal
-summary(aov(POM_perC ~ Sample_year * Site_ID, data = SOM_multiyr_match)) #site sig, interaction not
-TukeyHSD(aov(POM_perC ~ factor(Sample_year) * Site_ID, data = SOM_multiyr_match)) #none are different between years at the same site
+#filter only significant
+SOMyr_sigdiff <- SOMyr_diff %>%
+  filter(P_Value <= 0.05)
 
-shapiro.test(resid(lm(POM_C_kgm2_7cm ~ Sample_year, data = SOM_multiyr))) #check normality of residuals - not normal
-shapiro.test(resid(lm(log(POM_C_kgm2_7cm) ~ Sample_year, data = SOM_multiyr))) #check normality of residuals - not normal but closer
-summary(aov(log(POM_C_kgm2_7cm) ~ Sample_year, data = SOM_multiyr)) #not sig
 
-shapiro.test(resid(lm(POM_C_kgm2_7cm ~ Sample_year * Site_ID, data = SOM_multiyr_match))) #check normality of residuals - not normal
-shapiro.test(resid(lm(log(POM_C_kgm2_7cm) ~ Sample_year * Site_ID, data = SOM_multiyr_match))) #normal
-summary(aov(log(POM_C_kgm2_7cm) ~ Sample_year * Site_ID, data = SOM_multiyr_match)) #site sig, interaction not
-TukeyHSD(aov(POM_C_kgm2_7cm ~ factor(Sample_year) * Site_ID, data = SOM_multiyr_match)) #none are different between years at the same site
 
-#MAOM-C
-shapiro.test(resid(lm(MAOM_perC ~ Sample_year, data = SOM_multiyr))) #check normality of residuals - not normal
-shapiro.test(resid(lm(log(MAOM_perC) ~ Sample_year, data = SOM_multiyr))) #not normal but closer
-summary(aov(log(MAOM_perC) ~ Sample_year, data = SOM_multiyr)) #significant
+```
 
-shapiro.test(resid(lm(MAOM_perC ~ Sample_year * Site_ID, data = SOM_multiyr_match))) #normal
-summary(aov(MAOM_perC ~ Sample_year * Site_ID, data = SOM_multiyr_match)) #year & site sig, interaction sig
-TukeyHSD(aov(MAOM_perC ~ factor(Sample_year) * Site_ID, data = SOM_multiyr_match)) #Tukey HSD test for pairwise comparisons -> FM less in 2026 than 2023
+```{r SOM years sites}
 
-shapiro.test(resid(lm(MAOM_C_kgm2_7cm ~ Sample_year, data = SOM_multiyr))) #check normality of residuals - not normal
-shapiro.test(resid(lm(log(MAOM_C_kgm2_7cm) ~ Sample_year, data = SOM_multiyr))) #normal
-summary(aov(log(MAOM_C_kgm2_7cm) ~ Sample_year, data = SOM_multiyr)) #sig
+#test for year and site
+factors <- c("Site_ID", "Sample_yr_ch")
+continuous_vars <- c("SOM_perC", "SOM_C_kgm2_7cm", "SOM_perN", "SOM_CN",
+                     "POM_perC", "POM_C_kgm2_7cm", "POM_perN",
+                     "MAOM_perC", "MAOM_C_kgm2_7cm", "MAOM_perN", "fMAOM_C") #response variables
+data <- SOM_multiyr_match
 
-shapiro.test(resid(lm(MAOM_C_kgm2_7cm ~ Sample_year * Site_ID, data = SOM_multiyr_match))) #normal
-summary(aov(MAOM_C_kgm2_7cm ~ Sample_year * Site_ID, data = SOM_multiyr_match)) #year & site sig, interaction sig
-TukeyHSD(aov(MAOM_C_kgm2_7cm ~ factor(Sample_year) * Site_ID, data = SOM_multiyr_match)) #Tukey HSD test for pairwise comparisons -> FM less in 2026 than 2023
+SOMyrsite_diff <- differences_multifactor(data, factors, continuous_vars)
+
+#test one set to make sure same results
+#diagnostics
+shapiro.test(resid(lm(SOM_perC ~ Sample_year * Site_ID, data = SOM_multiyr_match))) #almost normal
+leveneTest(lm(SOM_perC ~ Sample_yr_ch * Site_ID, data = SOM_multiyr_match)) #heterogenous
+
+#non-parametric
+anova(art(SOM_perC ~ factor(Sample_yr_ch) * Site_ID, data = SOM_multiyr_match)) #ART ANOVA
+scheirerRayHare(SOM_perC ~ factor(Sample_yr_ch) * Site_ID, data = SOM_multiyr_match) #SRH alternative to ART
+dunn.test(SOM_multiyr_match$SOM_perC, c(factor(SOM_multiyr_match$Sample_yr_ch), SOM_multiyr_match$Site_ID), method="bonferroni", kw=TRUE)
+
+#compare parametric - same outcomes
+summary(aov(SOM_perC ~ Sample_year * Site_ID, data = SOM_multiyr_match)) 
+TukeyHSD(aov(SOM_perC ~ factor(Sample_year) + Site_ID, data = SOM_multiyr_match)) 
 
 
 #Calculate means to compare differences between years
