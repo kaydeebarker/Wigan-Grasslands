@@ -1180,7 +1180,8 @@ differences_multifactor <- function(data, factors, continuous_vars, random_var =
 
 #read in site data
 site_data <- read_csv("Wigan_sitedata2023.csv") %>%
-  filter(!is.na(Site)) #remove rows with no site
+  filter(!is.na(Site)) %>% #remove rows with no site
+  mutate(across(c(14:38), ~ifelse(. < 0, 0, .))) #negative values into 0
 
 #calc means and standard error for site data
 site_means <- site_data %>%
@@ -1192,21 +1193,29 @@ site_means <- site_data %>%
     dplyr::select(!BD_adj_avg) %>%
   summarise(across(where(is.numeric), summary_stats)) #run all summary stats
 
-#pivot metals with tidyr - increase rows / decrease columns
+#pivot metals with tidyr, raw ppm readings adjustment based on volume, mass, and moisture
 soil_metals <- site_data %>%
 	pivot_longer(
-		  cols = c(13:37), #pick columns to pivot
+		  cols = c(14:38), #pick columns to pivot
 		  #cols = ppm_Al:ppm_Zn, #pick columns
 		  names_to = "nutrient", #name column to put original column names in
 		  names_prefix = "ppm_", #remove prefix from column names
 		  values_to = "ppm") %>% #name column to put values in
-  dplyr::select(Site_ID, Site, Management, nutrient, ppm) #select columns to keep
+  dplyr::select(Site_ID, Site, Management, Plot_ID, nutrient, ppm, ppm_mass_g) %>% #select columns to keep
+  mutate(ppm_adj = (ppm * 15)/ppm_mass_g) #calc adjusted concentration based on 15 mL dilution & sample mass
+
+#pivot back
+soil_metals_wide <- soil_metals %>%
+  dplyr::select(!ppm) %>%
+  pivot_wider(names_from = nutrient,
+              names_prefix = "ppm_",
+              values_from = ppm_adj) 
 
 #metals means only
-metals_means <- site_data[,c(2,13:37)] %>%
+metals_means <- soil_metals_wide %>%
   group_by(Site_ID) %>%
   rename_all(~stringr::str_replace(.,"ppm_","")) %>% #remove prefix from column names
-  summarise(across(where(is.numeric), ~mean(., na.rm=TRUE))) #means
+  summarise(across(where(is.numeric), ~signif(mean(., na.rm=TRUE), digits = 3))) #means, rounded
 
 #write csv
 #write.csv(metals_means, "metals_means.csv") #saves as csv in current workspace
@@ -1214,6 +1223,7 @@ metals_means <- site_data[,c(2,13:37)] %>%
 #order variables
 site_data$Site_ID <- factor(site_data$Site_ID, levels = order_IDs_4)
 soil_metals$Site_ID <- factor(soil_metals$Site_ID, levels = order_IDs_4)
+soil_metals_wide$Site_ID <- factor(soil_metals_wide$Site_ID, levels = order_IDs_4)
 
 #read in FTIR data
 FTIR <- read_csv("FTIR_Sam.csv")
@@ -1461,8 +1471,40 @@ summary_MBC <- MBC %>%
 #load data
 asv_16S <- read.table('DNA/16S/asv.csv',header=TRUE,sep=',',row.names=1)
 env_16S <- read.table('DNA/16S/env.csv',header=TRUE,sep=',',row.names=1) #sample numbers - make into row numbers
+env_16S$Site_ID <- factor(env_16S$Site_ID, levels = order_IDs) #order sites
 taxa_16S <- read.table('DNA/16S/taxa.csv',header=TRUE,sep=',')
 dna_16S <- read.FASTA('DNA/16S/rep-set.fasta')
+
+#add some site, plant, other fungal data to env df
+env_16S <- env_16S %>%
+  mutate(pH = env_16S$pH <- site_data$pH[match(env_16S$Plot_ID, site_data$Plot_ID)]) %>%
+  mutate(ppm_Ca = env_16S$ppm_Ca <- 
+           site_data$ppm_Ca1[match(env_16S$Plot_ID, site_data$Plot_ID)]) %>%
+  mutate(ppm_Mg = env_16S$ppm_Mg <- 
+           site_data$ppm_Mg[match(env_16S$Plot_ID, site_data$Plot_ID)]) %>%
+  mutate(ppm_Fe = env_16S$ppm_Fe <- 
+           site_data$ppm_Fe[match(env_16S$Plot_ID, site_data$Plot_ID)]) %>%
+  mutate(ppm_K = env_16S$ppm_K <- 
+           site_data$ppm_K[match(env_16S$Plot_ID, site_data$Plot_ID)]) %>%
+  mutate(ppm_Na = env_16S$ppm_Na <- 
+           site_data$ppm_Na[match(env_16S$Plot_ID, site_data$Plot_ID)]) %>%
+  mutate(ppm_P = env_16S$ppm_P <- 
+           site_data$ppm_P1[match(env_16S$Plot_ID, site_data$Plot_ID)]) %>%
+  mutate(ppm_S = env_16S$ppm_S <- 
+           site_data$ppm_S1[match(env_16S$Plot_ID, site_data$Plot_ID)]) %>%
+  mutate(plant_r = env_16S$plant_r <- 
+           diversity$species_richness[match(env_16S$Plot_ID, diversity$pot)]) %>%
+  mutate(plant_shannon = env_16S$plant_shannon <- 
+           diversity$shannon[match(env_16S$Plot_ID, diversity$pot)]) %>%
+  mutate(plant_simpson = env_16S$plant_simpson <- 
+           diversity$simpson[match(env_16S$Plot_ID, diversity$pot)]) %>%
+  mutate(AM_assoc = env_16S$AM_assoc <-
+           AMdata$hyph_percent[match(env_16S$Plot_ID, AMdata$Plot_ID)]) %>%
+  mutate(AM_biomass = env_16S$AM_biomass <- 
+           HLD$AM_biomass_gkg[match(env_16S$Plot_ID, HLD$Pot)]) %>%
+  mutate(total_fun_biomass = env_16S$total_fun_biomass <- 
+           HLD$total_fun_gkg[match(env_16S$Plot_ID, HLD$Pot)])
+
 
 #set row names of asv file from env
 #asv_16S <- asv_16S.tmp[which(row.names(asv_16S.tmp)%in%row.names(env_16S)),which(colnames(asv_16S.tmp)%in%names(dna_16S))]
@@ -1476,6 +1518,7 @@ for (i in 1:100) {
   x16s_sobs.list[[i]] <- specnumber(as.matrix(rrarefy(asv_16S,sample=170)))
 }
 env_16S$sobs <- Reduce("+", x16s_sobs.list) / length(x16s_sobs.list)
+rm(x16s_sobs.list)
 
 #shannon
 x16s_shannon.list <-  replicate(100, 1:dim(asv_16S)[1], simplify = FALSE)
@@ -1483,6 +1526,7 @@ for (i in 1:100) {
   x16s_shannon.list[[i]] <- diversity(as.matrix(rrarefy(asv_16S,sample=170)), index = "shannon")
 }
 env_16S$shannon <- Reduce("+", x16s_shannon.list) / length(x16s_shannon.list)
+rm(x16s_shannon.list)
 
 #gini
 x16s_gini.list <-  replicate(100, 1:dim(asv_16S)[1], simplify = FALSE)
@@ -1490,6 +1534,7 @@ for (i in 1:100) {
   x16s_gini.list[[i]] <- apply(as.matrix(rrarefy(asv_16S,sample=170)), 1, function(x) Gini(x))
 }
 env_16S$gini <- Reduce("+", x16s_gini.list) / length(x16s_gini.list)
+rm(x16s_gini.list)
 
 ```
 
@@ -1585,6 +1630,7 @@ for (i in 1:100) {
   its_sobs.list[[i]] <- specnumber(as.matrix(rrarefy(asv_ITS,sample=170)))
 }
 env_ITS$sobs <- Reduce("+", its_sobs.list) / length(its_sobs.list)
+rm(its_sobs.list)
 
 #shannon
 its_shannon.list <-  replicate(100, 1:dim(asv_ITS)[1], simplify = FALSE)
@@ -1592,6 +1638,7 @@ for (i in 1:100) {
   its_shannon.list[[i]] <- diversity(as.matrix(rrarefy(asv_ITS,sample=170)), index = "shannon")
 }
 env_ITS$shannon <- Reduce("+", its_shannon.list) / length(its_shannon.list)
+rm(its_shannon.list)
 
 #simpson
 its_simpson.list <-  replicate(100, 1:dim(asv_ITS)[1], simplify = FALSE)
@@ -1599,6 +1646,7 @@ for (i in 1:100) {
   its_simpson.list[[i]] <- diversity(as.matrix(rrarefy(asv_ITS,sample=170)), index = "simpson")
 }
 env_ITS$simpson <- Reduce("+", its_simpson.list) / length(its_simpson.list)
+rm(its_simpson.list)
 
 #gini coefficient
 its_gini.list <-  replicate(100, 1:dim(asv_ITS)[1], simplify = FALSE)
@@ -1606,6 +1654,7 @@ for (i in 1:100) {
   its_gini.list[[i]] <- apply(as.matrix(rrarefy(asv_ITS,sample=170)), 1, function(x) Gini(x))
 }
 env_ITS$gini <- Reduce("+", its_gini.list) / length(its_gini.list)
+rm(its_gini.list)
 
 
 #amalgamating the data with species & genus
@@ -1735,6 +1784,7 @@ resp_full <- read_csv("Wigan_resp_full.csv") %>%
 #order variables
 resp_min$Site <- factor(resp_min$Site, levels = order_sites)
 resp_full$Site <- factor(resp_full$Site, levels = order_sites)
+resp_full$Site_ID <- factor(resp_full$Site_ID, levels = order_IDs_4)
 
 ``` 
 
@@ -1864,7 +1914,7 @@ summary_SOM_13C_T0 <- SOM_13C_T0 %>%
   summarise(across(where(is.numeric), summary_stats)) #run all summary stats
 
 #summarize SOM data for plots and incubation
-summary_SOM_13C <- SOM_13C %>%
+summary_SOM_13C <- SOM_13C[-176,] %>% #remove outlier 13C value until remeasure
   group_by(Site, Site_ID, Mgmt_year, Mgmt_fct, Incubation_T, Fraction) %>%
   summarise(across(where(is.numeric), summary_stats)) #run all summary stats
 
@@ -1903,6 +1953,7 @@ SOM_13C_T0$Site <- factor(SOM_13C_T0$Site, levels = order_sites)
 SOM_13C_T0$Site_ID <- factor(SOM_13C_T0$Site_ID, levels = order_IDs)
 SOM_13C$Mgmt_fct <- factor(SOM_13C$Mgmt_fct, levels = order_mgmt)
 summary_SOM_13C$Site <- factor(summary_SOM_13C$Site, levels = order_sites)
+summary_SOM_13C$Site_ID <- factor(summary_SOM_13C$Site_ID, levels = order_IDs_4)
 summary_SOM_13C$Mgmt_fct <- factor(summary_SOM_13C$Mgmt_fct, levels = order_mgmt)
 summary_SOM_13C_T0$Site <- factor(summary_SOM_13C_T0$Site, levels = order_sites)
 summary_SOM_13C_T0$Site_ID <- factor(summary_SOM_13C_T0$Site_ID, levels = order_IDs)
@@ -2256,7 +2307,7 @@ factors <- "Site_ID" #predictor variable
 continuous_vars <- c("ppm_Al", "ppm_B", "ppm_Ba", "ppm_Ca1", "ppm_Ca2", "ppm_Cd", "ppm_Co", "ppm_Cr", "ppm_Cu",
                      "ppm_Fe", "ppm_K", "ppm_Li", "ppm_Mg", "ppm_Mn", "ppm_Na", "ppm_Ni", "ppm_P1", "ppm_P2",
                      "ppm_Pb", "ppm_S1", "ppm_S2", "ppm_Si", "ppm_Sr1", "ppm_Sr2", "ppm_Zn") #response variables
-data <- site_data
+data <- soil_metals_wide
 #data$Site_ID <- as.character(data$Site_ID) #convert factor to character
 
 #evaluate group sizes
@@ -2285,18 +2336,18 @@ soil_metals$Management <- factor(soil_metals$Management, levels = order_manageme
 soil_metals %>%
   filter(nutrient != "Ca2" & nutrient != "P2" & nutrient != "S2" & nutrient != "Sr2") %>% #filter out doubles
   #filter(nutrient == "Cd" | nutrient == "Cr" | nutrient == "Ni" | nutrient == "Pb") %>% #filter for heavy metals with health concerns
-ggplot(aes(x=nutrient, y=ppm, fill=nutrient)) + 
+ggplot(aes(x=nutrient, y=ppm_adj, fill=nutrient)) + 
   geom_boxplot() +
   facet_wrap(~Site_ID, scales = "free_x", nrow=1) + #create a separate plot for each site
   scale_fill_manual(values=colors_ramp) + #define colors to use
   #ggtitle("Soil Metals per site") + #add a graph title
-  xlab("") + ylab("ppm") + #define/change X and Y labels
+  xlab("") + ylab("mg/kg soil") + #define/change X and Y labels
   theme(axis.text.x = element_text(angle=90), #set angle of variable labels
         panel.grid.major.y = element_line(color = "grey40", size = 0.25)) + 
   my_theme
 
 #save figure
-ggsave('metals_all_240426.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+ggsave('metals_all_020726.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
 	path = "Figures", #save to folder within working directory
 	width = 10, height = 4, units = "in", #set dimensions for figure
 	dpi = 300, #set resolution
@@ -2312,7 +2363,7 @@ soil_metals %>%
   filter(nutrient == "Ca1" | nutrient == "Co" | nutrient == "Cr" | nutrient == "Cu" |
            nutrient == "Li" | nutrient == "Mg" | nutrient == "Mn" | 
            nutrient == "Pb" | nutrient == "S1" | nutrient == "Sr1" | nutrient == "Zn") %>% #filter for significant nutrients
-ggplot(aes(x=nutrient, y=ppm, fill=nutrient)) + 
+ggplot(aes(x=nutrient, y=ppm_adj, fill=nutrient)) + 
   geom_boxplot() +
   facet_wrap(~Site_ID, scales = "free_y", nrow=1) + #create a separate plot for each site
   scale_fill_manual(values=colors13) + #define colors to use
@@ -2367,12 +2418,12 @@ soil_metals$Site_ID <- factor(soil_metals$Site_ID, levels = order_IDs_4)
 
 soil_metals %>%
   filter(nutrient == "Cd" | nutrient == "Cr" | nutrient == "Cu" | nutrient == "Ni" | nutrient == "Pb" | nutrient == "Zn") %>% #filter for heavy metals with health concerns
-ggplot(aes(x=Site_ID, y=ppm, fill=Site_ID)) + 
+ggplot(aes(x=Site_ID, y=ppm_adj, fill=Site_ID)) + 
   geom_boxplot() +
   facet_wrap(~nutrient, scales = "free", nrow=1) + #create a separate plot for each site
   scale_fill_manual(values=colors4) + #define colors to use
   #ggtitle("Soil Metals per site") + #add a graph title
-  xlab("Site") + ylab("Concentration (ppm)") + #define/change X and Y labels
+  xlab("Site") + ylab("Concentration (mg/kg soil)") + #define/change X and Y labels
   theme(axis.text.x = element_text(angle=90), #set angle of variable labels
         panel.grid.major.y = element_line(color = "grey40", size = 0.25)) + 
   scale_x_discrete(labels = "", "", "", "") + #remove x axis labels
@@ -2380,7 +2431,7 @@ ggplot(aes(x=Site_ID, y=ppm, fill=Site_ID)) +
   theme(legend.position='bottom') #move legend
 
 #save figure
-ggsave('metals_health_170626.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+ggsave('metals_health_020726.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
 	path = "Figures", #save to folder within working directory
 	width = 10, height = 4, units = "in", #set dimensions for figure
 	dpi = 300, #set resolution
@@ -3001,6 +3052,8 @@ ggsave('fMAOM_N_KB.svg', #save plot name and type - can be "eps", "pdf", "jpeg",
 
 ### Compare Years
 
+#### C
+
 ```{r compare SOC years site}
 
 SOM_multiyr %>%
@@ -3167,6 +3220,73 @@ ggsave('fMAOMC_years.svg', #save plot name and type - can be "eps", "pdf", "jpeg
 
 ```
 
+#### N
+
+```{r compare SOM years perN}
+
+SOM_multiyr %>%
+ggplot() + 
+	geom_boxplot(aes(x=factor(Sample_year), y=SOM_perN, fill=Site_ID)) +
+  scale_fill_manual(values=colors6) + #define colors to use
+  #ggtitle("Soil Organic Matter C across the UK") + #add a graph title
+  xlab("") + ylab(expression("SOM % N")) + #define/change X and Y labels
+  scale_x_discrete(labels = c("2023", "2026")) + #change labels
+  #scale_y_continuous(breaks = c(0,5,10,15,20,25,30)) + #set specific tick marks on y axis
+  my_theme 
+
+#save figure
+ggsave('SOM_perN_years.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 2000, height = 1000, units = "px", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
+```
+
+```{r compare POM years perN}
+
+SOM_multiyr %>%
+ggplot() + 
+	geom_boxplot(aes(x=factor(Sample_year), y=POM_perN, fill=Site_ID)) +
+  scale_fill_manual(values=colors6) + #define colors to use
+  #ggtitle("Soil Organic Matter C across the UK") + #add a graph title
+  xlab("") + ylab(expression("POM % N")) + #define/change X and Y labels
+  scale_x_discrete(labels = c("2023", "2026")) + #change labels
+  #scale_y_continuous(breaks = c(0,10,20,30,40,50)) + #set specific tick marks on y axis
+  my_theme 
+
+#save figure
+ggsave('POM_perN_years.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 2000, height = 1000, units = "px", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
+```
+
+
+```{r compare MAOM years perN}
+
+SOM_multiyr %>%
+ggplot() + 
+	geom_boxplot(aes(x=factor(Sample_year), y=MAOM_perN, fill=Site_ID)) +
+  scale_fill_manual(values=colors6) + #define colors to use
+  #ggtitle("Soil Organic Matter C across the UK") + #add a graph title
+  xlab("") + ylab(expression("MAOM % N")) + #define/change X and Y labels
+  scale_x_discrete(labels = c("2023", "2026")) + #change labels
+  #scale_y_continuous(breaks = c(0,5,10,15,20)) + #set specific tick marks on y axis
+  my_theme 
+
+#save figure
+ggsave('MAOM_perN_years.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 2000, height = 1000, units = "px", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
+```
+
+
 ```{r compare fMAOM-N years, eval=FALSE}
 
 SOM_multiyr %>%
@@ -3187,6 +3307,7 @@ ggsave('fMAOMN_years.svg', #save plot name and type - can be "eps", "pdf", "jpeg
 	bg=NULL) #background from plot specifications
 
 ```
+
 
 ### UK unimproved grassland soils C
 ```{r SOC UK}
@@ -3302,7 +3423,7 @@ ggsave('MAOM-C_comparison_adjBD_2026.svg', #save plot name and type - can be "ep
 ```{r SOM years only}
 
 #match data
-SOM_multiyr_match <- SOM_multiyr %>%
+SOM_multiyr_match <- SOM_multiyr[,c(1:15)] %>%
   filter(Site_ID != "AU" & Site_ID != "FU") %>%
   mutate(Site_ID = droplevels(Site_ID)) %>% #drop unused factor levels
   mutate(Sample_yr_ch = paste0("_", Sample_year)) #force to character variable (as.factor and as.character weren't working)
@@ -3354,8 +3475,24 @@ dunn.test(SOM_multiyr_match$SOM_perC, c(factor(SOM_multiyr_match$Sample_yr_ch), 
 summary(aov(SOM_perC ~ Sample_year * Site_ID, data = SOM_multiyr_match)) 
 TukeyHSD(aov(SOM_perC ~ factor(Sample_year) + Site_ID, data = SOM_multiyr_match)) 
 
+#combine Site ID and year
+SOM_multiyr_match <- SOM_multiyr_match %>%
+  mutate(Site_yr = paste0(Site_ID, Sample_yr_ch)) #put together
 
-#Calculate means to compare differences between years
+#test for year and site
+factors <- c("Site_yr")
+continuous_vars <- c("SOM_perC", "SOM_C_kgm2_7cm", "SOM_perN", "SOM_CN",
+                     "POM_perC", "POM_C_kgm2_7cm", "POM_perN",
+                     "MAOM_perC", "MAOM_C_kgm2_7cm", "MAOM_perN", "fMAOM_C") #response variables
+data <- SOM_multiyr_match
+
+SOMyrsite_diff2 <- differences(data, factors, continuous_vars)
+
+#filter only significant
+SOMyrsite_sigdiff <- SOMyrsite_diff2 %>%
+  filter(P_Value <= 0.05)
+
+#calculate means to compare differences between years
 SOM_multiyr_diff <- SOM_multiyr_match %>%
   dplyr::select(Sample_year, Site_ID, SOM_perC, POM_perC, MAOM_perC, SOM_C_kgm2_7cm, POM_C_kgm2_7cm, MAOM_C_kgm2_7cm) %>%
   group_by(Sample_year, Site_ID) %>%
@@ -3571,32 +3708,36 @@ ggsave('LRR_MAOM_perC.svg', #save plot name and type - can be "eps", "pdf", "jpe
 ### Compare with UK-wide unimproved grasslands soil C
 ```{r SOC compare}
 
-shapiro.test(resid(lm(TotalC ~ type, data = soilC_compare))) #check normality of residuals - not normal
-shapiro.test(resid(lm(log(TotalC) ~ type, data = soilC_compare))) #not normal, closer
-summary(aov(log(TotalC) ~ type, data = soilC_compare)) #very sig
+#define what to analyze - do restored vs unimproved first
+factors <- "type" #predictor variable
+continuous_vars <- c("TotalC", "POM_C", "MAOM_C") #response variables
+data <- soilC_compare
 
-shapiro.test(resid(lm(TotalC ~ vegetation, data = soilC_compare))) #check normality of residuals - not normal
-shapiro.test(resid(lm(log(TotalC) ~ vegetation, data = soilC_compare))) #not normal
-summary(aov(log(TotalC) ~ vegetation, data = soilC_compare)) #very sig
-TukeyHSD(aov(log(TotalC) ~ vegetation, data = soilC_compare)) #FM > mesotrophic
+#run the analysis
+UK_type_diff <- differences(data, factors, continuous_vars)
 
-shapiro.test(resid(lm(POM_C ~ type, data = soilC_compare))) #check normality of residuals - not normal
-shapiro.test(resid(lm(log(POM_C) ~ type, data = soilC_compare))) #normal
-summary(aov(log(POM_C) ~ type, data = soilC_compare)) #not sig
+#Total C check
+#diagnostics
+shapiro.test(resid(lm(TotalC ~ type, data = soilC_compare))) #check normality of residuals - not normal but high W
+leveneTest(lm(TotalC ~ type, data = soilC_compare)) #homogenous
+#parametric
+summary(aov(TotalC ~ type, data = soilC_compare)) #sig
+TukeyHSD(aov(TotalC ~ type, data = soilC_compare)) #rest higher
+#non-parametric
+kruskal.test(TotalC ~ type, data = soilC_compare) #sig
+dunn.test(soilC_compare$TotalC, soilC_compare$type, method="bonferroni", kw=TRUE) #rest higher
 
-shapiro.test(resid(lm(POM_C ~ vegetation, data = soilC_compare))) #check normality of residuals - not normal
-shapiro.test(resid(lm(log(POM_C) ~ vegetation, data = soilC_compare))) #normal
-summary(aov(log(POM_C) ~ vegetation, data = soilC_compare)) #very sig
-TukeyHSD(aov(log(POM_C) ~ vegetation, data = soilC_compare)) #FM > mesotrophic, BU < wet
+#define what to analyze - vegetation (compare grassland types and sites)
+factors <- "vegetation" #predictor variable
+continuous_vars <- c("TotalC", "POM_C", "MAOM_C") #response variables
+data <- soilC_compare
 
-shapiro.test(resid(lm(MAOM_C ~ type, data = soilC_compare))) #not normal but W close to 1
-shapiro.test(resid(lm(log(MAOM_C) ~ type, data = soilC_compare))) #not normal, worse
-summary(aov(MAOM_C ~ type, data = soilC_compare)) #sig
+#run the analysis
+UK_veg_diff <- differences(data, factors, continuous_vars)
 
-shapiro.test(resid(lm(MAOM_C ~ vegetation, data = soilC_compare))) #not normal but W close to 1
-shapiro.test(resid(lm(log(MAOM_C) ~ vegetation, data = soilC_compare))) #not normal, worse
-summary(aov(MAOM_C ~ vegetation, data = soilC_compare)) #very sig
-TukeyHSD(aov(MAOM_C ~ vegetation, data = soilC_compare)) #
+#filter only significant
+UK_veg_sigdiff <- UK_veg_diff %>%
+  filter(P_Value <= 0.05)
   
 ```
 
@@ -4815,9 +4956,26 @@ TukeyHSD(aov(simpson ~ site_id, data = diversity)) #Flashes > Bick 1
 Diversity of species within sites
 
 ### 16S
-```{r 16S alpha}
+```{r 16S alpha sobs}
 
+#stats
+shapiro.test(resid(lm(sobs ~ Site_ID, data = env_16S))) #check normality of residuals - normal
+leveneTest(lm(sobs ~ Site_ID, data = env_16S)) #homogeneity of variance - yes
+summary(aov(sobs ~ Site_ID, data = env_16S)) #not sig
 
+#plot
+ggplot(env_16S, aes(x=Site_ID, y=sobs, fill=Site_ID)) +
+  geom_boxplot(coef=Inf) +
+  #geom_jitter(shape=16, position=position_jitter(0.1), size = 0.85) +
+  scale_fill_manual(values = colors4) + #define colors to use
+  xlab("") + ylab("16S ASV Richness") + 
+  my_theme
+
+ggsave('16S_asv_sobs.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
 
 ```
 
@@ -4828,16 +4986,17 @@ Diversity of species within sites
 
 #stats
 shapiro.test(resid(lm(sobs ~ Site_ID, data = env_ITS))) #check normality of residuals - not normal but high W
-shapiro.test(resid(lm(log(sobs) ~ Site_ID, data = env_ITS))) #check normality of residuals - not normal, worse
-summary(aov(sobs ~ Site_ID, data = env_ITS)) #sig
-TukeyHSD(aov(sobs ~ Site_ID, data = env_ITS)) #BM > AM, AM > BU and FM
+leveneTest(lm(sobs ~ Site_ID, data = env_ITS)) #homogeneity of variance - no
+kruskal.test(sobs ~ Site_ID, data = env_ITS) #almost but not
+dunn.test(env_ITS$sobs, env_ITS$Site_ID, kw = TRUE, method = "bonferroni") #not sig
 
 #plot
 ggplot(env_ITS, aes(x=Site_ID, y=sobs, fill=Site_ID)) +
   geom_boxplot(coef=Inf) +
-  geom_jitter(shape=16, position=position_jitter(0.1), size = 0.85) +
+  #geom_jitter(shape=16, position=position_jitter(0.1), size = 0.85) +
   scale_fill_manual(values = colors4) + #define colors to use
-  xlab("") + ylab("Fungal ASV Richness") + 
+  xlab("") + ylab("ITS ASV Richness") + 
+  
   my_theme
 
 ggsave('ITS_asv_sobs.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
@@ -4852,9 +5011,9 @@ ggsave('ITS_asv_sobs.svg', #save plot name and type - can be "eps", "pdf", "jpeg
 
 #stats
 shapiro.test(resid(lm(shannon ~ Site_ID, data = env_ITS))) #check normality of residuals - not normal
-shapiro.test(resid(lm(log(shannon) ~ Site_ID, data = env_ITS))) #check normality of residuals - not normal, worse
-summary(aov(shannon ~ Site_ID, data = env_ITS)) #sig
-TukeyHSD(aov(shannon ~ Site_ID, data = env_ITS)) #FM > AM
+leveneTest(lm(shannon ~ Site_ID, data = env_ITS)) #homogeneity of variance - no
+kruskal.test(shannon ~ Site_ID, data = env_ITS) #almost but not sig
+dunn.test(env_ITS$shannon, env_ITS$Site_ID, kw = TRUE, method = "bonferroni") #not sig
 
 #plot
 ggplot(env_ITS, aes(x=Site_ID, y=shannon, fill=Site_ID)) +
@@ -4876,9 +5035,11 @@ ggsave('ITS_asv_shannon.svg', #save plot name and type - can be "eps", "pdf", "j
 
 #stats
 shapiro.test(resid(lm(simpson ~ Site_ID, data = env_ITS))) #check normality of residuals - not normal
-shapiro.test(resid(lm(log(simpson) ~ Site_ID, data = env_ITS))) #check normality of residuals - not normal, worse
-summary(aov(simpson ~ Site_ID, data = env_ITS)) #sig
-TukeyHSD(aov(simpson ~ Site_ID, data = env_ITS)) #BM > AM
+leveneTest(lm(simpson ~ Site_ID, data = env_ITS)) #homogeneity of variance - no
+kruskal.test(simpson ~ Site_ID, data = env_ITS) #almost but not sig
+dunn.test(env_ITS$simpson, env_ITS$Site_ID, kw = TRUE, method = "bonferroni") #not sig
+
+
 
 #plot
 ggplot(env_ITS, aes(x=Site_ID, y=simpson, fill=Site_ID)) +
@@ -4902,7 +5063,7 @@ ggsave('ITS_asv_simpson.svg', #save plot name and type - can be "eps", "pdf", "j
 #stats
 shapiro.test(resid(lm(gini ~ Site_ID, data = env_ITS))) #check normality of residuals - normal
 summary(aov(gini ~ Site_ID, data = env_ITS)) #sig
-TukeyHSD(aov(gini ~ Site_ID, data = env_ITS)) #none
+TukeyHSD(aov(gini ~ Site_ID, data = env_ITS)) #none quite, almost AM > BM, almost AM > FM
 
 ggplot(env_ITS, aes(x=Site_ID, y=gini, fill=Site_ID)) +
   geom_boxplot(coef=Inf) +
@@ -4932,7 +5093,7 @@ TukeyHSD(aov(sobs.s ~ Site_ID, data = env_ITS)) #BM > AM
 #plot
 ggplot(env_ITS, aes(x=Site_ID, y=sobs.s, fill=Site_ID)) +
   geom_boxplot(coef=Inf) +
-  geom_jitter(shape=16, position=position_jitter(0.1), size = 0.85) +
+  #geom_jitter(shape=16, position=position_jitter(0.1), size = 0.85) +
   scale_fill_manual(values = colors4) + #define colors to use
   xlab("") + ylab("Fungal Species Richness") + 
   my_theme
@@ -5121,11 +5282,489 @@ ggsave('ITS_g_gini.svg', #save plot name and type - can be "eps", "pdf", "jpeg",
 Diversity between sites
 
 ### 16S
-```{r 16S beta}
 
+#### ASVs
+
+```{r 16S rarefaction curve asv, warning=FALSE}
+
+#ASV counts per site - rarefaction
+x16s_rare.out <- rarecurve(asv_16S, step = 10, tidy = TRUE)
+x16s_rare.out$Site <- as.factor(x16s_rare.out$Site)
+x16s_rare.out$sample.label <- as.factor(x16s_rare.out$Sample)
+x16s_rare.out$label <- NA
+
+for (i in unique(x16s_rare.out$Site)) {
+  tmp <- x16s_rare.out[which(x16s_rare.out$Site==i),]
+  x16s_rare.out$label[which(x16s_rare.out$Sample==max(tmp$Sample)&x16s_rare.out$Site==i)] <- i
+}
+
+#plot rarefaction curve
+ggplot(data = x16s_rare.out, aes(x = Sample, y = Species, group = Site)) +
+  geom_line(color = "black", linewidth = 1) +
+  #geom_point() +
+  labs(x = "Number of reads", y = "16S ASVs", title = "Rarefaction curve") +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1),legend.position = 0) +
+  scale_color_discrete(name = "Site") +
+  geom_label_repel(aes(label = label),
+                   nudge_x = 1,
+                   na.rm = TRUE) + 
+  my_theme
+
+ggsave('16S_rarecurve.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
 
 
 ```
+
+```{r 16S beta asv, warning=FALSE}
+
+#calculate distances
+
+#Euclidean distance
+x16s_euc.list <-  replicate(100, matrix(nrow = dim(asv_16S)[1], ncol = dim(asv_16S)[1]), simplify = FALSE)
+for (i in 1:100) {
+  x16s_euc.list[[i]] <- vegdist(sqrt(as.matrix(rrarefy(asv_16S,sample=170))/170), method="euc")
+}
+asv_16S.ml.euc <- Reduce("+", x16s_euc.list) / length(x16s_euc.list)
+
+#Jaqcard distance
+x16s_jaq.list <-  replicate(100, matrix(nrow = dim(asv_16S)[1], ncol = dim(asv_16S)[1]), simplify = FALSE)
+for (i in 1:100) {
+  x16s_jaq.list[[i]] <- vegdist(as.matrix(rrarefy(asv_16S,sample=170)), method="jaccard", binary = TRUE)
+}
+asv_16S.jaq <- Reduce("+", x16s_jaq.list) / length(x16s_jaq.list)
+
+#Bray-Curtis
+x16s_bray.list <-  replicate(100, matrix(nrow = dim(asv_16S)[1], ncol = dim(asv_16S)[1]), simplify = FALSE)
+for (i in 1:100) {
+  x16s_bray.list[[i]] <- vegdist(as.matrix(rrarefy(asv_16S,sample=170))/170, method="bray")
+}
+asv_16S.ml.bray <- Reduce("+", x16s_bray.list) / length(x16s_bray.list)
+
+
+#check beta dispersion by site for each distance metric
+mod <- betadisper(asv_16S.ml.euc, env_16S$Site_ID, type = "centroid")
+permutest(mod, permutations = 999) #P=0.73
+
+mod <- betadisper(asv_16S.jaq, env_16S$Site_ID, type = "centroid")
+permutest(mod, permutations = 999) #P=0.15
+
+mod <- betadisper(asv_16S.ml.bray, env_16S$Site_ID, type = "centroid")
+permutest(mod, permutations = 999) #P=0.65
+
+#PERMANOVA
+adonis2(asv_16S.ml.euc ~ Site_ID, method = "none", data = env_16S, permutations = 9999) #P=0.095
+adonis2(asv_16S.jaq ~ Site_ID, method = "none", data = env_16S, permutations = 9999) #P=0.36
+adonis2(asv_16S.ml.bray ~ Site_ID, method = "none", data = env_16S, permutations = 9999) #P=0.1
+
+
+#check beta dispersion by pH for each distance metric
+mod <- betadisper(asv_16S.ml.euc, env_16S$pH, type = "centroid")
+permutest(mod, permutations = 999) #P=0.001
+
+mod <- betadisper(asv_16S.jaq, env_16S$pH, type = "centroid")
+permutest(mod, permutations = 999) #P=0.001
+
+mod <- betadisper(asv_16S.ml.bray, env_16S$pH, type = "centroid")
+permutest(mod, permutations = 999) #P=0.001
+
+#PERMANOVA
+adonis2(asv_16S.ml.euc ~ pH, method = "none", data = env_16S, permutations = 9999) #P=0.023
+adonis2(asv_16S.jaq ~ pH, method = "none", data = env_16S, permutations = 9999) #P=0.3
+adonis2(asv_16S.ml.bray ~ pH, method = "none", data = env_16S, permutations = 9999) #P=0.022
+
+
+#check beta dispersion - plant richness
+mod <- betadisper(asv_16S.ml.euc, env_16S$plant_r, type = "centroid")
+permutest(mod, permutations = 999) #P=0.001
+
+mod <- betadisper(asv_16S.jaq, env_16S$plant_r, type = "centroid")
+permutest(mod, permutations = 999) #P=0.001
+
+mod <- betadisper(asv_16S.ml.bray, env_16S$plant_r, type = "centroid")
+permutest(mod, permutations = 999) #P=0.001
+
+#PERMANOVA
+adonis2(asv_16S.ml.euc ~ plant_r, method = "none", data = env_16S, permutations = 9999) #P=0.15
+adonis2(asv_16S.jaq ~ plant_r, method = "none", data = env_16S, permutations = 9999) #P=0.64
+adonis2(asv_16S.ml.bray ~ plant_r, method = "none", data = env_16S, permutations = 9999) #P=0.17
+
+#check beta dispersion - plant shannon and simpson
+mod <- betadisper(asv_16S.ml.euc, env_16S$plant_shannon, type = "centroid")
+permutest(mod, permutations = 999) #999
+
+mod <- betadisper(asv_16S.ml.euc, env_16S$plant_simpson, type = "centroid")
+permutest(mod, permutations = 999) #999
+
+#PERMANOVA
+adonis2(asv_16S.ml.euc ~ plant_shannon, method = "none", data = env_16S, permutations = 9999) #P=0.05
+adonis2(asv_16S.jaq ~ plant_shannon, method = "none", data = env_16S, permutations = 9999) #P=0.5
+adonis2(asv_16S.ml.bray ~ plant_shannon, method = "none", data = env_16S, permutations = 9999) #P=0.07
+adonis2(asv_16S.ml.euc ~ plant_simpson, method = "none", data = env_16S, permutations = 9999) #P=0.05
+adonis2(asv_16S.jaq ~ plant_simpson, method = "none", data = env_16S, permutations = 9999) #P=0.5
+adonis2(asv_16S.ml.bray ~ plant_simpson, method = "none", data = env_16S, permutations = 9999) #P=0.06
+
+
+#check beta dispersion - AM association
+mod <- betadisper(asv_16S.ml.euc, env_16S$AM_assoc, type = "centroid")
+permutest(mod, permutations = 999) #P=0.8
+
+mod <- betadisper(asv_16S.jaq, env_16S$AM_assoc, type = "centroid")
+permutest(mod, permutations = 999) #P=0.7
+
+mod <- betadisper(asv_16S.ml.bray, env_16S$AM_assoc, type = "centroid")
+permutest(mod, permutations = 999) #P=0.03
+
+#PERMANOVA
+adonis2(asv_16S.ml.euc ~ AM_assoc, method = "none", data = env_16S, permutations = 9999) #P=0.12
+adonis2(asv_16S.jaq ~ AM_assoc, method = "none", data = env_16S, permutations = 9999) #P=0.45
+adonis2(asv_16S.ml.bray ~ AM_assoc, method = "none", data = env_16S, permutations = 9999) #P=0.14
+
+
+#check beta dispersion - biomass - probably not enough data, since only half the samples
+mod <- betadisper(asv_16S.ml.euc, env_16S$AM_biomass, type = "centroid")
+permutest(mod, permutations = 999) #999
+
+mod <- betadisper(asv_16S.ml.euc, env_16S$total_fun_biomass, type = "centroid")
+permutest(mod, permutations = 999) #999
+
+
+#check beta dispersion and PERMANOVA - nutrients
+mod <- betadisper(asv_16S.ml.euc, env_16S$ppm_Ca, type = "centroid")
+permutest(mod, permutations = 999) #999
+
+adonis2(asv_16S.ml.euc ~ ppm_Ca, method = "none", data = env_16S, permutations = 9999) #P=0.03
+adonis2(asv_16S.jaq ~ ppm_Ca, method = "none", data = env_16S, permutations = 9999) #P=0.2
+adonis2(asv_16S.ml.bray ~ ppm_Ca, method = "none", data = env_16S, permutations = 9999) #P=0.03
+
+mod <- betadisper(asv_16S.ml.euc, env_16S$ppm_Mg, type = "centroid")
+permutest(mod, permutations = 999) #999
+
+adonis2(asv_16S.ml.euc ~ ppm_Mg, method = "none", data = env_16S, permutations = 9999) #P=0.8
+adonis2(asv_16S.jaq ~ ppm_Mg, method = "none", data = env_16S, permutations = 9999) #P=0.6
+adonis2(asv_16S.ml.bray ~ ppm_Mg, method = "none", data = env_16S, permutations = 9999) #P=0.8
+
+mod <- betadisper(asv_16S.ml.euc, env_16S$ppm_Fe, type = "centroid")
+permutest(mod, permutations = 999) #999
+
+adonis2(asv_16S.ml.euc ~ ppm_Fe, method = "none", data = env_16S, permutations = 9999) #P=0.4
+
+mod <- betadisper(asv_16S.ml.euc, env_16S$ppm_Na, type = "centroid")
+permutest(mod, permutations = 999) #999
+
+adonis2(asv_16S.ml.euc ~ ppm_Na, method = "none", data = env_16S, permutations = 9999) #P=0.1
+
+mod <- betadisper(asv_16S.ml.euc, env_16S$ppm_K, type = "centroid")
+permutest(mod, permutations = 999) #999
+
+adonis2(asv_16S.ml.euc ~ ppm_K, method = "none", data = env_16S, permutations = 9999) #P=0.1
+adonis2(asv_16S.jaq ~ ppm_K, method = "none", data = env_16S, permutations = 9999) #P=0.6
+adonis2(asv_16S.ml.bray ~ ppm_K, method = "none", data = env_16S, permutations = 9999) #P=0.1
+
+mod <- betadisper(asv_16S.ml.euc, env_16S$ppm_P, type = "centroid")
+permutest(mod, permutations = 999) #999
+
+adonis2(asv_16S.ml.euc ~ ppm_P, method = "none", data = env_16S, permutations = 9999) #P=0.6
+
+mod <- betadisper(asv_16S.ml.euc, env_16S$ppm_S, type = "centroid")
+permutest(mod, permutations = 999) #999
+
+adonis2(asv_16S.ml.euc ~ ppm_S, method = "none", data = env_16S, permutations = 9999) #P=0.04
+adonis2(asv_16S.jaq ~ ppm_S, method = "none", data = env_16S, permutations = 9999) #P=0.5
+adonis2(asv_16S.ml.bray ~ ppm_S, method = "none", data = env_16S, permutations = 9999) #P=0.05
+
+```
+
+##### NMDS
+
+```{r 16S NMDS asv, warning=FALSE}
+
+#Hellinger (square root) transform and standardize with vegan library
+asv_16S_h_std <- asv_16S %>%
+  dplyr::select((where(is.numeric))) %>% #select only numeric columns
+  decostand(., #call decostand transformation function
+				 method = "hellinger", #transformation method
+				 zap = FALSE, #make near zero values into zeros to avoid exaggeration
+				 na.rm = TRUE) %>% #remove NA values
+  mutate(across(where(is.numeric), ~scale(., center = TRUE, scale = TRUE)))
+
+#standardize env variables
+env_16S_std <- env_16S[,-c(17:30)] %>% #env file minus microbial diversity and incomplete columns
+  mutate_if(is.numeric,scale) 
+
+x16s_nmds_df <- asv_16S_h_std
+
+#test how many axes are appropriate
+stress <- vector(length = 6)
+for (i in 1:6) {
+    stress[i] <- metaMDS(x16s_nmds_df, distance = "bray", k = i,
+                         model = "global", #calc stress on ranks of data
+                         maxit = 400, #max iterations of configuration adjustments
+                         try = 20, trymax = 20, #min and max runs
+                         autotransform = FALSE, #don't transform data
+                         weakties = TRUE, #set fitted distances as un-fixed
+                         scaling = TRUE, #re-scale ordination axes
+                         na.rm = TRUE)$stress
+}
+names(stress) <- paste0(1:6, "Dim")
+par(mar = c(3.5,3.5,1,1), mgp = c(2, 0.6, 0), cex = 0.8, las = 2)
+barplot(stress, ylab = "stress")
+
+#run NMDS with 5 axes to be reliably stress < 0.2
+set.seed(42) #set seed for reproducibility
+x16s_nmds <- metaMDS(x16s_nmds_df, 
+                distance = "bray", #data & distance measure
+                k = 3, #number of axes
+                model = "global", #calc stress on ranks of data
+                maxit = 400, #max iterations of configuration adjustments
+                try = 20, trymax = 200, #min and max runs
+                autotransform = FALSE, #don't transform data
+                weakties = TRUE, #set fitted distances as un-fixed
+                pc = TRUE, #rotate axes using PCA to orient first 2 axes as containing most of the variability
+                scaling = TRUE, #re-scale ordination axes to ‘unit root mean squares’
+                na.rm = TRUE) #remove NA values
+
+x16s_nmds #check "stress" value to see how well the data is represented by the ordination
+goodness(x16s_nmds) #check goodness of fit for each point
+stressplot(x16s_nmds, main = "Shepard plot") #diagnostic plot
+
+#make fit vectors with env variables and view
+x16s_nmdsfit <- envfit(x16s_nmds, env_16S_std[,-c(1:4)], #with standardization
+                      permutations = 999, na.rm=TRUE)
+x16s_nmdsfit #check fit vectors
+
+#make df of scores, add sites
+x16s_nmds_scores <- as.data.frame(scores(x16s_nmds))
+x16s_nmds_scores$Site_ID = env_16S$Site_ID 
+
+#make df of vectors, only significant vectors
+x16s_nmds_vectors <- as.data.frame(scores(x16s_nmdsfit, display = "vectors")) #extracts relevant scores from envfit
+x16s_nmds_vectors <- cbind(x16s_nmds_vectors, variable = rownames(x16s_nmds_vectors)) #and then gives them their names
+x16s_nmds_vectors <- cbind(x16s_nmds_vectors, pval = x16s_nmdsfit$vectors$pvals) # add pvalues to dataframe
+x16s_sig_vectors <- subset(x16s_nmds_vectors, pval<=0.1) #subset data to show variables somewhat significant at rounded 0.1
+
+#plot scores with ggplot
+ggplot(x16s_nmds_scores) + 
+  geom_point(size = 2, aes(x = NMDS1, y = NMDS2, color = Site_ID)) +
+  stat_ellipse(aes(x = NMDS1, y = NMDS2, color = Site_ID, fill = Site_ID),
+               alpha = 0.2, #transparency of ellipse fill
+               geom = "polygon") + #draw as polygon rather than just outline
+  geom_segment(data = x16s_sig_vectors,
+              aes(x = 0, xend = NMDS1 * 400,
+                  y = 0, yend = NMDS2 * 400), 
+              arrow = arrow(length = unit(0.25,"cm"),
+                            type = "open", angle = 20,
+                            ends = "last"),
+              color = "grey10", 
+              lwd = 0.3) +
+  geom_text_repel(data = x16s_sig_vectors,
+                  aes(x = NMDS1 * 400,
+                      y = NMDS2 * 400, 
+                      label = variable), 
+                  size = 3,
+                  max.overlaps = Inf) +
+  scale_color_manual(values = colors4) +
+  scale_fill_manual(values = colors4) + #match fill colors to your color scheme
+  labs(x = "NMDS1", y = "NMDS2", color = "Site", fill = "Site") +
+  coord_fixed() +
+  my_theme
+
+#save figure - name, type, folder, dimensions, resolution, background specs
+ggsave('16S_asv_NMDS_260626.svg', path = "Figures", width = 6, height = 4, units = "in", dpi = 300, bg=NULL)
+
+```
+
+#### Species
+
+```{r 16S beta sp, warning=FALSE}
+
+#calculate distances
+
+#Euclidean distance
+x16s_euc.list.s <-  replicate(100, matrix(nrow = dim(asv_16S.s)[1], ncol = dim(asv_16S.s)[1]), simplify = FALSE)
+for (i in 1:100) {
+  x16s_euc.list.s[[i]] <- vegdist(sqrt(as.matrix(rrarefy(asv_16S.s,sample=170))/170), method="euc")
+}
+asv_16S.ml.euc.s <- Reduce("+", x16s_euc.list.s) / length(x16s_euc.list.s)
+
+#Jaqcard distance
+x16s_jaq.list.s <-  replicate(100, matrix(nrow = dim(asv_16S.s)[1], ncol = dim(asv_16S.s)[1]), simplify = FALSE)
+for (i in 1:100) {
+  x16s_jaq.list.s[[i]] <- vegdist(as.matrix(rrarefy(asv_16S.s,sample=170)), method="jaccard", binary = TRUE)
+}
+asv_16S.jaq.s <- Reduce("+", x16s_jaq.list.s) / length(x16s_jaq.list.s)
+
+#Bray-Curtis
+x16s_bray.list.s <-  replicate(100, matrix(nrow = dim(asv_16S.s)[1], ncol = dim(asv_16S.s)[1]), simplify = FALSE)
+for (i in 1:100) {
+  x16s_bray.list.s[[i]] <- vegdist(as.matrix(rrarefy(asv_16S.s,sample=170))/170, method="bray")
+}
+asv_16S.ml.bray.s <- Reduce("+", x16s_bray.list.s) / length(x16s_bray.list.s)
+
+
+#check beta dispersion by site for each distance metric
+mod <- betadisper(asv_16S.ml.euc.s, env_16S$Site_ID, type = "centroid")
+permutest(mod, permutations = 999) #P=0.001
+
+mod <- betadisper(asv_16S.jaq.s, env_16S$Site_ID, type = "centroid")
+permutest(mod, permutations = 999) #P=0.004
+
+mod <- betadisper(asv_16S.ml.bray.s, env_16S$Site_ID, type = "centroid")
+permutest(mod, permutations = 999) #P=0.001
+
+#PERMANOVA - site
+adonis2(asv_16S.ml.euc.s ~ Site_ID, method = "none", data = env_16S, permutations = 9999) #P=1e-4
+adonis2(asv_16S.jaq.s ~ Site_ID, method = "none", data = env_16S, permutations = 9999) #P=1e-4
+adonis2(asv_16S.ml.bray.s ~ Site_ID, method = "none", data = env_16S, permutations = 9999) #P=1e-4
+
+#PERMANOVA - pH
+adonis2(asv_16S.ml.euc.s ~ pH, method = "none", data = env_16S, permutations = 9999) #P=1e-4
+adonis2(asv_16S.jaq.s ~ pH, method = "none", data = env_16S, permutations = 9999) #P=1e-4
+adonis2(asv_16S.ml.bray.s ~ pH, method = "none", data = env_16S, permutations = 9999) #P=1e-4
+
+#PERMANOVA - plant richness
+adonis2(asv_16S.ml.euc.s ~ plant_r, method = "none", data = env_16S, permutations = 9999) #P=0.042
+adonis2(asv_16S.jaq.s ~ plant_r, method = "none", data = env_16S, permutations = 9999) #P=0.035
+adonis2(asv_16S.ml.bray.s ~ plant_r, method = "none", data = env_16S, permutations = 9999) #P=0.036
+
+#PERMANOVA - plant shannon and simpson
+adonis2(asv_16S.ml.euc.s ~ plant_shannon, method = "none", data = env_16S, permutations = 9999) #P=0.2
+adonis2(asv_16S.jaq.s ~ plant_shannon, method = "none", data = env_16S, permutations = 9999) #P=0.3
+adonis2(asv_16S.ml.bray.s ~ plant_shannon, method = "none", data = env_16S, permutations = 9999) #P=0.2
+adonis2(asv_16S.ml.euc.s ~ plant_simpson, method = "none", data = env_16S, permutations = 9999) #P=0.2
+adonis2(asv_16S.jaq.s ~ plant_simpson, method = "none", data = env_16S, permutations = 9999) #P=0.2
+adonis2(asv_16S.ml.bray.s ~ plant_simpson, method = "none", data = env_16S, permutations = 9999) #P=0.2
+
+#PERMANOVA - AM association
+adonis2(asv_16S.ml.euc.s ~ AM_assoc, method = "none", data = env_16S, permutations = 9999) #P=0.003
+adonis2(asv_16S.jaq.s ~ AM_assoc, method = "none", data = env_16S, permutations = 9999) #P=0.007
+adonis2(asv_16S.ml.bray.s ~ AM_assoc, method = "none", data = env_16S, permutations = 9999) #P=0.005
+
+#PERMANOVA - nutrients
+adonis2(asv_16S.ml.euc.s ~ ppm_Ca, method = "none", data = env_16S, permutations = 9999) #P=1e-4
+adonis2(asv_16S.jaq.s ~ ppm_Ca, method = "none", data = env_16S, permutations = 9999) #P=7e-4
+adonis2(asv_16S.ml.bray.s ~ ppm_Ca, method = "none", data = env_16S, permutations = 9999) #P=1e-4
+
+adonis2(asv_16S.ml.euc.s ~ ppm_Mg, method = "none", data = env_16S, permutations = 9999) #P=2e-4
+adonis2(asv_16S.jaq.s ~ ppm_Mg, method = "none", data = env_16S, permutations = 9999) #P=4e-4
+adonis2(asv_16S.ml.bray.s ~ ppm_Mg, method = "none", data = env_16S, permutations = 9999) #P=5e-4
+
+adonis2(asv_16S.ml.euc.s ~ ppm_Fe, method = "none", data = env_16S, permutations = 9999) #P=0.5
+
+adonis2(asv_16S.ml.euc.s ~ ppm_Na, method = "none", data = env_16S, permutations = 9999) #P=0.96
+
+adonis2(asv_16S.ml.euc.s ~ ppm_K, method = "none", data = env_16S, permutations = 9999) #P=0.3
+
+adonis2(asv_16S.ml.euc.s ~ ppm_P, method = "none", data = env_16S, permutations = 9999) #P=0.6
+
+adonis2(asv_16S.ml.euc.s ~ ppm_S, method = "none", data = env_16S, permutations = 9999) #P=0.0016
+adonis2(asv_16S.jaq.s ~ ppm_S, method = "none", data = env_16S, permutations = 9999) #P=0.012
+adonis2(asv_16S.ml.bray.s ~ ppm_S, method = "none", data = env_16S, permutations = 9999) #P=0.0048
+
+```
+
+##### NMDS
+
+```{r 16S NMDS sp, warning=FALSE}
+
+#Hellinger (square root) transform and standardize with vegan library
+asv_16S_s_h_std <- asv_16S.s %>%
+  dplyr::select((where(is.numeric))) %>% #select only numeric columns
+  decostand(., #call decostand transformation function
+				 method = "hellinger", #transformation method
+				 zap = FALSE, #make near zero values into zeros to avoid exaggeration
+				 na.rm = TRUE) %>% #remove NA values
+  mutate(across(where(is.numeric), ~scale(., center = TRUE, scale = TRUE)))
+
+x16s_nmds_df <- asv_16S_s_h_std
+
+#test how many axes are appropriate
+stress <- vector(length = 6)
+for (i in 1:6) {
+    stress[i] <- metaMDS(x16s_nmds_df, distance = "bray", k = i,
+                         model = "global", #calc stress on ranks of data
+                         maxit = 400, #max iterations of configuration adjustments
+                         try = 20, trymax = 20, #min and max runs
+                         autotransform = FALSE, #don't transform data
+                         weakties = TRUE, #set fitted distances as un-fixed
+                         scaling = TRUE, #re-scale ordination axes
+                         na.rm = TRUE)$stress
+}
+names(stress) <- paste0(1:6, "Dim")
+par(mar = c(3.5,3.5,1,1), mgp = c(2, 0.6, 0), cex = 0.8, las = 2)
+barplot(stress, ylab = "stress")
+
+#run NMDS with 5 axes to be reliably stress < 0.2
+set.seed(42) #set seed for reproducibility
+x16s_nmds <- metaMDS(x16s_nmds_df, 
+                distance = "bray", #data & distance measure
+                k = 3, #number of axes
+                model = "global", #calc stress on ranks of data
+                maxit = 400, #max iterations of configuration adjustments
+                try = 20, trymax = 200, #min and max runs
+                autotransform = FALSE, #don't transform data
+                weakties = TRUE, #set fitted distances as un-fixed
+                pc = TRUE, #rotate axes using PCA to orient first 2 axes as containing most of the variability
+                scaling = TRUE, #re-scale ordination axes to ‘unit root mean squares’
+                na.rm = TRUE) #remove NA values
+
+x16s_nmds #check "stress" value to see how well the data is represented by the ordination
+goodness(x16s_nmds) #check goodness of fit for each point
+stressplot(x16s_nmds, main = "Shepard plot") #diagnostic plot
+
+#make fit vectors with env variables and view
+x16s_nmdsfit <- envfit(x16s_nmds, env_16S_std[,-c(1:4)], #with standardization
+                      permutations = 999, na.rm=TRUE)
+x16s_nmdsfit #check fit vectors
+
+#make df of scores, add sites
+x16s_nmds_scores <- as.data.frame(scores(x16s_nmds))
+x16s_nmds_scores$Site_ID = env_16S$Site_ID 
+
+#make df of vectors, only significant vectors
+x16s_nmds_vectors <- as.data.frame(scores(x16s_nmdsfit, display = "vectors")) #extracts relevant scores from envfit
+x16s_nmds_vectors <- cbind(x16s_nmds_vectors, variable = rownames(x16s_nmds_vectors)) #and then gives them their names
+x16s_nmds_vectors <- cbind(x16s_nmds_vectors, pval = x16s_nmdsfit$vectors$pvals) # add pvalues to dataframe
+x16s_sig_vectors <- subset(x16s_nmds_vectors, pval<=0.1) #subset data to show variables somewhat significant at rounded 0.1
+
+#plot scores with ggplot
+ggplot(x16s_nmds_scores) + 
+  geom_point(size = 2, aes(x = NMDS1, y = NMDS2, color = Site_ID)) +
+  stat_ellipse(aes(x = NMDS1, y = NMDS2, color = Site_ID, fill = Site_ID),
+               alpha = 0.2, #transparency of ellipse fill
+               geom = "polygon") + #draw as polygon rather than just outline
+  geom_segment(data = x16s_sig_vectors,
+              aes(x = 0, xend = NMDS1 * 400,
+                  y = 0, yend = NMDS2 * 400), 
+              arrow = arrow(length = unit(0.25,"cm"),
+                            type = "open", angle = 20,
+                            ends = "last"),
+              color = "grey10", 
+              lwd = 0.3) +
+  geom_text_repel(data = x16s_sig_vectors,
+                  aes(x = NMDS1 * 400,
+                      y = NMDS2 * 400, 
+                      label = variable), 
+                  size = 3,
+                  max.overlaps = Inf) +
+  scale_color_manual(values = colors4) +
+  scale_fill_manual(values = colors4) + #match fill colors to your color scheme
+  labs(x = "NMDS1", y = "NMDS2", color = "Site", fill = "Site") +
+  coord_fixed() +
+  my_theme
+
+#save figure - name, type, folder, dimensions, resolution, background specs
+ggsave('16S_sp_NMDS_210526.svg', path = "Figures", width = 6, height = 4, units = "in", dpi = 300, bg=NULL)
+
+```
+
+
+
+
+
 
 ### ITS 
 
@@ -5148,7 +5787,7 @@ for (i in unique(its_rare.out$Site)) {
 ggplot(data = its_rare.out, aes(x = Sample, y = Species, group = Site)) +
   geom_line(color = "black", linewidth = 1) +
   #geom_point() +
-  labs(x = "Number of reads", y = "ASVs", title = "Rarefaction curve") +
+  labs(x = "Number of reads", y = "ITS ASVs", title = "Rarefaction curve") +
   theme(axis.text.x = element_text(angle = 30, hjust = 1),legend.position = 0) +
   scale_color_discrete(name = "Site") +
   geom_label_repel(aes(label = label),
@@ -6016,25 +6655,29 @@ summary(lm(MB13C_mg_g ~ plant_simpson, data = MBC)) #not sig
 
 #test differences in pre-label soils (natural abundance) 13C
 shapiro.test(resid(lm(d13C ~ Site_ID, data = SOM_13C[c(1:39),]))) #check normality of residuals - normal
+leveneTest(lm(d13C ~ Site_ID, data = SOM_13C[c(1:39),])) #homogeneity
 summary(aov(d13C ~ Site_ID, data = SOM_13C[c(1:39),])) #sig
 TukeyHSD(aov(d13C ~ Site_ID, data = SOM_13C[c(1:39),])) #Flashes > Ambers
 
 #test differences in post-label soils 13C
-shapiro.test(resid(lm(SOM_d13C ~ Site_ID, data = SOM_13C_T0))) #check normality of residuals - not normal
-shapiro.test(resid(lm(SOM_13C_excess ~ Site_ID, data = SOM_13C_T0))) #check normality of residuals - not normal
-shapiro.test(resid(lm(log(SOM_13C_excess) ~ Site_ID, data = SOM_13C_T0))) #check normality of residuals - normal
-summary(aov(log(SOM_13C_excess) ~ Site_ID, data = SOM_13C_T0)) #not sig
+shapiro.test(resid(lm(SOM_d13C ~ Site_ID, data = SOM_13C_T0))) #check normality of residuals - not normal, but high W
+leveneTest(lm(SOM_d13C ~ Site_ID, data = SOM_13C_T0)) #homogeneity
+summary(aov(SOM_d13C ~ Site_ID, data = SOM_13C_T0)) #not sig
+kruskal.test(SOM_d13C ~ Site_ID, data = SOM_13C_T0) #not sig
 
 #test differences in excess 13C in pots at T0
-shapiro.test(resid(lm(SOM_pot13C_mg ~ Site_ID, data = SOM_13C_T0))) #check normality of residuals - not normal
-shapiro.test(resid(lm(log(SOM_pot13C_mg) ~ Site_ID, data = SOM_13C_T0))) #check normality of residuals - normal
-summary(aov(log(SOM_pot13C_mg) ~ Site_ID, data = SOM_13C_T0)) #sig
-TukeyHSD(aov(log(SOM_pot13C_mg) ~ Site_ID, data = SOM_13C_T0)) #Flashes > Bick 1 & Ambers, Bick 2 > Bick 1
+shapiro.test(resid(lm(SOM_pot13C_mg ~ Site_ID, data = SOM_13C_T0))) #check normality of residuals - not normal, but high W
+leveneTest(lm(SOM_pot13C_mg ~ Site_ID, data = SOM_13C_T0)) #homogeneity
+summary(aov(SOM_pot13C_mg ~ Site_ID, data = SOM_13C_T0)) #sig
+kruskal.test(SOM_pot13C_mg ~ Site_ID, data = SOM_13C_T0) #sig
+TukeyHSD(aov(SOM_pot13C_mg ~ Site_ID, data = SOM_13C_T0)) #FM > BU & AM, BM almost > BU
+dunn.test(SOM_13C_T0$SOM_pot13C_mg, SOM_13C_T0$Site_ID, kw = TRUE, method = "bonferroni") #FM > BU & AM
+
 
 #plot excess 13C in pots
 summary_SOM_13C %>%
   filter(Fraction == "SOM" & Incubation_T == 0) %>%
-ggplot(aes(x=interaction(Site, Mgmt_fct), y=pot_13C_mg_mean, fill=Mgmt_fct)) + 
+ggplot(aes(x=Site_ID, y=pot_13C_mg_mean, fill=Site_ID)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
   scale_fill_manual(values=colors4) + #define colors to use
   geom_errorbar(aes(ymin=pot_13C_mg_mean-pot_13C_mg_se, ymax=pot_13C_mg_mean+pot_13C_mg_se),
@@ -6046,7 +6689,7 @@ ggplot(aes(x=interaction(Site, Mgmt_fct), y=pot_13C_mg_mean, fill=Mgmt_fct)) +
   theme(legend.position = "none")
 
 #save figure
-ggsave('excess13C_soil_130426.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+ggsave('excess13C_soil_130626.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
 	path = "Figures", #save to folder within working directory
 	width = 6, height = 4, units = "in", #set dimensions for figure
 	dpi = 300, #set resolution
@@ -6059,7 +6702,7 @@ ggsave('excess13C_soil_130426.svg', #save plot name and type - can be "eps", "pd
 #bar plot of POM 13C with error bars
 summary_SOM_13C %>%
   filter(Fraction == "POM" & Incubation_T == 0) %>%
-ggplot(aes(x=interaction(Site, Mgmt_fct), y=pot_13C_mg_mean, fill=Mgmt_fct)) + 
+ggplot(aes(x=Site_ID, y=pot_13C_mg_mean, fill=Site_ID)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
   scale_fill_manual(values=colors4) + #define colors to use
   scale_y_continuous(breaks = pretty) + #set y axis ticks
@@ -6071,7 +6714,7 @@ ggplot(aes(x=interaction(Site, Mgmt_fct), y=pot_13C_mg_mean, fill=Mgmt_fct)) +
   theme(legend.position = "none")
 
 #save figure
-ggsave('excess13C_POM_130426.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+ggsave('excess13C_POM_130626.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
 	path = "Figures", #save to folder within working directory
 	width = 6, height = 4, units = "in", #set dimensions for figure
 	dpi = 300, #set resolution
@@ -6089,7 +6732,7 @@ TukeyHSD(aov(log(POM_pot13C_mg) ~ Site_ID, data = SOM_13C_T0)) #Flashes > Bick 1
 #bar plot of POM 13C with error bars
 summary_SOM_13C %>%
   filter(Fraction == "MAOM" & Incubation_T == 0) %>%
-ggplot(aes(x=interaction(Site, Mgmt_fct), y=pot_13C_mg_mean, fill=Mgmt_fct)) + 
+ggplot(aes(x=Site_ID, y=pot_13C_mg_mean, fill=Site_ID)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
   scale_fill_manual(values=colors4) + #define colors to use
   #scale_y_continuous(limits = c(0, 40), breaks = seq(0, 40, by = 10)) + #set y axis ticks
@@ -6101,7 +6744,7 @@ ggplot(aes(x=interaction(Site, Mgmt_fct), y=pot_13C_mg_mean, fill=Mgmt_fct)) +
   theme(legend.position = "none")
 
 #save figure
-ggsave('excess13C_MAOM_130426.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+ggsave('excess13C_MAOM_130626.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
 	path = "Figures", #save to folder within working directory
 	width = 6, height = 4, units = "in", #set dimensions for figure
 	dpi = 300, #set resolution
@@ -6256,8 +6899,7 @@ ggsave('MAOM_15N_240426.svg', #save plot name and type - can be "eps", "pdf", "j
 
 ```{r MAOM 15N waste}
 
-shapiro.test(resid(lm(MAOM_15N ~ g_debris + Site_ID, data = SOM_13C_T0))) #check normality of residuals - not normal P-val but close and W is high, will leave
-shapiro.test(resid(lm(log(MAOM_15N) ~ g_debris + Site_ID, data = SOM_13C_T0))) #check normality of residuals - normal, but NaNs produced
+shapiro.test(resid(lm(MAOM_15N ~ g_debris + Site_ID, data = SOM_13C_T0))) #check normality of residuals - not normal P-val but close and W is high
 summary(aov(MAOM_15N ~ g_debris + Site_ID, data = SOM_13C_T0)) #both sig
 
 Anova(lmer(MAOM_15N ~ g_debris + (1|Site_ID), 
@@ -6274,7 +6916,7 @@ Anova(lmer(MAOM_15N ~ g_debris + (1|Site_ID),
 #bar plot of POM 13C with error bars
 summary_SOM_13C %>%
   filter(Fraction == "SOM" & Incubation_T == 6) %>%
-ggplot(aes(x=interaction(Site, Mgmt_fct), y=pot_13C_mg_mean, fill=Mgmt_fct)) + 
+ggplot(aes(x=Site_ID, y=pot_13C_mg_mean, fill=Site_ID)) + 
 	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
   scale_fill_manual(values=colors4) + #define colors to use
   scale_y_continuous(breaks = pretty) + #set y axis ticks
@@ -6286,15 +6928,17 @@ ggplot(aes(x=interaction(Site, Mgmt_fct), y=pot_13C_mg_mean, fill=Mgmt_fct)) +
   theme(legend.position = "none")
 
 #save figure
-ggsave('excess13C_6mos_130426.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+ggsave('excess13C_6mos_130626.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
 	path = "Figures", #save to folder within working directory
 	width = 6, height = 4, units = "in", #set dimensions for figure
 	dpi = 300, #set resolution
 	bg=NULL) #background from plot specifications
 
+#stats
 shapiro.test(resid(lm(pot_13C_mg ~ Site_ID, data = SOM_T6[-17,]))) #check normality of residuals - normal
+leveneTest(lm(pot_13C_mg ~ Site_ID, data = SOM_T6[-17,])) #homogeneity
 summary(aov(pot_13C_mg ~ Site_ID, data = SOM_T6[-17,])) #sig
-TukeyHSD(aov(pot_13C_mg ~ Site_ID, data = SOM_T6[-17,])) #Flashes > all
+TukeyHSD(aov(pot_13C_mg ~ Site_ID, data = SOM_T6[-17,])) #FM > BU, AM
 
 ```
 
@@ -6498,9 +7142,10 @@ summary(aov(MAOM_pot13C_mg ~ AM_biomass_gkg + total_fun_gkg, data = SOM_13C_T0))
 
 ggplot(data = resp_full, aes(x=Site_ID, y=CO2_ppm, fill=Site_ID)) + 
 	geom_boxplot() + 
+  #geom_jitter() + 
   scale_fill_manual(values = colors4) + #define colors to use
   my_theme +
-  ggtitle("12CO2 Respiration") + #add a graph title
+  #ggtitle("12CO2 Respiration") + #add a graph title
   xlab("") + ylab(expression(""^12*"CO"^2*" (ppm)")) #define/change X and Y labels
 
 ggsave('CO2_overall.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
@@ -6509,11 +7154,11 @@ ggsave('CO2_overall.svg', #save plot name and type - can be "eps", "pdf", "jpeg"
        dpi = 300, #set resolution
        bg=NULL) #background from plot specifications
 
-#ANOVA and Tukey
-summary(aov(CO2_ppm ~ factor(Site_ID), data = resp_min)) #almost
-summary(aov(CO2_ppm ~ factor(Site_ID), data = resp_full)) #very
-TukeyHSD(aov(CO2_ppm ~ factor(Site_ID), data = resp_full)) #Ambers > all, Flashes > Bick 1 & 2
-
+#stats
+shapiro.test(resid(lm(CO2_ppm ~ Site_ID, data=resp_full))) #not normal
+leveneTest(lm(CO2_ppm ~ Site_ID, data=resp_full)) #heterogeneity
+kruskal.test(CO2_ppm ~ Site_ID, data = resp_full) #very
+dunn.test(resp_full$CO2_ppm, resp_full$Site_ID, kw = TRUE, method = "bonferroni") #AM > all, FM < all
 ```
 
 ```{r resp 12C by week}
@@ -6556,9 +7201,12 @@ ggsave('CO2_overall_gC.svg', #save plot name and type - can be "eps", "pdf", "jp
        dpi = 300, #set resolution
        bg=NULL) #background from plot specifications
 
-#ANOVA and Tukey
-summary(aov(mass_C ~ factor(Site_ID), data = resp_full)) #very
-TukeyHSD(aov(mass_C ~ factor(Site_ID), data = resp_full)) #Ambers > all, Flashes > Bick 1 & 2
+
+#stats
+shapiro.test(resid(lm(mass_C ~ Site_ID, data=resp_full))) #not normal
+leveneTest(lm(mass_C ~ Site_ID, data=resp_full)) #heterogeneity
+kruskal.test(mass_C ~ Site_ID, data = resp_full) #very
+dunn.test(resp_full$mass_C, resp_full$Site_ID, kw = TRUE, method = "bonferroni") #AM > all, FM < all
 
 ```
 
@@ -6605,11 +7253,11 @@ ggsave('13CO2_overall.svg', #save plot name and type - can be "eps", "pdf", "jpe
        dpi = 300, #set resolution
        bg=NULL) #background from plot specifications
 
-#ANOVA and Tukey
-summary(aov(d13CO2_permille ~ factor(Site_ID), data = resp_min)) #sig
-summary(aov(d13CO2_permille ~ factor(Site_ID), data = resp_full)) #very sig
-TukeyHSD(aov(d13CO2_permille ~ factor(Site_ID), data = resp_min)) #23 vs. 15 0.00058, vs. unmanaged almost, 15 vs. 4 0.033
-TukeyHSD(aov(d13CO2_permille ~ factor(Site_ID), data = resp_full)) #all sig except Flashes vs. Bick 2
+#stats
+shapiro.test(resid(lm(d13CO2_permille ~ Site_ID, data=resp_full))) #not normal
+leveneTest(lm(d13CO2_permille ~ Site_ID, data=resp_full)) #heterogeneity
+kruskal.test(d13CO2_permille ~ Site_ID, data = resp_full) #very
+dunn.test(resp_full$d13CO2_permille, resp_full$Site_ID, kw = TRUE, method = "bonferroni") #AM < all, BU > all
 
 ```
 
@@ -6653,9 +7301,12 @@ ggsave('13CO2_overall_atom.svg', #save plot name and type - can be "eps", "pdf",
        dpi = 300, #set resolution
        bg=NULL) #background from plot specifications
 
-#ANOVA and Tukey
-summary(aov(atom_excess13C ~ factor(Site_ID), data = resp_full)) #very sig
-TukeyHSD(aov(atom_excess13C ~ factor(Site_ID), data = resp_full)) #all sig except Flashes vs. Bick 2
+#stats
+shapiro.test(resid(lm(atom_excess13C ~ Site_ID, data=resp_full))) #not normal
+leveneTest(lm(atom_excess13C ~ Site_ID, data=resp_full)) #heterogeneity
+kruskal.test(atom_excess13C ~ Site_ID, data = resp_full) #very
+dunn.test(resp_full$atom_excess13C, resp_full$Site_ID, kw = TRUE, method = "bonferroni") #AM < all, BU > all
+
 
 ```
 
@@ -6700,9 +7351,11 @@ ggsave('13C_overall_mass.svg', #save plot name and type - can be "eps", "pdf", "
        dpi = 300, #set resolution
        bg=NULL) #background from plot specifications
 
-#ANOVA and Tukey
-summary(aov(mass_excess13C ~ factor(Site_ID), data = resp_full)) #very sig
-TukeyHSD(aov(mass_excess13C ~ factor(Site_ID), data = resp_full)) #all sig except Flashes vs. Bick 2
+#stats
+shapiro.test(resid(lm(mass_excess13C ~ Site_ID, data=resp_full))) #not normal
+leveneTest(lm(mass_excess13C ~ Site_ID, data=resp_full)) #heterogeneity
+kruskal.test(mass_excess13C ~ Site_ID, data = resp_full) #very
+dunn.test(resp_full$mass_excess13C, resp_full$Site_ID, kw = TRUE, method = "bonferroni") #AM > all, BU > BM, FM
 
 ```
 
