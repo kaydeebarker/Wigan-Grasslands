@@ -27,19 +27,22 @@ knitr::opts_chunk$set(echo = TRUE) #default display code in knit output (FALSE w
 datalib <- c("dplyr", "tidyr", "readr", "readxl", "stringr", "tibble", "reshape2", "janitor", "DescTools") 
 
 ##2. For data visualization (note ggplot2 is in tidyverse)
-vislib <- c("ggplot2", "ggthemes", "ggfortify", "ggrepel", "ggsignif", "plotrix", "RColorBrewer", "Cairo", "sjPlot", "multcompView")
+vislib <- c("ggplot2", "ggthemes", "ggfortify", "ggrepel", "ggsignif", "plotrix", "RColorBrewer", "Polychrome", "colorBlindness", "Cairo", "sjPlot", "multcompView")
 
 ##3. For calculation and stats functions, including ecology and microbial-specific libraries
 statlib <- c("car", "MASS", "rcompanion", "zoo", "lme4", "MuMIn", "emmeans", "ARTool", "rcompanion", "dunn.test", "performance", "see", "corrplot", "BAT", "vegan", "ape")
+
+##4. For spacial data
+spaclib <- c("sf","rnaturalearth","rnaturalearthdata","tmap")
 
 #Install packages as needed - commented out, but remove # and adjust as neededas a group:
 #lapply(c(datalib, vislib, statlib), install.packages)
 
 #Load libraries
-lapply(c(datalib, vislib, statlib), library, character.only = TRUE)
+lapply(c(datalib, vislib, statlib, spaclib), library, character.only = TRUE)
 
 #Remove lists from environment to clean up
-rm(datalib, vislib, statlib)
+rm(datalib, vislib, statlib, spaclib)
 
 ```
 
@@ -84,15 +87,33 @@ colors10 <- c("#7b887f", "#c25205", "#8d5744", "#00666a",  #for 4 UK survey site
 
 colors13 <- c("#7b887f", "#8ebf9f", "#c3d0c7", "#c25205", "#f28749", "#ffbc85", "#00666a", "#44a6a6", "#afeeeb", "#8d5744", "#bf846f", "#bda59c", "#fffdf9")
 
+swatch(colors13) #view as swatch
 
-#color palette with gradient with 20 steps
+#check values for colorblindness (colorBlindness library)
+colorBlindness::displayAllColors(colors13)
+getLUV(colors13) #can also get CIE LUV values with Polychrome
+
+#color palette with gradient with 25 steps green to neutral to brown
 colors_ramp <- colorRampPalette(c("#84B699", "azure","#BF876E"))(25)
+swatch(colors_ramp) #view palette
+
+#color palette with gradient with 40 steps use full palette above
+colors_ramp2 <- colorRampPalette(colors4)(40)
+swatch(colors_ramp2) #view palette
+
+#color palette based on "seed colors" from previous palette, Polychrome - 40
+colors_seed <- createPalette(40, #number of colors in palette 
+							seedcolors=colors13, #define seed colors
+							prefix = "", #get rid of row prefix
+							range = c(40, 100), #range of allowed luminance values
+              target = c("normal", "protanope", "deuteranope", "tritanope")) #colorblindness
+swatch(colors_seed) #view palette
 
 #Color variables
 
 #define individual colors for plot elements
-plotline_color <- "#BF876E" #define color for plot lines
-fill_color <- "#84B699" #define color for fill
+plotline_color <- "grey10" #define color for plot lines
+fill_color <- "#c3d0c7" #define color for fill
 
 #Custom ggplot configurations 
 
@@ -1175,6 +1196,23 @@ differences_multifactor <- function(data, factors, continuous_vars, random_var =
 
 ## Load data
 
+### Site locations
+```{r site loc}
+
+#create df with site locations
+site_locations <- data.frame(
+  Site_ID = order_IDs,
+  #order = c(1, 2, 3, 4, 5, 6),
+  long = c(-2.542323, -2.540316, -2.591300, -2.593789, -2.627059, -2.623926),
+  lat = c(53.508020, 53.504838, 53.527421, 53.526987, 53.525431, 53.524940)
+)
+
+#convert site_locations to sf object (point geometry)
+sites_sf <- site_locations %>%
+  st_as_sf(coords = c("long", "lat"), crs = 4326)
+
+```
+
 ### Soil compounds and properties
 ```{r load site data}
 
@@ -1559,26 +1597,42 @@ HLD$Site_ID <- factor(HLD$Site_ID, levels = order_IDs)
 #calculate fungal biomass C
 HLD <- HLD %>%
   mutate(other_biomass_gkg = other_sm_biomass_gkg + other_lg_biomass_gkg) %>%
-  mutate(AM_C_mgkg = AM_biomass_gkg * 0.3 * 1000) %>% #use 30% C (Hodge and Fitter 2010, Zhang et al. 2025b), convert to mg per kg soil
-  mutate(otherfun_C_mgkg = other_biomass_gkg * 0.41 * 1000) %>% #use 41% C (Pánek et al. 2024)
+  mutate(AM_C_mgkg = AM_mgkg * 0.3) %>% #use 30% C (Hodge and Fitter 2010, Zhang et al. 2025b), convert to mg per kg soil
+  mutate(otherfun_mgkg = other_biomass_gkg * 1000) %>%
+  mutate(otherfun_C_mgkg = otherfun_mgkg * 0.41) %>% #use 41% C (Pánek et al. 2024)
   mutate(total_fun_C_mgkg = AM_C_mgkg + otherfun_C_mgkg) #add together
+
+#split timepoints
+HLD_T0 <- HLD %>%
+  filter(Timepoint == "T0") 
+
+HLD_T6 <- HLD %>%
+  filter(Timepoint == "T6") 
 
 #melt to be able to stack a bar chart for biomass
 fungal_mass <- HLD %>%
-  dplyr::select(Site_ID, AM_biomass_gkg, other_biomass_gkg) %>%
+  dplyr::select(Site_ID, Pot, Timepoint, AM_biomass_gkg, other_biomass_gkg, total_fun_gkg) %>%
   pivot_longer(
-		cols = AM_biomass_gkg:other_biomass_gkg, #pick columns
+		cols = c(AM_biomass_gkg, other_biomass_gkg, total_fun_gkg), #pick columns
 		names_to = "fungal_type", #name column to put original column names in
 		values_to = "g_biomass") #name column to put values in
 
 #melt to be able to stack a bar chart for biomass C
 fungal_C <- HLD %>%
-  dplyr::select(Site_ID, AM_C_mgkg, otherfun_C_mgkg) %>%
+  dplyr::select(Site_ID, Timepoint, AM_C_mgkg, otherfun_C_mgkg) %>%
   pivot_longer(
 		cols = AM_C_mgkg:otherfun_C_mgkg, #pick columns
 		names_to = "fungal_type", #name column to put original column names in
 		values_to = "mg_C") #name column to put values in
 
+#add % change in mass
+fungal_chg <- fungal_mass %>%
+  pivot_wider(
+    #id_cols
+		names_from = Timepoint, #name column to put original column names in
+		values_from = g_biomass) %>% #name column to put values in
+		#values_fn = ~ mean(.x, na.rm = TRUE)) %>% #use mean of values
+  mutate(diff_mg = (T6 - T0) * 1000)
 
 ```
 
@@ -1790,6 +1844,8 @@ resp_full$Site_ID <- factor(resp_full$Site_ID, levels = order_IDs_4)
 
 ### Soil organic matter
 
+#### 2023
+
 ```{r load Kimpton SOM data, eval=FALSE}
 
 #read in field soil C/N data
@@ -1926,14 +1982,14 @@ SOM_13C_T0 <- SOM_13C_T0 %>%
   mutate(AM_arb_ct = AMdata$Arbuscule[match(SOM_13C_T0$Plot_ID, AMdata$Plot_ID)]) %>%
   mutate(AM_ves_ct = AMdata$Vesicle[match(SOM_13C_T0$Plot_ID, AMdata$Plot_ID)]) %>%
   mutate(AM_absent = AMdata$Nothing[match(SOM_13C_T0$Plot_ID, AMdata$Plot_ID)]) %>%
-  mutate(spores_g = HLD$spores_g[match(SOM_13C_T0$Plot_ID, HLD$Pot)]) %>%
-  mutate(AM_mm_g = HLD$AM_mm_g[match(SOM_13C_T0$Plot_ID, HLD$Pot)]) %>%
-  mutate(other_mm_g = HLD$other_mm_g[match(SOM_13C_T0$Plot_ID, HLD$Pot)]) %>%
-  mutate(AM_biomass_gkg = HLD$AM_biomass_gkg[match(SOM_13C_T0$Plot_ID, HLD$Pot)]) %>%
-  mutate(total_fun_gkg = HLD$total_fun_gkg[match(SOM_13C_T0$Plot_ID, HLD$Pot)]) %>%
-  mutate(AM_C_mgkg = HLD$AM_C_mgkg[match(SOM_13C_T0$Plot_ID, HLD$Pot)]) %>%
-  mutate(otherfun_C_mgkg = HLD$otherfun_C_mgkg[match(SOM_13C_T0$Plot_ID, HLD$Pot)]) %>%
-  mutate(total_fun_C_mgkg = HLD$total_fun_C_mgkg[match(SOM_13C_T0$Plot_ID, HLD$Pot)]) %>%
+  mutate(spores_g = HLD_T0$spores_g[match(SOM_13C_T0$Plot_ID, HLD_T0$Pot)]) %>%
+  mutate(AM_mm_g = HLD_T0$AM_mm_g[match(SOM_13C_T0$Plot_ID, HLD_T0$Pot)]) %>%
+  mutate(other_mm_g = HLD_T0$other_mm_g[match(SOM_13C_T0$Plot_ID, HLD_T0$Pot)]) %>%
+  mutate(AM_biomass_gkg = HLD_T0$AM_biomass_gkg[match(SOM_13C_T0$Plot_ID, HLD_T0$Pot)]) %>%
+  mutate(total_fun_gkg = HLD_T0$total_fun_gkg[match(SOM_13C_T0$Plot_ID, HLD_T0$Pot)]) %>%
+  mutate(AM_C_mgkg = HLD_T0$AM_C_mgkg[match(SOM_13C_T0$Plot_ID, HLD_T0$Pot)]) %>%
+  mutate(otherfun_C_mgkg = HLD_T0$otherfun_C_mgkg[match(SOM_13C_T0$Plot_ID, HLD_T0$Pot)]) %>%
+  mutate(total_fun_C_mgkg = HLD_T0$total_fun_C_mgkg[match(SOM_13C_T0$Plot_ID, HLD_T0$Pot)]) %>%
   mutate(pH = SOM_13C_T0$pH <- site_data$pH[match(SOM_13C_T0$Plot_ID, site_data$Plot_ID)]) %>%
   mutate(pH_range = case_when(pH <= 5 ~ "Very Strongly Acidic",
                                 pH > 5 & pH <= 5.5 ~ "Strongly Acidic",
@@ -1942,25 +1998,38 @@ SOM_13C_T0 <- SOM_13C_T0 %>%
                                 pH > 6.5 & pH <= 7.3 ~ "Neutral",
                                 pH > 7.3 ~ "Alkaline"))
 
-SOM_T6 <- SOM_13C %>%
-  filter(Incubation_T == 6)
+SOM_13C_T6 <- SOM_13C %>%
+  filter(Incubation_T == 6) #filter 6 mos
+SOM_13C_T6 <- SOM_13C_T6 %>% #add fungi and pH
+  mutate(spores_g = HLD_T6$spores_g[match(SOM_13C_T6$Plot_ID, HLD_T6$Pot)]) %>%
+  mutate(AM_mm_g = HLD_T6$AM_mm_g[match(SOM_13C_T6$Plot_ID, HLD_T6$Pot)]) %>%
+  mutate(other_mm_g = HLD_T6$other_mm_g[match(SOM_13C_T6$Plot_ID, HLD_T6$Pot)]) %>%
+  mutate(AM_biomass_gkg = HLD_T6$AM_biomass_gkg[match(SOM_13C_T6$Plot_ID, HLD_T6$Pot)]) %>%
+  mutate(total_fun_gkg = HLD_T6$total_fun_gkg[match(SOM_13C_T6$Plot_ID, HLD_T6$Pot)]) %>%
+  mutate(AM_C_mgkg = HLD_T6$AM_C_mgkg[match(SOM_13C_T6$Plot_ID, HLD_T6$Pot)]) %>%
+  mutate(otherfun_C_mgkg = HLD_T6$otherfun_C_mgkg[match(SOM_13C_T6$Plot_ID, HLD_T6$Pot)]) %>%
+  mutate(total_fun_C_mgkg = HLD_T6$total_fun_C_mgkg[match(SOM_13C_T6$Plot_ID, HLD_T6$Pot)]) %>%
+  mutate(pH = SOM_13C_T6$pH <- site_data$pH[match(SOM_13C_T6$Plot_ID, site_data$Plot_ID)]) 
 
 #order variables
 SOM_13C$Site <- factor(SOM_13C$Site, levels = order_sites)
-SOM_13C$Site_ID <- factor(SOM_13C$Site_ID, levels = order_IDs)
-SOM_T6$Site <- factor(SOM_T6$Site, levels = order_sites)
+SOM_13C$Site_ID <- factor(SOM_13C$Site_ID, levels = order_IDs_4)
 SOM_13C_T0$Site <- factor(SOM_13C_T0$Site, levels = order_sites)
-SOM_13C_T0$Site_ID <- factor(SOM_13C_T0$Site_ID, levels = order_IDs)
+SOM_13C_T0$Site_ID <- factor(SOM_13C_T0$Site_ID, levels = order_IDs_4)
+SOM_13C_T6$Site <- factor(SOM_13C_T6$Site, levels = order_sites)
+SOM_13C_T6$Site_ID <- factor(SOM_13C_T6$Site_ID, levels = order_IDs_4)
 SOM_13C$Mgmt_fct <- factor(SOM_13C$Mgmt_fct, levels = order_mgmt)
 summary_SOM_13C$Site <- factor(summary_SOM_13C$Site, levels = order_sites)
 summary_SOM_13C$Site_ID <- factor(summary_SOM_13C$Site_ID, levels = order_IDs_4)
 summary_SOM_13C$Mgmt_fct <- factor(summary_SOM_13C$Mgmt_fct, levels = order_mgmt)
 summary_SOM_13C_T0$Site <- factor(summary_SOM_13C_T0$Site, levels = order_sites)
-summary_SOM_13C_T0$Site_ID <- factor(summary_SOM_13C_T0$Site_ID, levels = order_IDs)
+summary_SOM_13C_T0$Site_ID <- factor(summary_SOM_13C_T0$Site_ID, levels = order_IDs_4)
 
 
 
 ```
+
+#### 2026
 
 ```{r load 2026 SOM data}
 
@@ -1983,14 +2052,15 @@ SOM_2026 <- read_csv("SOM_2026.csv") %>%
   mutate(fMAOM_C = MAOM_C_kgm2_7cm / (POM_C_kgm2_7cm + MAOM_C_kgm2_7cm)) #calculate fMAOM C
 
 #summarize SOM 2026 data 
-summary_SOM_2026 <- SOM_2026[c(3:7,10,14,26,29,30:32,35:56)] %>%
-  group_by(Site_ID, Site, Mgmt_year, Management) %>%
+summary_SOM_2026 <- SOM_2026[c(3:8,10,14,26,29,30:32,35:57)] %>%
+  group_by(Site_ID, Site, Mgmt_year, Mgmt_time, Management) %>%
   summarise(across(where(is.numeric), summary_stats)) #run all summary stats
 
 #combine with above data
 SOM_multiyr <- SOM_13C_T0 %>%
-  dplyr::select(Sample_year, Site, Site_ID, Mgmt_year, SOM_perC, SOM_perN, SOM_CN, SOM_C_kgm2_7cm, POM_perC, POM_perN, POM_C_kgm2_7cm, MAOM_perC, MAOM_perN, MAOM_C_kgm2_7cm, fMAOM_C) %>%
+  dplyr::select(Sample_year, Site, Site_ID, Mgmt_year, pH, SOM_perC, SOM_perN, SOM_CN, SOM_C_kgm2_7cm, POM_perC, POM_perN, POM_C_kgm2_7cm, MAOM_perC, MAOM_perN, MAOM_C_kgm2_7cm, fMAOM_C) %>%
   bind_rows(SOM_2026) 
+
   
 
 SOM_2026$Site <- factor(SOM_2026$Site, levels = order_sites)
@@ -2029,7 +2099,7 @@ summary_UKsoils <- UK_soil %>%
 
 
 soilC_compare <- SOM_2026 %>%
-  dplyr::select(Sample_year, Site_ID, SOM_C_kgm2_7cm, POM53_C_kgm2_7cm, MAOM45_C_kgm2_7cm) %>%
+  dplyr::select(Sample_year, Site_ID, SOM_C_kgm2_7cm, POM53_C_kgm2_7cm, MAOM45_C_kgm2_7cm, pH) %>%
   rename("site" = "Site_ID") %>%
   rename("TotalC" = "SOM_C_kgm2_7cm") %>%
   rename("POM_C" = "POM53_C_kgm2_7cm") %>%
@@ -2042,17 +2112,13 @@ soilC_compare <- SOM_2026 %>%
 															  grepl("AM", site) ~ "AM Mesotrophic",
 															  grepl("FU", site) ~ "FU Mesotrophic",
 															  grepl("FM", site) ~ "FM Mesotrophic")) %>% 
-  bind_rows(UK_soil) #%>%
-
-#Ignore for now - will measure new pH
-#  mutate(pH_range = case_when(pH <= 5 ~ "Very Strongly Acidic",
-#                                pH > 5 & pH <= 5.5 ~ "Strongly Acidic",
-#                                pH > 5.5 & pH <= 6 ~ "Moderately Acidic",
-#                                pH > 6 & pH <= 6.5 ~ "Mildly Acidic",
-#                                pH > 6.5 & pH <= 7.3 ~ "Neutral",
-#                                pH > 7.3 ~ "Alkaline")) #%>%
-  #mutate(name = fct_relevel(vegetation, #change ordering manually
-  #                          "Acid grass", "Calcicolous", "Mesotrophic", "wet grassland", "restored"))
+  bind_rows(UK_soil) %>%
+  mutate(pH_range = case_when(pH <= 5 ~ "Very Strongly Acidic", #make pH categories
+                                pH > 5 & pH <= 5.5 ~ "Strongly Acidic",
+                                pH > 5.5 & pH <= 6 ~ "Moderately Acidic",
+                                pH > 6 & pH <= 6.5 ~ "Mildly Acidic",
+                                pH > 6.5 & pH <= 7.3 ~ "Neutral",
+                                pH > 7.3 ~ "Alkaline")) 
 
 
 #order variables
@@ -2123,7 +2189,8 @@ summary_endbio$Site_ID <- factor(summary_endbio$Site_ID, levels = order_IDs)
 
 ```
 
-### Biodiversity data from iNaturalist occurrences
+### Biodiversity data from open source occurrence data
+
 ```{r iNat, eval=FALSE}
 
 library("rgbif") #biodiversity data from iNaturalist etc.
@@ -2205,16 +2272,39 @@ FM2_sp_yr <- occ_count(facet="year", geometry="POLYGON((-2.6229 53.525048, -2.62
 
 ```
 
+```{r NBN}
+
+#read in downloaded csv from National Biodiversity Network Atlas
+NBN <- read_csv("NBNatlas_Wigan.csv") %>% 
+  clean_names() %>%
+  dplyr::select(scientific_name, common_name, event_date, month, year, latitude_wgs84, longitude_wgs84, 
+                individual_count, abundance, kingdom, phylum, order, class, family, genus)
+
+#convert NBN observations to sf object
+NBN_sf <- NBN %>%
+  st_as_sf(coords = c("longitude_wgs84", "latitude_wgs84"), crs = 4326)
+
+#find nearest site for each observation and calculate distance
+NBN_sites <- NBN_sf %>%
+  mutate(
+    nearest_site = st_nearest_feature(., sites_sf),
+    Site_ID = sites_sf$Site_ID[nearest_site],
+    distance_m = st_distance(., sites_sf[nearest_site, ], by_element = TRUE) %>% 
+      as.numeric()
+  ) %>%
+  filter(distance_m <= 100) %>%  # Filter to 50m threshold
+  st_drop_geometry() %>%
+  as.data.frame()
+
+```
+
+
 # Stats and Charts
 
 ## Maps
 
 ### Wigan, UK
 ```{r map UK}
-
-library(sf) #spatial library
-library(rnaturalearth) #earth boundary maps
-library(rnaturalearthdata) #earth boundary maps - higher res
 
 #create UK boundary
 uk <- ne_countries(scale = 50, country = "United Kingdom", returnclass = "sf") #get UK boundary
@@ -2244,16 +2334,6 @@ ggsave('Wigan_UK.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "
 ### Sites
 
 ```{r map sites}
-
-library(tmap) #background map
-
-#create df with site locations
-site_locations <- data.frame(
-  Site_ID = order_IDs,
-  #order = c(1, 2, 3, 4, 5, 6),
-  long = c(-2.542323, -2.540316, -2.591300, -2.593789, -2.627059, -2.623926),
-  lat = c(53.508020, 53.504838, 53.527421, 53.526987, 53.525431, 53.524940)
-)
 
 #define the bounding box and center points for Wigan
 bbox <- c(xmin = -2.63, ymin = 53.501, xmax = -2.536, ymax = 53.53)
@@ -2356,6 +2436,32 @@ ggsave('metals_all_020726.svg', #save plot name and type - can be "eps", "pdf", 
 
 ```
 
+```{r metals chart 2}
+
+#plot metals
+soil_metals %>%
+ggplot(aes(x=Site_ID, y=ppm, fill=Site_ID)) + 
+  geom_boxplot() +
+  facet_wrap(~nutrient, scales = "free", nrow=5) + #create a separate plot for each site
+  scale_fill_manual(values=colors4) + #define colors to use
+  #ggtitle("Soil Metals per site") + #add a graph title
+  xlab("Site") + ylab("Concentration (ppm)") + #define/change X and Y labels
+  theme(axis.text.x = element_text(angle=90), #set angle of variable labels
+        panel.grid.major.y = element_line(color = "grey40", size = 0.25)) + 
+  scale_x_discrete(labels = "", "", "", "") + #remove x axis labels
+  my_theme +
+  theme(legend.position='bottom') #move legend
+
+#save figure
+ggsave('metals_170626.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 8, height = 8, units = "in", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
+```
+
+
 ```{r metals significant chart}
 
 #plot metals
@@ -2446,34 +2552,29 @@ ggsave('metals_health_020726.svg', #save plot name and type - can be "eps", "pdf
 
 ```{r FTIR stats}
 
+#aromatic:aliphatic ratio
+FTIR_ar_al <- FTIR %>%
+  clean_names() %>%
+  group_by(site_id) %>%
+  mutate(ar_al = (x794+x907+x1002+x1630)/(x2846+x2937)) 
+
 #define what to analyze for differences
 factors <- "site_id" #predictor variable
-continuous_vars <- c("x907", "x1002", "x1402", "x1630", "x794", "x2846", "x2937", "x3620") #response variables
-data <- FTIR %>%
-  clean_names()
+continuous_vars <- c("x907", "x1002", "x1402", "x1630", "x794", "x2846", "x2937", "x3620", "ar_al") #response variables
+data <- FTIR_ar_al 
 
 #evaluate group sizes
 evaluate_group_sizes(data, factors, continuous_vars) 
 
-#eun the analysis
-FTIR_diff <- differences_function(data, factors, continuous_vars)
+#run the analysis
+FTIR_diff <- differences(data, factors, continuous_vars)
 
-#aromatic:aliphatic ratio
-FTIR_stbl_lbl <- FTIR %>%
-  clean_names() %>%
-  group_by(site) %>%
-  mutate(ar_al = (x794)/(x1402)) %>%
-  mutate(stbl_lbl = (x794+x2846+x2937)/(x907+x1002+x1402)) 
+#filter only significant differences
+FTIR_sigdiff <- FTIR_diff %>%
+  filter(P_Value <= 0.05)
 
 FTIR_summary <- FTIR_stbl_lbl %>%
-  summarise(across(ar_al:stbl_lbl, list(mean = ~ mean(., na.rm=TRUE),
-                                 sd = ~ sd(., na.rm=TRUE),
-                                 se = ~ std.error(., na.rm=TRUE))))
-
-shapiro.test(resid(lm(ar_al ~ site_id, data = FTIR_stbl_lbl))) #check normality of residuals - normal
-bartlett.test(ar_al ~ site_id, data = FTIR_stbl_lbl)
-summary(aov(ar_al ~ site_id, data = FTIR_stbl_lbl)) #ANOVA - significant
-TukeyHSD(aov(ar_al ~ site_id, data = FTIR_stbl_lbl)) #Flashes vs. all, Amberswood vs. Bickershaw 1
+  summarise(across(where(is.numeric), summary_stats))
 
 ```
 
@@ -2481,10 +2582,10 @@ TukeyHSD(aov(ar_al ~ site_id, data = FTIR_stbl_lbl)) #Flashes vs. all, Amberswoo
 
 #plot order
 FTIR_long$wavelength <- factor(FTIR_long$wavelength, 
-                             levels = c("907", "1002", "1402", "1630", "794", "2846", "2937", "3620"))
+                             levels = c("794", "907", "1002", "1630", "2846", "2937", "1402", "3620"))
 #facet_wrap plot
 FTIR_long %>%
-ggplot(aes(x=Site, y=absorbance, fill=Site_ID)) + 
+ggplot(aes(x=Site_ID, y=absorbance, fill=Site_ID)) + 
   geom_boxplot() +
   facet_wrap(~wavelength, scales = "free", nrow=2) + #create a separate plot for each site
   scale_fill_manual(values=colors4) + #define colors to use
@@ -3423,14 +3524,14 @@ ggsave('MAOM-C_comparison_adjBD_2026.svg', #save plot name and type - can be "ep
 ```{r SOM years only}
 
 #match data
-SOM_multiyr_match <- SOM_multiyr[,c(1:15)] %>%
+SOM_multiyr_match <- SOM_multiyr[,c(1:16)] %>%
   filter(Site_ID != "AU" & Site_ID != "FU") %>%
   mutate(Site_ID = droplevels(Site_ID)) %>% #drop unused factor levels
   mutate(Sample_yr_ch = paste0("_", Sample_year)) #force to character variable (as.factor and as.character weren't working)
 
 #define what to analyze
 factors <- "Sample_yr_ch" #predictor variable
-continuous_vars <- c("SOM_perC", "SOM_C_kgm2_7cm", "SOM_perN", "SOM_CN",
+continuous_vars <- c("pH", "SOM_perC", "SOM_C_kgm2_7cm", "SOM_perN", "SOM_CN",
                      "POM_perC", "POM_C_kgm2_7cm", "POM_perN",
                      "MAOM_perC", "MAOM_C_kgm2_7cm", "MAOM_perN", "fMAOM_C") #response variables
 data <- SOM_multiyr_match
@@ -3454,7 +3555,7 @@ SOMyr_sigdiff <- SOMyr_diff %>%
 
 #test for year and site
 factors <- c("Site_ID", "Sample_yr_ch")
-continuous_vars <- c("SOM_perC", "SOM_C_kgm2_7cm", "SOM_perN", "SOM_CN",
+continuous_vars <- c("pH", "SOM_perC", "SOM_C_kgm2_7cm", "SOM_perN", "SOM_CN",
                      "POM_perC", "POM_C_kgm2_7cm", "POM_perN",
                      "MAOM_perC", "MAOM_C_kgm2_7cm", "MAOM_perN", "fMAOM_C") #response variables
 data <- SOM_multiyr_match
@@ -3481,7 +3582,7 @@ SOM_multiyr_match <- SOM_multiyr_match %>%
 
 #test for year and site
 factors <- c("Site_yr")
-continuous_vars <- c("SOM_perC", "SOM_C_kgm2_7cm", "SOM_perN", "SOM_CN",
+continuous_vars <- c("pH", "SOM_perC", "SOM_C_kgm2_7cm", "SOM_perN", "SOM_CN",
                      "POM_perC", "POM_C_kgm2_7cm", "POM_perN",
                      "MAOM_perC", "MAOM_C_kgm2_7cm", "MAOM_perN", "fMAOM_C") #response variables
 data <- SOM_multiyr_match
@@ -3509,9 +3610,8 @@ SOM_multiyr_diff <- SOM_multiyr_diff %>%
 ```
 
 
-### Log response ratio cutting
-
-```{r hay cutting SOM}
+### Log response ratios cutting
+```{r calculate LRRs}
 
 #unmanaged only means
 avg_unmg_SOM <- SOM_2026 %>%
@@ -3520,10 +3620,10 @@ avg_unmg_SOM <- SOM_2026 %>%
   summarise(across(where(is.numeric), mean)) #get mean
 
 
-#log response ratio of soil C
-LRR_SOM_C <- SOM_2026 %>%
-  dplyr::select(Site, Management, SOM_perC, SOM_C_Tha) %>%
-  filter(Management == "Hay cutting") %>%
+#create log response ratios
+LRR_SOM <- SOM_2026[c(3:5,31:57)] %>%
+  dplyr::filter(Management == "Hay cutting") %>%
+  #for SOM C
   mutate(SOM_perC_unmg = #add column for unmanaged means
            case_when(Site == "Bickershaw"
                      ~ avg_unmg_SOM$SOM_perC[avg_unmg_SOM$Site == "Bickershaw"],
@@ -3531,8 +3631,7 @@ LRR_SOM_C <- SOM_2026 %>%
                      ~ avg_unmg_SOM$SOM_perC[avg_unmg_SOM$Site == "Amberswood"],
                      Site == "Flashes" 
                      ~ avg_unmg_SOM$SOM_perC[avg_unmg_SOM$Site == "Flashes"])) %>%
-  mutate(LRR_SOM_perC = 
-           log(SOM_perC/SOM_perC_unmg)) %>% #calculate log response ratio percent C
+  mutate(LRR_SOM_perC = log(SOM_perC/SOM_perC_unmg)) %>% #calculate log response ratio percent C
   mutate(SOM_CTha_unmg = #add column for unmanaged means
            case_when(Site == "Bickershaw"
                      ~ avg_unmg_SOM$SOM_C_Tha[avg_unmg_SOM$Site == "Bickershaw"],
@@ -3540,25 +3639,102 @@ LRR_SOM_C <- SOM_2026 %>%
                      ~ avg_unmg_SOM$SOM_C_Tha[avg_unmg_SOM$Site == "Amberswood"],
                      Site == "Flashes" 
                      ~ avg_unmg_SOM$SOM_C_Tha[avg_unmg_SOM$Site == "Flashes"])) %>%
-  mutate(LRR_SOM_CTha = 
-           log(SOM_C_Tha/SOM_CTha_unmg)) #calculate log response ratio percent C
+  mutate(LRR_SOM_CTha = log(SOM_C_Tha/SOM_CTha_unmg)) %>% #calculate log response ratio
+  #for SOM N
+  mutate(SOM_perN_unmg = #add column for unmanaged means
+           case_when(Site == "Bickershaw"
+                     ~ avg_unmg_SOM$SOM_perN[avg_unmg_SOM$Site == "Bickershaw"],
+                     Site == "Amberswood"
+                     ~ avg_unmg_SOM$SOM_perN[avg_unmg_SOM$Site == "Amberswood"],
+                     Site == "Flashes" 
+                     ~ avg_unmg_SOM$SOM_perN[avg_unmg_SOM$Site == "Flashes"])) %>%
+  mutate(LRR_SOM_perN = log(SOM_perN/SOM_perN_unmg)) %>%
+  #for POM C
+  mutate(POM_perC_unmg = #add column for unmanaged means
+           case_when(Site == "Bickershaw"
+                     ~ avg_unmg_SOM$POM_perC[avg_unmg_SOM$Site == "Bickershaw"],
+                     Site == "Amberswood"
+                     ~ avg_unmg_SOM$POM_perC[avg_unmg_SOM$Site == "Amberswood"],
+                     Site == "Flashes" 
+                     ~ avg_unmg_SOM$POM_perC[avg_unmg_SOM$Site == "Flashes"])) %>%
+  mutate(LRR_POM_perC = log(POM_perC/POM_perC_unmg)) %>% 
+  mutate(POM_C_kgm2_unmg = #add column for unmanaged means
+           case_when(Site == "Bickershaw"
+                     ~ avg_unmg_SOM$POM_C_kgm2_7cm[avg_unmg_SOM$Site == "Bickershaw"],
+                     Site == "Amberswood"
+                     ~ avg_unmg_SOM$POM_C_kgm2_7cm[avg_unmg_SOM$Site == "Amberswood"],
+                     Site == "Flashes" 
+                     ~ avg_unmg_SOM$POM_C_kgm2_7cm[avg_unmg_SOM$Site == "Flashes"])) %>%
+  mutate(LRR_POM_C_kgm2 = log(POM_C_kgm2_7cm/POM_C_kgm2_unmg)) %>%
+  #for POM N
+  mutate(POM_perN_unmg = #add column for unmanaged means
+           case_when(Site == "Bickershaw"
+                     ~ avg_unmg_SOM$POM_perN[avg_unmg_SOM$Site == "Bickershaw"],
+                     Site == "Amberswood"
+                     ~ avg_unmg_SOM$POM_perN[avg_unmg_SOM$Site == "Amberswood"],
+                     Site == "Flashes" 
+                     ~ avg_unmg_SOM$POM_perN[avg_unmg_SOM$Site == "Flashes"])) %>%
+  mutate(LRR_POM_perN = log(POM_perN/POM_perN_unmg)) %>% 
+  #for MAOM C
+  mutate(MAOM_perC_unmg = #add column for unmanaged means
+           case_when(Site == "Bickershaw"
+                     ~ avg_unmg_SOM$MAOM_perC[avg_unmg_SOM$Site == "Bickershaw"],
+                     Site == "Amberswood"
+                     ~ avg_unmg_SOM$MAOM_perC[avg_unmg_SOM$Site == "Amberswood"],
+                     Site == "Flashes" 
+                     ~ avg_unmg_SOM$MAOM_perC[avg_unmg_SOM$Site == "Flashes"])) %>%
+  mutate(LRR_MAOM_perC = log(MAOM_perC/MAOM_perC_unmg)) %>% 
+  mutate(MAOM_C_kgm2_unmg = #add column for unmanaged means
+           case_when(Site == "Bickershaw"
+                     ~ avg_unmg_SOM$MAOM_C_kgm2_7cm[avg_unmg_SOM$Site == "Bickershaw"],
+                     Site == "Amberswood"
+                     ~ avg_unmg_SOM$MAOM_C_kgm2_7cm[avg_unmg_SOM$Site == "Amberswood"],
+                     Site == "Flashes" 
+                     ~ avg_unmg_SOM$MAOM_C_kgm2_7cm[avg_unmg_SOM$Site == "Flashes"])) %>%
+  mutate(LRR_MAOM_C_kgm2 = log(MAOM_C_kgm2_7cm/MAOM_C_kgm2_unmg)) %>%
+  #for MAOM N
+  mutate(MAOM_perN_unmg = #add column for unmanaged means
+           case_when(Site == "Bickershaw"
+                     ~ avg_unmg_SOM$MAOM_perN[avg_unmg_SOM$Site == "Bickershaw"],
+                     Site == "Amberswood"
+                     ~ avg_unmg_SOM$MAOM_perN[avg_unmg_SOM$Site == "Amberswood"],
+                     Site == "Flashes" 
+                     ~ avg_unmg_SOM$MAOM_perN[avg_unmg_SOM$Site == "Flashes"])) %>%
+  mutate(LRR_MAOM_perN = log(MAOM_perN/MAOM_perN_unmg)) %>%
+  #fMAOM-C
+  mutate(fMAOM_C_unmg = #add column for unmanaged means
+           case_when(Site == "Bickershaw"
+                     ~ avg_unmg_SOM$fMAOM_C[avg_unmg_SOM$Site == "Bickershaw"],
+                     Site == "Amberswood"
+                     ~ avg_unmg_SOM$fMAOM_C[avg_unmg_SOM$Site == "Amberswood"],
+                     Site == "Flashes" 
+                     ~ avg_unmg_SOM$fMAOM_C[avg_unmg_SOM$Site == "Flashes"])) %>%
+  mutate(LRR_fMAOM_C = log(fMAOM_C/fMAOM_C_unmg)) 
+
+```
+
+#### SOM-C
+
+```{r hay cutting SOM C}
+
+
 
 #calculate confidence intervals for log response ratios
-predict(lm(LRR_SOM_perC ~ Site, data = LRR_SOM_C), interval = "confidence") #calculate confidence intervals for log response ratio of percent C
-predict(lm(LRR_SOM_CTha ~ Site, data = LRR_SOM_C), interval = "confidence") #calculate confidence intervals for log response ratio of C in T ha
+predict(lm(LRR_SOM_perC ~ Site, data = LRR_SOM), interval = "confidence") #calculate confidence intervals for log response ratio of percent C
+predict(lm(LRR_SOM_CTha ~ Site, data = LRR_SOM), interval = "confidence") #calculate confidence intervals for log response ratio of C in T ha
 
 #plot log response ratios with confidence intervals in ggplot
-ggplot(LRR_SOM_C, aes(y=Site, x=LRR_SOM_perC, fill=Site, color=Site)) +
+ggplot(LRR_SOM, aes(y=Site, x=LRR_SOM_perC, fill=Site, color=Site)) +
   geom_point(size=2) +
   #geom_violin(alpha=0.2) +
-  geom_errorbar(aes(xmin=predict(lm(LRR_SOM_perC ~ Site, data = LRR_SOM_C), 
+  geom_errorbar(aes(xmin=predict(lm(LRR_SOM_perC ~ Site, data = LRR_SOM), 
                                  interval = "confidence")[,2],
-                    xmax=predict(lm(LRR_SOM_perC ~ Site, data = LRR_SOM_C), 
+                    xmax=predict(lm(LRR_SOM_perC ~ Site, data = LRR_SOM), 
                                  interval = "confidence")[,3]),
                 width=0.2) +
   scale_color_manual(values = colors3) + scale_fill_manual(values = colors3) +
   #ggtitle("Log Response Ratio of SOM %C for Hay Cutting vs Unmanaged") +
-  ylab("") + xlab("Log Response Ratio of SOM %C") +
+  ylab("") + xlab("Log Response Ratio of SOM % C") +
   my_theme
 
 #save plot
@@ -3574,12 +3750,12 @@ ggsave('LRR_SOM_perC.svg', #save plot name and type - can be "eps", "pdf", "jpeg
 ```{r Tha LRR plot}
 
 #plot log response ratios with confidence intervals in ggplot
-ggplot(LRR_SOM_C, aes(y=Site, x=LRR_SOM_CTha, fill=Site, color=Site)) +
+ggplot(LRR_SOM, aes(y=Site, x=LRR_SOM_CTha, fill=Site, color=Site)) +
   geom_point(size=2) +
   #geom_violin(alpha=0.2) +
-  geom_errorbar(aes(xmin=predict(lm(LRR_SOM_CTha ~ Site, data = LRR_SOM_C), 
+  geom_errorbar(aes(xmin=predict(lm(LRR_SOM_CTha ~ Site, data = LRR_SOM), 
                                  interval = "confidence")[,2],
-                    xmax=predict(lm(LRR_SOM_CTha ~ Site, data = LRR_SOM_C), 
+                    xmax=predict(lm(LRR_SOM_CTha ~ Site, data = LRR_SOM), 
                                  interval = "confidence")[,3]),
                 width=0.2) +
   scale_color_manual(values = colors3) + scale_fill_manual(values = colors3) +
@@ -3596,48 +3772,59 @@ ggsave('LRR_SOMC_Tha.svg', #save plot name and type - can be "eps", "pdf", "jpeg
 
 ```
 
-```{r hay cutting POM}
+#### SOM-N
+```{r hay cutting SOM-N}
 
-#log response ratio of soil C
-LRR_POM_C <- SOM_2026 %>%
-  dplyr::select(Site, Management, POM_perC, POM_C_kgm2_7cm) %>%
-  filter(Management == "Hay cutting") %>%
-  mutate(POM_perC_unmg = #add column for unmanaged means
-           case_when(Site == "Bickershaw"
-                     ~ avg_unmg_SOM$POM_perC[avg_unmg_SOM$Site == "Bickershaw"],
-                     Site == "Amberswood"
-                     ~ avg_unmg_SOM$POM_perC[avg_unmg_SOM$Site == "Amberswood"],
-                     Site == "Flashes" 
-                     ~ avg_unmg_SOM$POM_perC[avg_unmg_SOM$Site == "Flashes"])) %>%
-  mutate(LRR_POM_perC = 
-           log(POM_perC/POM_perC_unmg)) %>% #calculate log response ratio percent C
-  mutate(POM_C_kgm2_unmg = #add column for unmanaged means
-           case_when(Site == "Bickershaw"
-                     ~ avg_unmg_SOM$POM_C_kgm2_7cm[avg_unmg_SOM$Site == "Bickershaw"],
-                     Site == "Amberswood"
-                     ~ avg_unmg_SOM$POM_C_kgm2_7cm[avg_unmg_SOM$Site == "Amberswood"],
-                     Site == "Flashes" 
-                     ~ avg_unmg_SOM$POM_C_kgm2_7cm[avg_unmg_SOM$Site == "Flashes"])) %>%
-  mutate(LRR_POM_C_kgm2 = 
-           log(POM_C_kgm2_7cm/POM_C_kgm2_unmg)) #calculate log response ratio percent C
 
 #calculate confidence intervals for log response ratios
-predict(lm(LRR_POM_perC ~ Site, data = LRR_POM_C), interval = "confidence") #calculate confidence intervals for log response ratio of percent C
-predict(lm(LRR_POM_C_kgm2 ~ Site, data = LRR_POM_C), interval = "confidence") #calculate confidence intervals for log response ratio of C in T ha
+predict(lm(LRR_SOM_perN ~ Site, data = LRR_SOM), interval = "confidence") #calculate confidence intervals for log response ratio of percent N
 
 #plot log response ratios with confidence intervals in ggplot
-ggplot(LRR_POM_C, aes(y=Site, x=LRR_POM_perC, fill=Site, color=Site)) +
+ggplot(LRR_SOM, aes(y=Site, x=LRR_SOM_perN, fill=Site, color=Site)) +
   geom_point(size=2) +
   #geom_violin(alpha=0.2) +
-  geom_errorbar(aes(xmin=predict(lm(LRR_POM_perC ~ Site, data = LRR_POM_C), 
+  geom_errorbar(aes(xmin=predict(lm(LRR_SOM_perN ~ Site, data = LRR_SOM), 
                                  interval = "confidence")[,2],
-                    xmax=predict(lm(LRR_POM_perC ~ Site, data = LRR_POM_C), 
+                    xmax=predict(lm(LRR_SOM_perN ~ Site, data = LRR_SOM), 
+                                 interval = "confidence")[,3]),
+                width=0.2) +
+  scale_color_manual(values = colors3) + scale_fill_manual(values = colors3) +
+  #ggtitle("Log Response Ratio of SOM %C for Hay Cutting vs Unmanaged") +
+  ylab("") + xlab("Log Response Ratio of SOM % N") +
+  my_theme
+
+#save plot
+ggsave('LRR_SOM_perN.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 6, height = 3, units = "in", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
+
+```
+
+
+#### POM-C
+
+```{r hay cutting POM}
+
+#calculate confidence intervals for log response ratios
+predict(lm(LRR_POM_perC ~ Site, data = LRR_SOM), interval = "confidence") #calculate confidence intervals for log response ratio of percent C
+predict(lm(LRR_POM_C_kgm2 ~ Site, data = LRR_SOM), interval = "confidence") #calculate confidence intervals for log response ratio of C in T ha
+
+#plot log response ratios with confidence intervals in ggplot
+ggplot(LRR_SOM, aes(y=Site, x=LRR_POM_perC, fill=Site, color=Site)) +
+  geom_point(size=2) +
+  #geom_violin(alpha=0.2) +
+  geom_errorbar(aes(xmin=predict(lm(LRR_POM_perC ~ Site, data = LRR_SOM), 
+                                 interval = "confidence")[,2],
+                    xmax=predict(lm(LRR_POM_perC ~ Site, data = LRR_SOM), 
                                  interval = "confidence")[,3]),
                 width=0.2) +
   scale_color_manual(values = colors3) + scale_fill_manual(values = colors3) +
   #ggtitle("Log Response Ratio of SOM %C for Hay Cutting vs Unmanaged") +
   scale_x_continuous(breaks = c(-1, -0.5, 0, 0.5, 1)) + #set specific tick marks on x axis
-  ylab("") + xlab("Log Response Ratio of POM %C") +
+  ylab("") + xlab("Log Response Ratio of POM % C") +
   my_theme
 
 #save plot
@@ -3650,52 +3837,131 @@ ggsave('LRR_POM_perC.svg', #save plot name and type - can be "eps", "pdf", "jpeg
 
 ```
 
-```{r hay cutting MAOM}
-
-#log response ratio of soil C
-LRR_MAOM_C <- SOM_2026 %>%
-  dplyr::select(Site, Management, MAOM_perC, MAOM_C_kgm2_7cm) %>%
-  filter(Management == "Hay cutting") %>%
-  mutate(MAOM_perC_unmg = #add column for unmanaged means
-           case_when(Site == "Bickershaw"
-                     ~ avg_unmg_SOM$MAOM_perC[avg_unmg_SOM$Site == "Bickershaw"],
-                     Site == "Amberswood"
-                     ~ avg_unmg_SOM$MAOM_perC[avg_unmg_SOM$Site == "Amberswood"],
-                     Site == "Flashes" 
-                     ~ avg_unmg_SOM$MAOM_perC[avg_unmg_SOM$Site == "Flashes"])) %>%
-  mutate(LRR_MAOM_perC = 
-           log(MAOM_perC/MAOM_perC_unmg)) %>% #calculate log response ratio percent C
-  mutate(MAOM_C_kgm2_unmg = #add column for unmanaged means
-           case_when(Site == "Bickershaw"
-                     ~ avg_unmg_SOM$MAOM_C_kgm2_7cm[avg_unmg_SOM$Site == "Bickershaw"],
-                     Site == "Amberswood"
-                     ~ avg_unmg_SOM$MAOM_C_kgm2_7cm[avg_unmg_SOM$Site == "Amberswood"],
-                     Site == "Flashes" 
-                     ~ avg_unmg_SOM$MAOM_C_kgm2_7cm[avg_unmg_SOM$Site == "Flashes"])) %>%
-  mutate(LRR_MAOM_C_kgm2 = 
-           log(MAOM_C_kgm2_7cm/MAOM_C_kgm2_unmg)) #calculate log response ratio percent C
+#### POM-N
+```{r hay cutting POM N}
 
 #calculate confidence intervals for log response ratios
-predict(lm(LRR_MAOM_perC ~ Site, data = LRR_MAOM_C), interval = "confidence") #calculate confidence intervals for log response ratio of percent C
-predict(lm(LRR_MAOM_C_kgm2 ~ Site, data = LRR_MAOM_C), interval = "confidence") #calculate confidence intervals for log response ratio of C in T ha
+predict(lm(LRR_POM_perN ~ Site, data = LRR_SOM), interval = "confidence") #calculate confidence intervals for log response ratio of percent N
 
 #plot log response ratios with confidence intervals in ggplot
-ggplot(LRR_MAOM_C, aes(y=Site, x=LRR_MAOM_perC, fill=Site, color=Site)) +
+ggplot(LRR_SOM, aes(y=Site, x=LRR_POM_perN, fill=Site, color=Site)) +
   geom_point(size=2) +
   #geom_violin(alpha=0.2) +
-  geom_errorbar(aes(xmin=predict(lm(LRR_MAOM_perC ~ Site, data = LRR_MAOM_C), 
+  geom_errorbar(aes(xmin=predict(lm(LRR_POM_perN ~ Site, data = LRR_SOM), 
                                  interval = "confidence")[,2],
-                    xmax=predict(lm(LRR_MAOM_perC ~ Site, data = LRR_MAOM_C), 
+                    xmax=predict(lm(LRR_POM_perN ~ Site, data = LRR_SOM), 
                                  interval = "confidence")[,3]),
                 width=0.2) +
   scale_color_manual(values = colors3) + scale_fill_manual(values = colors3) +
   #ggtitle("Log Response Ratio of SOM %C for Hay Cutting vs Unmanaged") +
   scale_x_continuous(breaks = c(-1, -0.5, 0, 0.5, 1)) + #set specific tick marks on x axis
-  ylab("") + xlab("Log Response Ratio of MAOM %C") +
+  ylab("") + xlab("Log Response Ratio of POM % N") +
+  my_theme
+
+#save plot
+ggsave('LRR_POM_perN.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 6, height = 3, units = "in", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
+
+```
+
+
+#### MAOM-C
+
+```{r hay cutting MAOM}
+
+#log response ratio of soil C
+
+#calculate confidence intervals for log response ratios
+predict(lm(LRR_MAOM_perC ~ Site, data = LRR_SOM), interval = "confidence") #calculate confidence intervals for log response ratio of percent C
+predict(lm(LRR_MAOM_C_kgm2 ~ Site, data = LRR_SOM), interval = "confidence") #calculate confidence intervals for log response ratio of C in T ha
+
+#plot log response ratios with confidence intervals in ggplot
+ggplot(LRR_SOM, aes(y=Site, x=LRR_MAOM_perC, fill=Site, color=Site)) +
+  geom_point(size=2) +
+  #geom_violin(alpha=0.2) +
+  geom_errorbar(aes(xmin=predict(lm(LRR_MAOM_perC ~ Site, data = LRR_SOM), 
+                                 interval = "confidence")[,2],
+                    xmax=predict(lm(LRR_MAOM_perC ~ Site, data = LRR_SOM), 
+                                 interval = "confidence")[,3]),
+                width=0.2) +
+  scale_color_manual(values = colors3) + scale_fill_manual(values = colors3) +
+  #ggtitle("Log Response Ratio of SOM %C for Hay Cutting vs Unmanaged") +
+  scale_x_continuous(breaks = c(-1, -0.5, 0, 0.5, 1)) + #set specific tick marks on x axis
+  ylab("") + xlab("Log Response Ratio of MAOM % C") +
   my_theme
 
 #save plot
 ggsave('LRR_MAOM_perC.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 6, height = 3, units = "in", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
+
+```
+
+#### MAOM-N
+```{r hay cutting MAOM N}
+
+#log response ratio of soil C
+
+#calculate confidence intervals for log response ratios
+predict(lm(LRR_MAOM_perN ~ Site, data = LRR_SOM), interval = "confidence") #calculate confidence intervals for log response ratio of percent N
+
+#plot log response ratios with confidence intervals in ggplot
+ggplot(LRR_SOM, aes(y=Site, x=LRR_MAOM_perN, fill=Site, color=Site)) +
+  geom_point(size=2) +
+  #geom_violin(alpha=0.2) +
+  geom_errorbar(aes(xmin=predict(lm(LRR_MAOM_perN ~ Site, data = LRR_SOM), 
+                                 interval = "confidence")[,2],
+                    xmax=predict(lm(LRR_MAOM_perN ~ Site, data = LRR_SOM), 
+                                 interval = "confidence")[,3]),
+                width=0.2) +
+  scale_color_manual(values = colors3) + scale_fill_manual(values = colors3) +
+  #ggtitle("Log Response Ratio of SOM %C for Hay Cutting vs Unmanaged") +
+  scale_x_continuous(breaks = c(-1, -0.5, 0, 0.5, 1)) + #set specific tick marks on x axis
+  ylab("") + xlab("Log Response Ratio of MAOM % N") +
+  my_theme
+
+#save plot
+ggsave('LRR_MAOM_perN.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 6, height = 3, units = "in", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
+
+```
+
+#### fMAOM-C
+```{r hay cutting fMAOM-C}
+
+#log response ratio of soil C
+
+#calculate confidence intervals for log response ratios
+predict(lm(LRR_fMAOM_C ~ Site, data = LRR_SOM), interval = "confidence") #calculate confidence intervals for log response ratio
+
+#plot log response ratios with confidence intervals in ggplot
+ggplot(LRR_SOM, aes(y=Site, x=LRR_fMAOM_C, fill=Site, color=Site)) +
+  geom_point(size=2) +
+  #geom_violin(alpha=0.2) +
+  geom_errorbar(aes(xmin=predict(lm(LRR_fMAOM_C ~ Site, data = LRR_SOM), 
+                                 interval = "confidence")[,2],
+                    xmax=predict(lm(LRR_fMAOM_C ~ Site, data = LRR_SOM), 
+                                 interval = "confidence")[,3]),
+                width=0.2) +
+  scale_color_manual(values = colors3) + scale_fill_manual(values = colors3) +
+  #ggtitle("Log Response Ratio of SOM %C for Hay Cutting vs Unmanaged") +
+  scale_x_continuous(breaks = c(-1, -0.5, 0, 0.5, 1)) + #set specific tick marks on x axis
+  ylab("") + xlab("Log Response Ratio of the proportion of C found in MAOM") +
+  my_theme
+
+#save plot
+ggsave('LRR_fMAOM_C.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
 	path = "Figures", #save to folder within working directory
 	width = 6, height = 3, units = "in", #set dimensions for figure
 	dpi = 300, #set resolution
@@ -3741,123 +4007,159 @@ UK_veg_sigdiff <- UK_veg_diff %>%
   
 ```
 
-### Compare sites at Wigan 2026
-```{r SOM stats Wigan}
+### 2023 soil comparisons
 
-#Carbon
+#### By site
+```{r SOM site 2023}
 
-#Management
-shapiro.test(resid(lm(SOM_perC ~ Management, data = SOM_2026))) #not normal
-shapiro.test(resid(lm(log(SOM_perC) ~ Management, data = SOM_2026))) #not normal, marginally better
-summary(aov(log(SOM_perC) ~ Management, data = SOM_2026)) #not sig
+#define what to analyze
+factors <- "Site_ID" #predictor variable
+continuous_vars <- c("pH", "SOM_perC", "SOM_perN", "SOM_CN",
+                     "POM_perC", "POM_perN", "POM_CN",
+                     "MAOM_perC", "MAOM_perN", "MAOM_CN", "fMAOM_C") #response variables
+data <- SOM_13C_T0
 
-shapiro.test(resid(lm(SOM_C_Tha ~ Management, data = SOM_2026))) #not normal
-shapiro.test(resid(lm(log(SOM_C_Tha) ~ Management, data = SOM_2026))) #not normal, marginally better
-summary(aov(log(SOM_C_Tha) ~ Management, data = SOM_2026)) #not sig
+#evaluate group sizes
+#evaluate_group_sizes(data, factors, continuous_vars) 
+summarize_group_sizes(data, factors, continuous_vars) 
 
-#Management as time
-shapiro.test(resid(lm(SOM_perC ~ Mgmt_time, data = SOM_2026))) #normal
-summary(aov(SOM_perC ~ Mgmt_time, data = SOM_2026)) #sig
-TukeyHSD(aov(SOM_perC ~ factor(Mgmt_time), data = SOM_2026)) #26 years > 0, 7, 18 years
+#run the analysis
+SOM23_siteid_diff <- differences(data, factors, continuous_vars)
 
-shapiro.test(resid(lm(SOM_C_Tha ~ Mgmt_time, data = SOM_2026))) #normal
-summary(aov(SOM_C_Tha ~ Mgmt_time, data = SOM_2026)) #sig
-TukeyHSD(aov(SOM_C_Tha ~ factor(Mgmt_time), data = SOM_2026)) #26 years > 0, 7, 18 years
-
-#Or interaction site x management
-shapiro.test(resid(lm(SOM_perC ~ Management * Site, data = SOM_2026))) #normal
-summary(aov(SOM_perC ~ Management * Site, data = SOM_2026)) #site, interaction
-TukeyHSD(aov(SOM_perC ~ Management * Site, data = SOM_2026)) #none are different at the same site
-
-shapiro.test(resid(lm(SOM_C_Tha ~ Management * Site, data = SOM_2026))) #not normal
-shapiro.test(resid(lm(log(SOM_C_Tha) ~ Management * Site, data = SOM_2026))) #normal
-summary(aov(log(SOM_C_Tha) ~ Management * Site, data = SOM_2026)) #management, site, interaction
-TukeyHSD(aov(log(SOM_C_Tha) ~ Management * Site, data = SOM_2026)) #almost Flashes
-
-#By Site alone
-shapiro.test(resid(lm(SOM_perC ~ Site, data = SOM_2026))) #not normal
-shapiro.test(resid(lm(log(SOM_perC) ~ Site, data = SOM_2026))) #not normal, worse
-summary(aov(SOM_perC ~ Site, data = SOM_2026)) #sig
-TukeyHSD(aov(SOM_perC ~ Site, data = SOM_2026)) #Bick < Flashes and Amber
-
-shapiro.test(resid(lm(SOM_C_Tha ~ Site, data = SOM_2026))) #normal
-summary(aov(SOM_C_Tha ~ Site, data = SOM_2026)) #sig
-TukeyHSD(aov(SOM_C_Tha ~ Site, data = SOM_2026)) #Bick < Flashes and Amber
-
-#Nitrogen
-
-#Management
-shapiro.test(resid(lm(SOM_perN ~ Management, data = SOM_2026))) #not normal
-shapiro.test(resid(lm(log(SOM_perN) ~ Management, data = SOM_2026))) #normal
-summary(aov(log(SOM_perN) ~ Management, data = SOM_2026)) #not sig
-
-#Management as time
-shapiro.test(resid(lm(SOM_perN ~ Mgmt_time, data = SOM_2026))) #not normal
-shapiro.test(resid(lm(log(SOM_perN) ~ Mgmt_time, data = SOM_2026))) #normal
-summary(aov(log(SOM_perN) ~ Mgmt_time, data = SOM_2026)) #not sig
-
-#Interaction site x management
-shapiro.test(resid(lm(SOM_perN ~ Management * Site, data = SOM_2026))) #not normal
-shapiro.test(resid(lm(log(SOM_perN) ~ Management * Site, data = SOM_2026))) #normal
-summary(aov(log(SOM_perN) ~ Management * Site, data = SOM_2026)) #site, interaction
-TukeyHSD(aov(log(SOM_perN) ~ Management * Site, data = SOM_2026)) #none are different at the same site
-
-#Site alone
-shapiro.test(resid(lm(SOM_perN ~ Site, data = SOM_2026))) #not normal
-shapiro.test(resid(lm(log(SOM_perN) ~ Site, data = SOM_2026))) #normal
-summary(aov(log(SOM_perN) ~ Site, data = SOM_2026)) #sig
-TukeyHSD(aov(log(SOM_perN) ~ Site, data = SOM_2026)) #Bick < Amber
-
-
-#Fractions - 2023
-
-shapiro.test(resid(lm(POM_C ~ Site_ID, data = SOM_13C_T0))) #normal
-summary(aov(POM_C ~ Site_ID, data = SOM_13C_T0)) #sig
-TukeyHSD(aov(POM_C ~ Site_ID, data = SOM_13C_T0)) #Flashes vs. all
-
-shapiro.test(resid(lm(POM_N ~ Site_ID, data = SOM_13C_T0))) #not normal
-shapiro.test(resid(lm(log(POM_N) ~ Site_ID, data = SOM_13C_T0))) #normal
-summary(aov(log(POM_N) ~ Site_ID, data = SOM_13C_T0)) #sig
-TukeyHSD(aov(log(POM_N) ~ Site_ID, data = SOM_13C_T0)) #Flashes vs. all, Bick 1 vs. all
-
-shapiro.test(resid(lm(MAOM_C ~ Site_ID, data = SOM_13C_T0))) #normal
-summary(aov(MAOM_C ~ Site_ID, data = SOM_13C_T0)) #sig
-TukeyHSD(aov(MAOM_C ~ Site_ID, data = SOM_13C_T0)) #Flashes vs. all
-
-shapiro.test(resid(lm(MAOM_N ~ Site_ID, data = SOM_13C_T0))) #normal
-summary(aov(MAOM_N ~ Site_ID, data = SOM_13C_T0)) #sig
-TukeyHSD(aov(MAOM_N ~ Site_ID, data = SOM_13C_T0)) #Flashes vs. Bick 1, Amber
-
-shapiro.test(resid(lm(fMAOM_C ~ Site_ID, data = SOM_13C_T0))) #normal
-summary(aov(fMAOM_C ~ Site_ID, data = SOM_13C_T0)) #sig
-TukeyHSD(aov(fMAOM_C ~ Site_ID, data = SOM_13C_T0)) #Flashes vs. Bick 1 & 2, Amber vs. Bick 1
-
-shapiro.test(resid(lm(fMAOM_N ~ Site_ID, data = SOM_13C_T0))) #normal
-summary(aov(fMAOM_N ~ Site_ID, data = SOM_13C_T0)) #sig
-TukeyHSD(aov(fMAOM_N ~ Site_ID, data = SOM_13C_T0)) #Flashes vs. Bick 1 & 2, Amber vs. Bick 1
-
-#Fractions - 2026
-
-shapiro.test(resid(lm(MAOM45_perC ~ Site_ID, data = SOM_2026))) #not normal
-shapiro.test(resid(lm(log(MAOM45_perC) ~ Site_ID, data = SOM_2026))) #normal
-summary(aov(log(MAOM45_perC) ~ Site_ID, data = SOM_2026)) #sig
-TukeyHSD(aov(log(MAOM45_perC) ~ Site_ID, data = SOM_2026)) #AU vs BM
+#filter only significant
+SOM23_siteid_sigdiff <- SOM23_siteid_diff %>%
+  filter(P_Value <= 0.05)
 
 ```
 
-```{r SOM vs pH}
+#### By pH
 
-shapiro.test(resid(lm(SOM_C ~ Site * site_data$pH, data = SOM_13C_T0))) #check normality of residuals - normal
-summary(aov(SOM_C ~ Site * site_data$pH, data = SOM_13C_T0)) #Site only
+```{r SOM 2023 pH}
 
-shapiro.test(resid(lm(SOM_C_kgm2_7cm ~ Site * site_data$pH, data = SOM_13C_T0))) #normal
-summary(aov(SOM_C_kgm2_7cm ~ Site * site_data$pH, data = SOM_13C_T0)) #Site only
+#define what to analyze
+factors <- "pH_range" #predictor variable
+continuous_vars <- c("SOM_perC", "SOM_perN", "SOM_CN",
+                     "POM_perC", "POM_perN", "POM_CN",
+                     "MAOM_perC", "MAOM_perN", "MAOM_CN", "fMAOM_C") #response variables
+data <- SOM_13C_T0
 
-shapiro.test(resid(lm(SOM_N ~ Site * site_data$pH, data = SOM_13C_T0))) #check normality of residuals - normal
-summary(aov(SOM_N ~ Site * site_data$pH, data = SOM_13C_T0)) #Site only
+#evaluate group sizes
+#summarize_group_sizes(data, factors, continuous_vars) 
+
+#run the analysis
+SOM23_pH_diff <- differences(data, factors, continuous_vars)
+
+#filter only significant
+SOM23_pH_sigdiff <- SOM23_pH_diff %>%
+  filter(P_Value <= 0.05)
 
 ```
 
+
+### 2026 soil comparisons
+
+#### By site
+```{r SOM site 2026}
+
+#define what to analyze
+factors <- "Site_ID" #predictor variable
+continuous_vars <- c("adj_BD", "pH", "SOM_perC", "SOM_C_kgm2_7cm", "SOM_perN", "SOM_CN",
+                     "POM_perC", "POM_C_kgm2_7cm", "POM_perN",
+                     "MAOM_perC", "MAOM_C_kgm2_7cm", "MAOM_perN", "fMAOM_C") #response variables
+data <- SOM_2026
+
+#evaluate group sizes
+#evaluate_group_sizes(data, factors, continuous_vars) 
+#summarize_group_sizes(data, factors, continuous_vars) 
+
+#run the analysis
+SOM26_siteid_diff <- differences(data, factors, continuous_vars)
+
+#filter only significant
+SOM26_siteid_sigdiff <- SOM26_siteid_diff %>%
+  filter(P_Value <= 0.05)
+
+
+```
+
+
+#### Management
+
+```{r SOM management only}
+
+#define what to analyze
+factors <- "Management" #predictor variable
+continuous_vars <- c("adj_BD", "pH", "SOM_perC", "SOM_C_kgm2_7cm", "SOM_perN", "SOM_CN",
+                     "POM_perC", "POM_C_kgm2_7cm", "POM_perN",
+                     "MAOM_perC", "MAOM_C_kgm2_7cm", "MAOM_perN", "fMAOM_C") #response variables
+data <- SOM_2026
+
+#evaluate group sizes
+evaluate_group_sizes(data, factors, continuous_vars) 
+summarize_group_sizes(data, factors, continuous_vars) 
+
+#run the analysis
+SOM26_mgmt_diff <- differences(data, factors, continuous_vars)
+
+
+```
+
+```{r SOM management time}
+
+SOM_2026$Mgmt_timefct <- as.factor(SOM_2026$Mgmt_time)
+
+#define what to analyze
+factors <- "Mgmt_timefct" #predictor variable
+continuous_vars <- c("adj_BD", "pH", "SOM_perC", "SOM_C_kgm2_7cm", "SOM_perN", "SOM_CN",
+                     "POM_perC", "POM_C_kgm2_7cm", "POM_perN",
+                     "MAOM_perC", "MAOM_C_kgm2_7cm", "MAOM_perN", "fMAOM_C") #response variables
+data <- SOM_2026
+
+#evaluate group sizes
+#evaluate_group_sizes(data, factors, continuous_vars) 
+#summarize_group_sizes(data, factors, continuous_vars) 
+
+#run the analysis
+SOM26_mgmttime_diff <- differences(data, factors, continuous_vars)
+
+#filter only significant
+SOM26_mgmttime_sigdiff <- SOM26_mgmttime_diff %>%
+  filter(P_Value <= 0.05)
+
+
+```
+
+#### By pH
+
+```{r SOM 2026 pH}
+
+#add pH ranges
+SOM_2026 <- SOM_2026 %>%
+  mutate(pH_range = case_when(pH <= 5 ~ "Very Strongly Acidic", #make pH categories
+                                pH > 5 & pH <= 5.5 ~ "Strongly Acidic",
+                                pH > 5.5 & pH <= 6 ~ "Moderately Acidic",
+                                pH > 6 & pH <= 6.5 ~ "Mildly Acidic",
+                                pH > 6.5 & pH <= 7.3 ~ "Neutral",
+                                pH > 7.3 ~ "Alkaline")) 
+
+#define what to analyze
+factors <- "pH_range" #predictor variable
+continuous_vars <- c("adj_BD", "SOM_perC", "SOM_C_kgm2_7cm", "SOM_perN", "SOM_CN",
+                     "POM_perC", "POM_C_kgm2_7cm", "POM_perN",
+                     "MAOM_perC", "MAOM_C_kgm2_7cm", "MAOM_perN", "fMAOM_C") #response variables
+data <- SOM_2026
+
+#evaluate group sizes
+#summarize_group_sizes(data, factors, continuous_vars) 
+
+#run the analysis
+SOM26_pH_diff <- differences(data, factors, continuous_vars)
+
+#filter only significant
+SOM26_pH_sigdiff <- SOM26_pH_diff %>%
+  filter(P_Value <= 0.05)
+
+```
 
 
 ### Linear Mixed Models explaining soil C
@@ -3866,56 +4168,61 @@ summary(aov(SOM_N ~ Site * site_data$pH, data = SOM_13C_T0)) #Site only
 
 ```{r SOC pH}
 
-shapiro.test(resid(lm(SOM_C ~ pH_range, data = SOM_13C_T0))) #check normality of residuals - not normal
-shapiro.test(resid(lm(log(SOM_C) ~ pH_range, data = SOM_13C_T0))) #not normal but closer
-summary(aov(log(SOM_C) ~ pH_range, data = SOM_13C_T0)) #sig
-summary(aov(log(SOM_C) ~ pH, data = SOM_13C_T0)) #sig
+#SOM C
+shapiro.test(resid(lmer(SOM_C ~ pH + (1|Site_ID), #site random
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0, #choose dataframe
+    na.action = na.omit))) #check normality of residuals - not normal but high W
+leveneTest(lm(SOM_C ~ pH_range, data = SOM_13C_T0)) #homogeneous
 
-Anova(lmer(log(SOM_C) ~ pH_range +
-             (1|Site_ID), #site random
+#art
+summary(art(SOM_C ~ factor(pH_range) + (1|Site_ID), #aligned rank transform - check
+            data = SOM_13C_T0))
+anova(art(SOM_C ~ factor(pH_range) + (1|Site_ID), #aligned rank transform anova
+            data = SOM_13C_T0)) #not sig
+
+Anova(lmer(SOM_C ~ pH_range + (1|Site_ID), #site random
     REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
     data = SOM_13C_T0, #choose dataframe
     na.action = na.omit), type=3) #not sig
 
-shapiro.test(resid(lm(POM_C ~ pH_range, data = SOM_13C_T0))) #check normality of residuals - not normal
-shapiro.test(resid(lm(log(POM_C) ~ pH_range, data = SOM_13C_T0))) #normal
-summary(aov(log(POM_C) ~ pH_range, data = SOM_13C_T0)) #sig
-summary(aov(log(POM_C) ~ pH, data = SOM_13C_T0)) #sig
-
-Anova(lmer(log(POM_C) ~ pH_range + (1|Site_ID), #site random
+#POM C
+shapiro.test(resid(lmer(POM_C ~ pH + (1|Site_ID), #site random
     REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
     data = SOM_13C_T0, #choose dataframe
-    na.action = na.omit), type=3) #pH barely sig
+    na.action = na.omit))) #check normality of residuals - normal
+leveneTest(lm(POM_C ~ pH_range, data = SOM_13C_T0)) #homogeneous
 
-POM_C_pH_lme <- lmer(POM_C ~ pH_range + (1|Site_ID), 
+Anova(lmer(POM_C ~ pH + (1|Site_ID), #site random
     REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
     data = SOM_13C_T0, #choose dataframe
-    na.action = na.omit)
-summary(POM_C_pH_lme) #random accounts for most variance
-shapiro.test(resid(POM_C_pH_lme)) #normal
-performance::r2(POM_C_pH_lme, multivariate=TRUE) #calculate R-squared for model fit
-MuMIn::AICc(POM_C_pH_lme, k=2) #calculate AICc for for model comparison with small sample sizes
-TukeyHSD(aov(POM_C ~ pH_range + Site, data = SOM_13C_T0)) #acidic lower
+    na.action = na.omit), type=3) #not sig
 
-shapiro.test(resid(lm(MAOM_C ~ pH_range, data = SOM_13C_T0))) #check normality of residuals - normal
-summary(aov(MAOM_C ~ pH_range, data = SOM_13C_T0)) #very sig
-summary(aov(MAOM_C ~ pH, data = SOM_13C_T0)) #very sig
+shapiro.test(resid(lmer(MAOM_C ~ pH + (1|Site_ID), #site random
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0, #choose dataframe
+    na.action = na.omit))) #check normality of residuals - normal
+leveneTest(lm(MAOM_C ~ pH_range, data = SOM_13C_T0)) #heterogeneous
 
-Anova(lmer(log(MAOM_C) ~ pH_range + (1|Site_ID), #site random
+#with site random
+summary(art(MAOM_C ~ factor(pH_range) + (1|Site_ID), #aligned rank transform - check
+            data = SOM_13C_T0))
+anova(art(MAOM_C ~ factor(pH_range) + (1|Site_ID), #aligned rank transform anova
+            data = SOM_13C_T0)) #not sig
+
+Anova(lmer(MAOM_C ~ pH + (1|Site_ID), #site random
     REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
     data = SOM_13C_T0, #choose dataframe
     na.action = na.omit), type=3) #sig
 
-MAOM_C_pH_lme <- lmer(MAOM_C ~ pH_range + (1|Site_ID), 
+MAOM_C_pH_lme <- lmer(MAOM_C ~ pH + (1|Site_ID), 
     REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
     data = SOM_13C_T0, #choose dataframe
     na.action = na.omit)
 summary(MAOM_C_pH_lme) #random accounts for less
-shapiro.test(resid(MAOM_C_pH_lme)) #normal
 performance::r2(MAOM_C_pH_lme, multivariate=TRUE) #calculate R-squared for model fit
 MuMIn::AICc(MAOM_C_pH_lme, k=2) #calculate AICc for for model comparison with small sample sizes
-TukeyHSD(aov(MAOM_C ~ pH_range + Site, data = SOM_13C_T0)) #acidic lower
-  
+
 ```
 
 ```{r SOM C vs pH plot}
@@ -3976,32 +4283,39 @@ ggsave('MAOM_C_bypH.svg', #save plot name and type - can be "eps", "pdf", "jpeg"
 #### By mycorrhizal association
 ```{r SOM vs AM}
 
-shapiro.test(resid(lm(SOM_C ~ AM_hyph_per + AM_arb_per, data = SOM_13C_T0))) #check normality of residuals - not normal
-shapiro.test(resid(lm(log(SOM_C) ~ AM_hyph_per + AM_arb_per, data = SOM_13C_T0))) #check normality of residuals - normal
-summary(aov(log(SOM_C) ~ AM_hyph_per + AM_arb_per, data = SOM_13C_T0)) #hyphae sig
+shapiro.test(resid(lmer(SOM_C ~ AM_hyph_per + AM_arb_per + AM_ves_ct +
+             (1|Site_ID), #site random
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0, #choose dataframe
+    na.action = na.omit))) #check normality of residuals - not normal but high W
 
-Anova(lmer(log(SOM_C) ~ AM_hyph_ct + AM_arb_ct + AM_ves_ct + AM_absent +
+shapiro.test(resid(lmer(log(SOM_C) ~ AM_hyph_per + AM_arb_per + AM_ves_ct +
+             (1|Site_ID), #site random
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0, #choose dataframe
+    na.action = na.omit))) #normal
+
+Anova(lmer(log(SOM_C) ~ AM_hyph_per + AM_arb_per + AM_ves_ct +
              (1|Site_ID), #site random
     REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
     data = SOM_13C_T0, #choose dataframe
     na.action = na.omit), type=3) #none
 
-Anova(lmer(SOM_C ~ AM_hyph_per + AM_arb_per + AM_ves_ct +
-             (1|Site_ID), #site random
+
+shapiro.test(resid(lmer(SOM_N ~ AM_hyph_per + AM_arb_per + AM_ves_ct + (1|Site_ID), 
     REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
     data = SOM_13C_T0, #choose dataframe
-    na.action = na.omit), type=3) #none
-
-shapiro.test(resid(lm(SOM_N ~ AM_hyph_per + AM_arb_per + AM_ves_ct, data = SOM_13C_T0))) #check normality of residuals - normal
-summary(aov(SOM_N ~ AM_hyph_per + AM_arb_per + AM_ves_ct, data = SOM_13C_T0)) #hyphae
+    na.action = na.omit))) #check normality of residuals - normal
 
 Anova(lmer(SOM_N ~ AM_hyph_per + AM_arb_per + AM_ves_ct + (1|Site_ID), 
     REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
     data = SOM_13C_T0, #choose dataframe
     na.action = na.omit), type=3) #none
 
-shapiro.test(resid(lm(POM_C ~ AM_hyph_per + AM_arb_per + AM_ves_ct, data = SOM_13C_T0))) #normal
-summary(aov(POM_C ~ AM_hyph_per + AM_arb_per + AM_ves_ct, data = SOM_13C_T0)) #hyphae, vesicles almost
+shapiro.test(resid(lmer(POM_C ~ AM_hyph_per + AM_arb_per + AM_ves_ct + (1|Site_ID), 
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0, #choose dataframe
+    na.action = na.omit))) #normal
 
 Anova(lmer(POM_C ~ AM_hyph_per + AM_arb_per + AM_ves_ct + (1|Site_ID), 
     REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
@@ -4013,13 +4327,14 @@ AM_POM_C_lme <- lmer(POM_C ~ AM_hyph_per + AM_arb_per + AM_ves_ct + (1|Site_ID),
     data = SOM_13C_T0, #choose dataframe
     na.action = na.omit)
 summary(AM_POM_C_lme) #random accounts for most variance
-shapiro.test(resid(AM_POM_C_lme)) #normal
 check_collinearity(AM_POM_C_lme) #no collinearity
 performance::r2(AM_POM_C_lme, multivariate=TRUE) #calculate R-squared for model fit
 MuMIn::AICc(AM_POM_C_lme, k=2) #calculate AICc for for model comparison with small sample sizes
 
-shapiro.test(resid(lm(POM_N ~ AM_hyph_per + AM_arb_per + AM_ves_ct, data = SOM_13C_T0))) #normal
-summary(aov(POM_N ~ AM_hyph_per + AM_arb_per + AM_ves_ct, data = SOM_13C_T0)) #hyphae
+shapiro.test(resid(lmer(POM_N ~ AM_hyph_per + AM_arb_per + AM_ves_ct + (1|Site_ID), 
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0, #choose dataframe
+    na.action = na.omit))) #normal
 
 Anova(lmer(POM_N ~ AM_hyph_per + AM_arb_per + AM_ves_ct + (1|Site_ID), 
     REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
@@ -4031,15 +4346,30 @@ AM_POM_N_lme <- lmer(POM_N ~ AM_hyph_per + AM_arb_per + AM_ves_ct + (1|Site_ID),
     data = SOM_13C_T0, #choose dataframe
     na.action = na.omit)
 summary(AM_POM_N_lme) #
-shapiro.test(resid(AM_POM_N_lme)) #normal
 check_collinearity(AM_POM_N_lme) #no collinearity
 performance::r2(AM_POM_N_lme, multivariate=TRUE) #calculate R-squared for model fit
 MuMIn::AICc(AM_POM_N_lme, k=2) #calculate AICc for for model comparison with small sample sizes
 
 
-shapiro.test(resid(lm(MAOM_C ~ AM_hyph_per + AM_arb_per + AM_ves_ct, data = SOM_13C_T0))) #check normality of residuals - not normal
-shapiro.test(resid(lm(log(MAOM_C) ~ AM_hyph_per + AM_arb_per + AM_ves_ct, data = SOM_13C_T0))) #normal
-summary(aov(log(MAOM_C) ~ AM_hyph_per + AM_arb_per + AM_ves_ct, data = SOM_13C_T0)) #none
+shapiro.test(resid(lmer(MAOM_C ~ AM_hyph_per + AM_arb_per + AM_ves_ct + (1|Site_ID), 
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0, #choose dataframe
+    na.action = na.omit))) #check normality of residuals - normal
+
+Anova(lmer(MAOM_C ~ AM_hyph_per + AM_arb_per + AM_ves_ct + (1|Site_ID), 
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0, #choose dataframe
+    na.action = na.omit), type=3) #none
+
+shapiro.test(resid(lmer(MAOM_N ~ AM_hyph_per + AM_arb_per + AM_ves_ct + (1|Site_ID), 
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0, #choose dataframe
+    na.action = na.omit))) #check normality of residuals - normal
+
+Anova(lmer(MAOM_N ~ AM_hyph_per + AM_arb_per + AM_ves_ct + (1|Site_ID), 
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0, #choose dataframe
+    na.action = na.omit), type=3) #none
 
 ```
 
@@ -4064,7 +4394,7 @@ ggsave('POM_C_byAMvesicles.svg', #save plot name and type - can be "eps", "pdf",
 
 ```{r AM POM-N chart}
 
-#Hyphal presence boxplot
+#Hyphal presence lm
 ggplot(data = SOM_13C_T0, aes(x=AM_hyph_per, y=POM_N)) + 
   geom_point(aes(color = factor(Site_ID))) + #add points to plot
   geom_smooth(method="lm", se=TRUE, color=plotline_color, fill=fill_color) +
@@ -4152,6 +4482,28 @@ summary(aov(log(MAOM_N) ~ AM_biomass_gkg + total_fun_gkg, data = SOM_13C_T0)) #n
 
 ### By site
 
+```{r AM assoc site}
+
+#define what to analyze
+factors <- "Site_ID" #predictor variable
+continuous_vars <- c("AM_hyph_per", "AM_hyph_ct", "AM_arb_per", "AM_arb_ct",
+                     "AM_ves_ct", "AM_absent") #response variables
+data <- SOM_13C_T0
+
+#evaluate group sizes
+#evaluate_group_sizes(data, factors, continuous_vars) 
+summarize_group_sizes(data, factors, continuous_vars) 
+
+#run the analysis
+AM_siteid_diff <- differences(data, factors, continuous_vars)
+
+#filter only significant
+AM_siteid_sigdiff <- AM_siteid_diff %>%
+  filter(P_Value <= 0.05)
+
+```
+
+
 ```{r AM presence}
 
 #Hyphal presence boxplot
@@ -4159,6 +4511,7 @@ ggplot(data = AMdata, aes(x=Site_ID, y=hyph_percent, fill=Site_ID)) +
 	geom_boxplot() + 
   scale_fill_manual(values = colors4) + #define colors to use
   scale_y_continuous(labels = scales::percent_format(accuracy = 1)) + #change to %
+  geom_jitter(shape=16, position=position_jitter(0.1), size = 0.85) +
   my_theme +
   #ggtitle("Hyphal Presence Across Sites") + #add a graph title
   xlab("") + ylab("Presence of AM Hyphae (% of Root)") #define/change X and Y labels
@@ -4169,15 +4522,37 @@ ggsave('AM_hyph.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "t
        dpi = 300, #set resolution
        bg=NULL) #background from plot specifications
 
-shapiro.test(resid(lm(hyph_percent ~ Site_ID, data = AMdata))) #check normality of residuals - normal
-summary(aov(hyph_percent ~ Site_ID, data = AMdata)) #sig
-TukeyHSD(aov(hyph_percent ~ Site_ID, data = AMdata)) #Flashes > Bick 1 & 2, Ambers > Bick 1
+
+```
+
+### By pH 
+
+#### ANOVA range
+
+```{r AM assoc pH range}
+
+#define what to analyze
+factors <- "pH_range" #predictor variable
+continuous_vars <- c("AM_hyph_per", "AM_hyph_ct", "AM_arb_per", "AM_arb_ct",
+                     "AM_ves_ct", "AM_absent") #response variables
+data <- SOM_13C_T0
+
+#evaluate group sizes
+#evaluate_group_sizes(data, factors, continuous_vars) 
+summarize_group_sizes(data, factors, continuous_vars) 
+
+#run the analysis
+AM_pH_diff <- differences(data, factors, continuous_vars)
+
+#filter only significant
+AM_pH_sigdiff <- AM_pH_diff %>%
+  filter(P_Value <= 0.05)
+
 
 
 ```
 
-### By pH
-```{r AM assoc pH}
+```{r AM hyph pH range plot}
 
 #order variables
 SOM_13C_T0$pH_range <- factor(SOM_13C_T0$pH_range, levels = c("Moderately Acidic", "Mildly Acidic", "Neutral", "Alkaline"))
@@ -4198,12 +4573,6 @@ ggsave('AM_hyph_pH.svg', #save plot name and type - can be "eps", "pdf", "jpeg",
        dpi = 300, #set resolution
        bg=NULL) #background from plot specifications
 
-shapiro.test(resid(lm(AM_hyph_per ~ pH + Site_ID, data = SOM_13C_T0))) #check normality of residuals - normal
-summary(aov(AM_hyph_per ~ pH + Site_ID, data = SOM_13C_T0)) #pH sig
-shapiro.test(resid(lm(AM_hyph_per ~ pH_range + Site_ID, data = SOM_13C_T0))) #check normality of residuals - normal
-summary(aov(AM_hyph_per ~ pH_range + Site_ID, data = SOM_13C_T0)) #pH sig
-TukeyHSD(aov(AM_hyph_per ~ pH_range + Site_ID, data = SOM_13C_T0)) #Moderately Acidic < Alkaline, Neutral, Mildly Acidic
-
 ```
 
 ```{r AM arb pH}
@@ -4222,13 +4591,6 @@ ggsave('AM_arb_pH.svg', #save plot name and type - can be "eps", "pdf", "jpeg", 
        width = 6, height = 4, units = "in", #set dimensions
        dpi = 300, #set resolution
        bg=NULL) #background from plot specifications
-
-shapiro.test(resid(lm(AM_arb_per ~ pH + Site_ID, data = SOM_13C_T0))) #check normality of residuals - not normal but can't log inline, leave for now
-summary(aov(AM_arb_per ~ pH + Site_ID, data = SOM_13C_T0)) #pH sig
-
-shapiro.test(resid(lm(AM_arb_per ~ pH_range + Site_ID, data = SOM_13C_T0))) #check normality of residuals - not normal but can't log inline, leave for now
-summary(aov(AM_arb_per ~ pH_range + Site_ID, data = SOM_13C_T0)) #pH sig
-TukeyHSD(aov(AM_arb_per ~ pH_range + Site_ID, data = SOM_13C_T0)) #Moderately Acidic < Mildly Acidic
 
 ```
 
@@ -4250,14 +4612,97 @@ ggsave('AM_ves_pH.svg', #save plot name and type - can be "eps", "pdf", "jpeg", 
        dpi = 300, #set resolution
        bg=NULL) #background from plot specifications
 
-shapiro.test(resid(lm(AM_ves_ct ~ pH + Site_ID, data = SOM_13C_T0))) #check normality of residuals - normal
-summary(aov(AM_ves_ct ~ pH + Site_ID, data = SOM_13C_T0)) #pH sig
-shapiro.test(resid(lm(AM_ves_ct ~ pH_range + Site_ID, data = SOM_13C_T0))) #check normality of residuals - normal
-summary(aov(AM_ves_ct ~ pH_range + Site_ID, data = SOM_13C_T0)) #both site and pH sig
-TukeyHSD(aov(AM_ves_ct ~ pH_range + Site_ID, data = SOM_13C_T0)) #none
+```
 
+#### pH lme
+
+```{r AM pH lme}
+
+#hyph percent
+shapiro.test(resid(lmer(AM_hyph_per ~ pH + (1|Site_ID), #site random
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0, #choose dataframe
+    na.action = na.omit))) #check normality of residuals - normal
+leveneTest(lm(AM_hyph_per ~ pH_range, data = SOM_13C_T0)) #homogeneous
+
+AM_hyph_pH_lme <- lmer(AM_hyph_per ~ pH + (1|Site_ID), 
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0, #choose dataframe
+    na.action = na.omit)
+summary(AM_hyph_pH_lme) #random accounts for less
+model_performance(AM_hyph_pH_lme) #AICc -10, BIC -4.4, R2 0.29
+cor.test(SOM_13C_T0$AM_hyph_per, SOM_13C_T0$pH, method = "pearson") #0.58
+
+#arb percent
+shapiro.test(resid(lmer(AM_arb_per ~ pH + (1|Site_ID), #site random
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0, #choose dataframe
+    na.action = na.omit))) #check normality of residuals - not normal but high W
+leveneTest(lm(AM_arb_per ~ pH_range, data = SOM_13C_T0)) #homogeneous
+
+AM_arb_pH_lme <- lmer(AM_arb_per ~ pH + (1|Site_ID), 
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0, #choose dataframe
+    na.action = na.omit)
+summary(AM_arb_pH_lme) #random accounts for less
+model_performance(AM_arb_pH_lme) #AICc -49, BIC -43, R2 0.089
+cor.test(SOM_13C_T0$AM_arb_per, SOM_13C_T0$pH, method = "pearson") #0.41
+
+
+#arb count
+shapiro.test(resid(lmer(AM_arb_ct ~ pH + (1|Site_ID), #site random
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0, #choose dataframe
+    na.action = na.omit))) #check normality of residuals - not normal but high W
+leveneTest(lm(AM_arb_ct ~ pH_range, data = SOM_13C_T0)) #homogeneous
+
+AM_arbct_pH_lme <- lmer(AM_arb_ct ~ pH + (1|Site_ID), 
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0, #choose dataframe
+    na.action = na.omit)
+summary(AM_arbct_pH_lme) #random accounts for less
+model_performance(AM_arbct_pH_lme) #AICc 226, BIC 231, R2 0.003
 
 ```
+
+```{r AM hyph vs pH plot}
+
+#AM hyph plot
+ggplot(data = SOM_13C_T0, aes(x=pH, y=AM_hyph_per)) + 
+  geom_point(aes(color = factor(Site_ID))) + #add points to plot
+  geom_smooth(method="lm", se=TRUE, color="grey10", fill=fill_color) +
+  scale_color_manual(values = colors4) + #define colors to use
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) + #change to %
+  my_theme +
+  xlab("pH") + ylab("AM Hyphae (% of Root)") #define/change X and Y labels
+
+ggsave('AMhyph_bypH_190726.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+```
+
+```{r AM arb vs pH plot}
+
+#AM arb plot
+ggplot(data = SOM_13C_T0, aes(x=pH, y=AM_arb_per)) + 
+  geom_point(aes(color = factor(Site_ID))) + #add points to plot
+  geom_smooth(method="lm", se=TRUE, color=plotline_color, fill=fill_color) +
+  scale_color_manual(values = colors4) + #define colors to use
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) + #change to %
+  my_theme +
+  xlab("pH") + ylab("AM Arbuscules (% of Root)") #define/change X and Y labels
+
+ggsave('AMarb_bypH_190726.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+```
+
 
 ### By coal waste
 
@@ -4384,10 +4829,73 @@ Anova(lmer(AM_arb_per ~ g_debris + (1|Site_ID),
 
 ### By site
 
+```{r fungal metrics site}
+
+#define what to analyze
+factors <- "Site_ID" #predictor variable
+continuous_vars <- c("spores_g", "AM_mm_g", "other_mm_g", "AM_biomass_gkg",
+                     "total_fun_gkg", "AM_C_mgkg", "otherfun_C_mgkg", "total_fun_C_mgkg") #response variables
+data <- SOM_13C_T0
+
+#evaluate group sizes
+#evaluate_group_sizes(data, factors, continuous_vars) 
+summarize_group_sizes(data, factors, continuous_vars) 
+
+#run the analysis
+hyph_siteid_diff <- differences(data, factors, continuous_vars)
+
+
+```
+
+```{r spores T0}
+
+#Spores boxplot
+HLD %>%
+  filter(Timepoint == "T0") %>%
+ggplot(aes(x=Site_ID, y=spores_g, fill=Site_ID)) + 
+	geom_boxplot() + 
+  scale_fill_manual(values = colors4) + #define colors to use
+  #scale_y_continuous(labels = scales::percent_format(accuracy = 1)) + #change to %
+  my_theme +
+  #ggtitle("Hyphal Presence Across Sites") + #add a graph title
+  xlab("") + ylab("Spores (Count/g soil)") #define/change X and Y labels
+
+ggsave('SporesT0.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+
+```
+
+```{r spores T6}
+
+#Spores boxplot
+HLD %>%
+  filter(Timepoint == "T6") %>%
+ggplot(aes(x=Site_ID, y=spores_g, fill=Site_ID)) + 
+	geom_boxplot() + 
+  scale_fill_manual(values = colors4) + #define colors to use
+  #scale_y_continuous(labels = scales::percent_format(accuracy = 1)) + #change to %
+  my_theme +
+  #ggtitle("Hyphal Presence Across Sites") + #add a graph title
+  xlab("") + ylab("Spores (Count/g soil)") #define/change X and Y labels
+
+ggsave('SporesT6.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+
+```
+
 ```{r spores}
 
 #Spores boxplot
-ggplot(data = HLD, aes(x=Site_ID, y=spores_g, fill=Site_ID)) + 
+HLD %>%
+ggplot(aes(x=Site_ID, y=spores_g, fill=Timepoint)) + 
 	geom_boxplot() + 
   scale_fill_manual(values = colors4) + #define colors to use
   #scale_y_continuous(labels = scales::percent_format(accuracy = 1)) + #change to %
@@ -4401,15 +4909,13 @@ ggsave('Spores.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "ti
        dpi = 300, #set resolution
        bg=NULL) #background from plot specifications
 
-shapiro.test(resid(lm(spores_g ~ Site_ID, data = HLD))) #check normality of residuals - normal
-summary(aov(spores_g ~ Site_ID, data = HLD)) #not sig
 
 ```
 
 ```{r AM mm g}
 
 #AM HLD boxplot
-ggplot(data = HLD, aes(x=Site_ID, y=AM_mm_g, fill=Site_ID)) + 
+ggplot(data = HLD, aes(x=Site_ID, y=AM_mm_g, fill=Timepoint)) + 
 	geom_boxplot() + 
   scale_fill_manual(values = colors4) + #define colors to use
   my_theme +
@@ -4421,15 +4927,12 @@ ggsave('AM_HLD.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "ti
        dpi = 300, #set resolution
        bg=NULL) #background from plot specifications
 
-shapiro.test(resid(lm(AM_mm_g ~ Site_ID, data = HLD))) #check normality of residuals - normal
-summary(aov(AM_mm_g ~ Site_ID, data = HLD)) #not sig
-
 ```
 
 ```{r other fungi mm g}
 
 #Other HLD boxplot
-ggplot(data = HLD, aes(x=Site_ID, y=other_mm_g, fill=Site_ID)) + 
+ggplot(data = HLD, aes(x=Site_ID, y=other_mm_g, fill=Timepoint)) + 
 	geom_boxplot() + 
   scale_fill_manual(values = colors4) + #define colors to use
   my_theme +
@@ -4441,15 +4944,12 @@ ggsave('other_HLD.svg', #save plot name and type - can be "eps", "pdf", "jpeg", 
        dpi = 300, #set resolution
        bg=NULL) #background from plot specifications
 
-shapiro.test(resid(lm(other_mm_g ~ Site_ID, data = HLD))) #check normality of residuals - normal
-summary(aov(other_mm_g ~ Site_ID, data = HLD)) #not sig
-
 ```
 
 ```{r AM length ratio}
 
 #Length ratio boxplot
-ggplot(data = HLD, aes(x=Site_ID, y=AM_fun_mm_ratio, fill=Site_ID)) + 
+ggplot(data = HLD, aes(x=Site_ID, y=AM_fun_mm_ratio, fill=Timepoint)) + 
 	geom_boxplot() + 
   scale_fill_manual(values = colors4) + #define colors to use
   my_theme + xlab("") + 
@@ -4462,16 +4962,13 @@ ggsave('AM_HLD_ratio.svg', #save plot name and type - can be "eps", "pdf", "jpeg
        dpi = 300, #set resolution
        bg=NULL) #background from plot specifications
 
-shapiro.test(resid(lm(AM_fun_mm_ratio ~ Site_ID, data = HLD))) #check normality of residuals - normal
-summary(aov(AM_fun_mm_ratio ~ Site_ID, data = HLD)) #not sig
-
 ```
 
 
 ```{r total fungal biomass}
 
 #Biomass boxplot
-ggplot(data = HLD, aes(x=Site_ID, y=total_fun_gkg, fill=Site_ID)) + 
+ggplot(data = HLD, aes(x=Site_ID, y=total_fun_gkg, fill=Timepoint)) + 
 	geom_boxplot() + 
   scale_fill_manual(values = colors4) + #define colors to use
   my_theme + xlab("") + 
@@ -4483,15 +4980,12 @@ ggsave('total_fun_biomass.svg', #save plot name and type - can be "eps", "pdf", 
        dpi = 300, #set resolution
        bg=NULL) #background from plot specifications
 
-shapiro.test(resid(lm(total_fun_gkg ~ Site_ID, data = HLD))) #check normality of residuals - normal
-summary(aov(total_fun_gkg ~ Site_ID, data = HLD)) #not sig
-
 ```
 
 ```{r AM fungal biomass}
 
 #Biomass boxplot
-ggplot(data = HLD, aes(x=Site_ID, y=AM_biomass_gkg, fill=Site_ID)) + 
+ggplot(data = HLD, aes(x=Site_ID, y=AM_biomass_gkg, fill=Timepoint)) + 
 	geom_boxplot() + 
   scale_fill_manual(values = colors4) + #define colors to use
   my_theme + xlab("") + 
@@ -4504,15 +4998,13 @@ ggsave('AM_biomass.svg', #save plot name and type - can be "eps", "pdf", "jpeg",
        dpi = 300, #set resolution
        bg=NULL) #background from plot specifications
 
-shapiro.test(resid(lm(AM_biomass_gkg ~ Site_ID, data = HLD))) #check normality of residuals - normal
-summary(aov(AM_biomass_gkg ~ Site_ID, data = HLD)) #not sig
 
 ```
 
 ```{r AM biomass ratio}
 
 #Biomass ratio boxplot
-ggplot(data = HLD, aes(x=Site_ID, y=AM_fun_g_ratio, fill=Site_ID)) + 
+ggplot(data = HLD, aes(x=Site_ID, y=AM_fun_g_ratio, fill=Timepoint)) + 
 	geom_boxplot() + 
   scale_fill_manual(values = colors4) + #define colors to use
   my_theme + xlab("") + 
@@ -4525,16 +5017,59 @@ ggsave('AM_biomass_ratio.svg', #save plot name and type - can be "eps", "pdf", "
        dpi = 300, #set resolution
        bg=NULL) #background from plot specifications
 
-shapiro.test(resid(lm(AM_fun_g_ratio ~ Site_ID, data = HLD))) #check normality of residuals - normal
-summary(aov(AM_fun_g_ratio ~ Site_ID, data = HLD)) #not sig
+```
+
+```{r stacked fungal biomass T0}
+
+#stacked bar chart
+fungal_mass %>%
+  filter(Timepoint == "T0") %>%
+  filter(fungal_type != "total_fun_mgkg") %>%
+ggplot(aes(x=Site_ID, y=mg_biomass, fill=fungal_type)) + #use the fill part to set what you want to stack by
+  geom_bar(stat = "summary", add = "mean", width = 0.7, position="stack", colour="black") + #add mean bars with black outlines stacked by the fill variable
+  scale_fill_manual(values = colors4, labels = c("AM fungi", "other fungi")) + #define colors to use
+  my_theme + xlab("") + 
+  scale_y_continuous(name = expression("Fungal biomass (mg/kg soil)"), labels = multiply1000)  #change y axis, label
+  
+
+ggsave('fungal_biomass_stacked_T0.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
 
 ```
 
-```{r stacked fungal biomass}
+```{r stacked fungal biomass T6}
 
 #stacked bar chart
-ggplot(data = fungal_mass, aes(x=Site_ID, y=g_biomass, fill=fungal_type)) + #use the fill part to set what you want to stack by
+fungal_mass %>%
+  filter(Timepoint == "T6") %>%
+ggplot(aes(x=Site_ID, y=g_biomass, fill=fungal_type)) + #use the fill part to set what you want to stack by
   geom_bar(stat = "summary", add = "mean", width = 0.7, position="stack", colour="black") + #add mean bars with black outlines stacked by the fill variable
+  scale_fill_manual(values = colors4, labels = c("AM fungi", "other fungi")) + #define colors to use
+  my_theme + xlab("") + 
+  scale_y_continuous(name = expression("Fungal biomass (mg/kg soil)"), labels = multiply1000)  #change y axis, label
+  
+
+ggsave('fungal_biomass_stacked_T6.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+
+```
+
+
+```{r stacked fungal biomass both}
+
+#stacked bar chart
+fungal_mass %>%
+ggplot(aes(x=Timepoint, y=g_biomass, fill=fungal_type)) + #use the fill part to set what you want to stack by
+  geom_bar(stat = "summary", add = "mean", width = 0.7, position="stack", colour="black") + #add mean bars with black outlines stacked by the fill variable
+  facet_wrap(~Site_ID, nrow=1) +
   scale_fill_manual(values = colors4, labels = c("AM fungi", "other fungi")) + #define colors to use
   my_theme + xlab("") + 
   scale_y_continuous(name = expression("Fungal biomass (mg/kg soil)"), labels = multiply1000)  #change y axis, label
@@ -4549,6 +5084,7 @@ ggsave('fungal_biomass_stacked.svg', #save plot name and type - can be "eps", "p
 
 ```
 
+
 ### By pH
 
 ```{r spores pH}
@@ -4562,14 +5098,20 @@ ggplot(data = SOM_13C_T0, aes(x=pH_range, y=spores_g, fill=Site_ID)) +
   #ggtitle("Hyphal Presence Across Sites") + #add a graph title
   xlab("") + ylab("Spores (Count/g soil)") #define/change X and Y labels
 
+#Spores lm pH
+ggplot(data = SOM_13C_T0, aes(x=pH, y=spores_g)) + 
+  geom_point(aes(color = factor(Site_ID))) + #add points to plot
+  geom_smooth(method="lm", se=TRUE, color=plotline_color, fill=fill_color) +
+  scale_color_manual(values = colors4) + #define colors to use
+  my_theme +
+  xlab("pH") + ylab("Spores (Count/g soil)") #define/change X and Y labels
+
 ggsave('Spores_pH.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
        path = "Figures", #save to folder
        width = 6, height = 4, units = "in", #set dimensions
        dpi = 300, #set resolution
        bg=NULL) #background from plot specifications
 
-shapiro.test(resid(lm(spores_g ~ pH + Site_ID, data = SOM_13C_T0))) #check normality of residuals - normal
-summary(aov(spores_g ~ pH + Site_ID, data = SOM_13C_T0)) #not sig
 
 ```
 
@@ -4582,14 +5124,20 @@ ggplot(data = SOM_13C_T0, aes(x=pH_range, y=AM_mm_g, fill=Site_ID)) +
   my_theme +
   xlab("") + ylab("AM hyphal length density (mm/g soil)") #define/change X and Y labels
 
+#AM HLD lm ph
+ggplot(data = SOM_13C_T0, aes(x=pH, y=AM_mm_g)) + 
+  geom_point(aes(color = factor(Site_ID))) + #add points to plot
+  geom_smooth(method="lm", se=TRUE, color=plotline_color, fill=fill_color) +
+  scale_color_manual(values = colors4) + #define colors to use
+  my_theme +
+  xlab("pH") + ylab("AM hyphal length density (mm/g soil)") #define/change X and Y labels
+
 ggsave('AM_HLD_pH.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
        path = "Figures", #save to folder
        width = 6, height = 4, units = "in", #set dimensions
        dpi = 300, #set resolution
        bg=NULL) #background from plot specifications
 
-shapiro.test(resid(lm(AM_mm_g ~ pH + Site_ID, data = SOM_13C_T0))) #check normality of residuals - normal
-summary(aov(AM_mm_g ~ pH + Site_ID, data = SOM_13C_T0)) #not sig
 
 ```
 
@@ -4602,14 +5150,20 @@ ggplot(data = SOM_13C_T0, aes(x=pH_range, y=other_mm_g, fill=Site_ID)) +
   my_theme +
   xlab("") + ylab("Non-AM hyphal length density (mm/g soil)") #define/change X and Y labels
 
+#Other HLD lm ph
+ggplot(data = SOM_13C_T0, aes(x=pH, y=other_mm_g)) + 
+  geom_point(aes(color = factor(Site_ID))) + #add points to plot
+  geom_smooth(method="lm", se=TRUE, color=plotline_color, fill=fill_color) +
+  scale_color_manual(values = colors4) + #define colors to use
+  my_theme +
+  xlab("pH") + ylab("Non-AM hyphal length density (mm/g soil)") #define/change X and Y labels
+
 ggsave('other_HLD_pH.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
        path = "Figures", #save to folder
        width = 6, height = 4, units = "in", #set dimensions
        dpi = 300, #set resolution
        bg=NULL) #background from plot specifications
 
-shapiro.test(resid(lm(other_mm_g ~ pH + Site_ID, data = SOM_13C_T0))) #check normality of residuals - normal
-summary(aov(other_mm_g ~ pH + Site_ID, data = SOM_13C_T0)) #not sig
 
 ```
 
@@ -4629,8 +5183,6 @@ ggsave('AM_HLD_ratio.svg', #save plot name and type - can be "eps", "pdf", "jpeg
        dpi = 300, #set resolution
        bg=NULL) #background from plot specifications
 
-shapiro.test(resid(lm(AM_fun_mm_ratio ~ pH + Site_ID, data = SOM_13C_T0))) #check normality of residuals - normal
-summary(aov(AM_fun_mm_ratio ~ Site_ID, data = HLD)) #not sig
 
 ```
 
@@ -4644,14 +5196,20 @@ ggplot(data = SOM_13C_T0, aes(x=pH_range, y=total_fun_gkg, fill=Site_ID)) +
   my_theme + xlab("") + 
   scale_y_continuous(name = expression("Total fungal biomass (mg/kg soil)"), labels = multiply1000)  #change y axis, label
 
+#biomass lm ph
+ggplot(data = SOM_13C_T0, aes(x=pH, y=total_fun_gkg)) + 
+  geom_point(aes(color = factor(Site_ID))) + #add points to plot
+  geom_smooth(method="lm", se=TRUE, color=plotline_color, fill=fill_color) +
+  scale_color_manual(values = colors4) + #define colors to use
+  my_theme +
+  xlab("pH") + ylab("Total fungal biomass (mg/kg soil)") #define/change X and Y labels
+
 ggsave('total_fun_biomass_pH.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
        path = "Figures", #save to folder
        width = 6, height = 4, units = "in", #set dimensions
        dpi = 300, #set resolution
        bg=NULL) #background from plot specifications
 
-shapiro.test(resid(lm(total_fun_gkg ~ pH + Site_ID, data = SOM_13C_T0))) #check normality of residuals - normal
-summary(aov(total_fun_gkg ~ pH + Site_ID, data = SOM_13C_T0)) #not sig
 
 ```
 
@@ -4664,6 +5222,13 @@ ggplot(data = SOM_13C_T0, aes(x=pH_range, y=AM_biomass_gkg, fill=Site_ID)) +
   my_theme + xlab("") + 
   scale_y_continuous(name = expression("AM fungal biomass (mg/kg soil)"), labels = multiply1000)  #change y axis, label
   
+#biomass lm ph
+ggplot(data = SOM_13C_T0, aes(x=pH, y=AM_biomass_gkg)) + 
+  geom_point(aes(color = factor(Site_ID))) + #add points to plot
+  geom_smooth(method="lm", se=TRUE, color=plotline_color, fill=fill_color) +
+  scale_color_manual(values = colors4) + #define colors to use
+  my_theme +
+  xlab("pH") + ylab("AM fungal biomass (mg/kg soil)") #define/change X and Y labels
 
 ggsave('AM_biomass_pH.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
        path = "Figures", #save to folder
@@ -4671,8 +5236,6 @@ ggsave('AM_biomass_pH.svg', #save plot name and type - can be "eps", "pdf", "jpe
        dpi = 300, #set resolution
        bg=NULL) #background from plot specifications
 
-shapiro.test(resid(lm(AM_biomass_gkg ~ pH + Site_ID, data = SOM_13C_T0))) #check normality of residuals - normal
-summary(aov(AM_biomass_gkg ~ pH + Site_ID, data = SOM_13C_T0)) #not sig
 
 ```
 
@@ -4692,8 +5255,6 @@ ggsave('AM_biomass_ratio.svg', #save plot name and type - can be "eps", "pdf", "
        dpi = 300, #set resolution
        bg=NULL) #background from plot specifications
 
-shapiro.test(resid(lm(AM_fun_g_ratio ~ Site_ID, data = HLD))) #check normality of residuals - normal
-summary(aov(AM_fun_g_ratio ~ Site_ID, data = HLD)) #not sig
 
 ```
 
@@ -4724,7 +5285,8 @@ summary(aov(total_fun_gkg ~ g_debris + Site_ID, data = SOM_13C_T0)) #not sig
 ```{r total hyph C site}
 
 #Biomass boxplot
-ggplot(data = SOM_13C_T0, aes(x=Site_ID, y=total_fun_C_mgkg, fill=Site_ID)) + 
+HLD %>%
+ggplot(aes(x=Site_ID, y=total_fun_C_mgkg, fill=Timepoint)) + 
 	geom_boxplot() + 
   scale_fill_manual(values = colors4) + #define colors to use
   my_theme + xlab("") + 
@@ -4737,8 +5299,6 @@ ggsave('totalfungal_C_site.svg', #save plot name and type - can be "eps", "pdf",
        dpi = 300, #set resolution
        bg=NULL) #background from plot specifications
 
-shapiro.test(resid(lm(total_fun_C_mgkg ~ Site_ID, data = SOM_13C_T0))) #check normality of residuals - normal
-summary(aov(total_fun_C_mgkg ~ Site_ID, data = SOM_13C_T0)) #not sig
 
 ```
 
@@ -4746,7 +5306,8 @@ summary(aov(total_fun_C_mgkg ~ Site_ID, data = SOM_13C_T0)) #not sig
 ```{r AM hyph C site}
 
 #Biomass boxplot
-ggplot(data = SOM_13C_T0, aes(x=Site_ID, y=AM_C_mgkg, fill=Site_ID)) + 
+HLD %>%
+ggplot(aes(x=Site_ID, y=AM_C_mgkg, fill=Timepoint)) + 
 	geom_boxplot() + 
   scale_fill_manual(values = colors4) + #define colors to use
   my_theme + xlab("") + 
@@ -4759,8 +5320,6 @@ ggsave('AM_C_site.svg', #save plot name and type - can be "eps", "pdf", "jpeg", 
        dpi = 300, #set resolution
        bg=NULL) #background from plot specifications
 
-shapiro.test(resid(lm(AM_C_mgkg ~ Site_ID, data = SOM_13C_T0))) #check normality of residuals - normal
-summary(aov(AM_C_mgkg ~ Site_ID, data = SOM_13C_T0)) #not sig
 
 ```
 
@@ -4949,6 +5508,55 @@ summary(aov(simpson ~ site_id, data = diversity)) #sig
 TukeyHSD(aov(simpson ~ site_id, data = diversity)) #Flashes > Bick 1
 
 ```
+
+# NBN Communities
+
+```{r NBN plants}
+
+#box plots of plant biodiversity metrics
+NBN_sites %>%
+  filter(kingdom == "Plantae") %>%
+  filter(year >= 2023) %>%
+ggplot(aes(Site_ID, fill=scientific_name)) + #x=Site_ID, y=
+  geom_histogram(position="stack", stat="count") +
+  scale_fill_manual(values=colors_ramp2) + #define colors to use
+  xlab("") + ylab("Plant Species Observations from 2023-2026") + #define/change X and Y labels
+  #scale_x_discrete(labels = "", "", "", "") + #remove x axis labels
+  my_theme 
+  #theme(legend.position='bottom') #remove legend
+
+#save figure
+ggsave('NBN_plants.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+```
+
+```{r NBN insects}
+
+#box plots of arthropod biodiversity metrics
+NBN_sites %>%
+  filter(phylum == "Arthropoda") %>%
+  filter(year >= 2023) %>%
+ggplot(aes(Site_ID, fill=scientific_name)) + #x=Site_ID, y=
+  geom_histogram(position="stack", stat="count") +
+  scale_fill_manual(values=colors10) + #define colors to use
+  xlab("") + ylab("Arthropod Species Observations from 2023-2026") + #define/change X and Y labels
+  #scale_x_discrete(labels = "", "", "", "") + #remove x axis labels
+  my_theme 
+  #theme(legend.position='bottom') #remove legend
+
+#save figure
+ggsave('NBN_arthropods.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+```
+
 
 # Microbial Communities
 
@@ -6647,9 +7255,10 @@ summary(lm(MB13C_mg_g ~ plant_simpson, data = MBC)) #not sig
 
 ## Soil isotopes
 
-### Time 0
+### Pre-Label and Time 0
 
 #### Soil 13C
+
 
 ```{r soil 13C}
 
@@ -6658,6 +7267,11 @@ shapiro.test(resid(lm(d13C ~ Site_ID, data = SOM_13C[c(1:39),]))) #check normali
 leveneTest(lm(d13C ~ Site_ID, data = SOM_13C[c(1:39),])) #homogeneity
 summary(aov(d13C ~ Site_ID, data = SOM_13C[c(1:39),])) #sig
 TukeyHSD(aov(d13C ~ Site_ID, data = SOM_13C[c(1:39),])) #Flashes > Ambers
+
+shapiro.test(resid(lm(`13C_atom` ~ Site_ID, data = SOM_13C[c(1:39),]))) #check normality of residuals - normal
+leveneTest(lm(`13C_atom` ~ Site_ID, data = SOM_13C[c(1:39),])) #homogeneity
+summary(aov(`13C_atom` ~ Site_ID, data = SOM_13C[c(1:39),])) #sig
+TukeyHSD(aov(`13C_atom` ~ Site_ID, data = SOM_13C[c(1:39),])) #Flashes > Ambers
 
 #test differences in post-label soils 13C
 shapiro.test(resid(lm(SOM_d13C ~ Site_ID, data = SOM_13C_T0))) #check normality of residuals - not normal, but high W
@@ -6673,6 +7287,27 @@ kruskal.test(SOM_pot13C_mg ~ Site_ID, data = SOM_13C_T0) #sig
 TukeyHSD(aov(SOM_pot13C_mg ~ Site_ID, data = SOM_13C_T0)) #FM > BU & AM, BM almost > BU
 dunn.test(SOM_13C_T0$SOM_pot13C_mg, SOM_13C_T0$Site_ID, kw = TRUE, method = "bonferroni") #FM > BU & AM
 
+#boxplot SOM 13C pre-label
+SOM_13C %>%
+  filter(Incubation_T == -1) %>%
+ggplot(aes(x=Site_ID, y=`13C_atom`, fill=Site_ID)) + 
+	geom_boxplot() +
+  scale_fill_manual(values=colors4) + #define colors to use
+  #scale_x_discrete(labels = c("Bickershaw U", "Bickershaw M", "Amberswood M", "Flashes M")) + #change x axis labels
+  #ggtitle("Rocks and Debris per site") + #add a graph title
+  xlab("") + ylab(expression(""^13*"C Atom % in SOM")) + #define/change X and Y labels
+  my_theme +
+  theme(legend.position = "none")
+
+#save figure
+ggsave('SOM_13Cpre_190726.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 6, height = 4, units = "in", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+```
+
+```{r soil 13C T0 plot}
 
 #plot excess 13C in pots
 summary_SOM_13C %>%
@@ -6935,10 +7570,10 @@ ggsave('excess13C_6mos_130626.svg', #save plot name and type - can be "eps", "pd
 	bg=NULL) #background from plot specifications
 
 #stats
-shapiro.test(resid(lm(pot_13C_mg ~ Site_ID, data = SOM_T6[-17,]))) #check normality of residuals - normal
-leveneTest(lm(pot_13C_mg ~ Site_ID, data = SOM_T6[-17,])) #homogeneity
-summary(aov(pot_13C_mg ~ Site_ID, data = SOM_T6[-17,])) #sig
-TukeyHSD(aov(pot_13C_mg ~ Site_ID, data = SOM_T6[-17,])) #FM > BU, AM
+shapiro.test(resid(lm(pot_13C_mg ~ Site_ID, data = SOM_13C_T6[-17,]))) #check normality of residuals - normal
+leveneTest(lm(pot_13C_mg ~ Site_ID, data = SOM_13C_T6[-17,])) #homogeneity
+summary(aov(pot_13C_mg ~ Site_ID, data = SOM_13C_T6[-17,])) #sig
+TukeyHSD(aov(pot_13C_mg ~ Site_ID, data = SOM_13C_T6[-17,])) #FM > BU, AM
 
 ```
 
@@ -7631,7 +8266,11 @@ TukeyHSD(rmass_aov) #Unmanaged-23 yr P=0.0000012, Unmanaged-15 yr P=0.0057, 4 yr
 
 ```{r coal, warning=FALSE}
 
-#worms box plot
+#convert to g / kg
+SOM_2026 <- SOM_2026 %>%
+  mutate(coal_gkg = (coal_2mm_g / core_wt)*1000)
+
+#box plot
 ggplot(data = SOM_2026, aes(x=Site_ID, y=coal_2mm_g, fill=Management)) + 
 	geom_boxplot() +
   scale_fill_manual(values=colors3) + #define colors to use
@@ -7641,6 +8280,21 @@ ggplot(data = SOM_2026, aes(x=Site_ID, y=coal_2mm_g, fill=Management)) +
 
 #save figure
 ggsave('coal.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 6, height = 4, units = "in", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
+#box plot
+ggplot(data = SOM_2026, aes(x=Site_ID, y=coal_gkg, fill=Management)) + 
+	geom_boxplot() +
+  scale_fill_manual(values=colors3) + #define colors to use
+  #ggtitle("Coal in BD cores") + #add a graph title
+  xlab("") + ylab("Coal >2mm in topsoil (g/kg soil)") + #define/change X and Y labels
+  my_theme
+
+#save figure
+ggsave('coal2.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
 	path = "Figures", #save to folder within working directory
 	width = 6, height = 4, units = "in", #set dimensions for figure
 	dpi = 300, #set resolution
