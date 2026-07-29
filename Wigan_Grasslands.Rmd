@@ -1353,12 +1353,26 @@ plant13C <- harvest %>%
   mutate(excess13C_mg = case_when(sample_type == "shoot" | sample_type == "root"
                      ~ total_c_mg * (excess_per13C/100), #atom % times total C in mg
                      TRUE ~ NA)) 
-  
+
 
 #summarize means 13C for plots - by species
 summary_plant13C_sp <- plant13C %>%
   group_by(site, site_id, sample_type, species, functional_group) %>%
   summarise(across(where(is.numeric), summary_stats)) #run all summary stats
+
+#sum 13C in shoots for plots - by pot
+plant13C_shoots <- plant13C %>%
+  filter(sample_type == "shoot") %>%
+  dplyr::select(site, site_id, pot, biomass_g, total_c_mg, excess13C_mg) %>%
+  group_by(site, site_id, pot) %>%
+  summarise_all(funs(sum(., na.rm=TRUE)))#run all summary stats
+
+#sum 13C in roots for plots - by pot
+plant13C_roots <- plant13C %>%
+  filter(sample_type == "root") %>%
+  dplyr::select(site, site_id, pot, biomass_g, total_c_mg, excess13C_mg) %>%
+  group_by(site, site_id, pot) %>%
+  summarise_all(funs(sum(., na.rm=TRUE)))#run all summary stats
 
 #summarize 13C for plots add up - by site and type only
 summary_plant13C <- plant13C %>%
@@ -1409,8 +1423,8 @@ general_roots <- plant_harvest_est %>%
 
 #calculate and estimate biomass per pot
 total_pots <- plant_harvest_est %>%
-  dplyr::select(site2, management, pot, harvesttime, root, shoot, root_shoot) %>%
-  group_by(site2, management, pot, harvesttime) %>%
+  dplyr::select(site_id, site2, management, pot, harvesttime, root, shoot, root_shoot) %>%
+  group_by(site_id, site2, management, pot, harvesttime) %>%
   summarise(root = sum(root, na.rm=TRUE), shoot = sum(shoot, na.rm=TRUE), root_shoot = mean(root_shoot, na.rm=TRUE)) %>% #summarize
   mutate(root = #add some general roots to the estimated beginning biomass for incubation
            dplyr::case_when(harvesttime == "T0" ~ root,
@@ -1539,9 +1553,9 @@ env_16S <- env_16S %>%
   mutate(AM_assoc = env_16S$AM_assoc <-
            AMdata$hyph_percent[match(env_16S$Plot_ID, AMdata$Plot_ID)]) %>%
   mutate(AM_biomass = env_16S$AM_biomass <- 
-           HLD$AM_biomass_gkg[match(env_16S$Plot_ID, HLD$Pot)]) %>%
+           HLD$AM_biomass_gkg[match(env_16S$Plot_ID, HLD$pot)]) %>%
   mutate(total_fun_biomass = env_16S$total_fun_biomass <- 
-           HLD$total_fun_gkg[match(env_16S$Plot_ID, HLD$Pot)])
+           HLD$total_fun_gkg[match(env_16S$Plot_ID, HLD$pot)])
 
 
 #set row names of asv file from env
@@ -1581,7 +1595,7 @@ rm(x16s_gini.list)
 ```{r load AM and biomass fungi data}
 
 #read in AM association data
-AMdata <- read_csv("Wigan_myc.csv")
+AMdata <- read_csv("Wigan_myc.csv") 
 
 #order variables
 AMdata$Site <- factor(AMdata$Site, levels = order_sites)
@@ -1649,14 +1663,10 @@ taxa_ITS[is.na(taxa_ITS)] <- "unknown" #replace NA values with text
 #add some site, plant, other fungal data to env df
 env_ITS <- env_ITS %>%
   mutate(pH = env_ITS$pH <- site_data$pH[match(env_ITS$Plot_ID, site_data$Plot_ID)]) %>%
-  mutate(ppm_Ca = env_ITS$ppm_Ca <- 
-           site_data$ppm_Ca1[match(env_ITS$Plot_ID, site_data$Plot_ID)]) %>%
-  mutate(ppm_Mg = env_ITS$ppm_Mg <- 
-           site_data$ppm_Mg[match(env_ITS$Plot_ID, site_data$Plot_ID)]) %>%
-  mutate(ppm_Fe = env_ITS$ppm_Fe <- 
-           site_data$ppm_Fe[match(env_ITS$Plot_ID, site_data$Plot_ID)]) %>%
-  mutate(ppm_K = env_ITS$ppm_K <- 
-           site_data$ppm_K[match(env_ITS$Plot_ID, site_data$Plot_ID)]) %>%
+  mutate(ppm_Ca = site_data$ppm_Ca1[match(env_ITS$Plot_ID, site_data$Plot_ID)]) %>%
+  mutate(ppm_Mg = site_data$ppm_Mg[match(env_ITS$Plot_ID, site_data$Plot_ID)]) %>%
+  mutate(ppm_Fe = site_data$ppm_Fe[match(env_ITS$Plot_ID, site_data$Plot_ID)]) %>%
+  mutate(ppm_K = site_data$ppm_K[match(env_ITS$Plot_ID, site_data$Plot_ID)]) %>%
   mutate(ppm_Na = env_ITS$ppm_Na <- 
            site_data$ppm_Na[match(env_ITS$Plot_ID, site_data$Plot_ID)]) %>%
   mutate(ppm_P = env_ITS$ppm_P <- 
@@ -1672,9 +1682,9 @@ env_ITS <- env_ITS %>%
   mutate(AM_assoc = env_ITS$AM_assoc <-
            AMdata$hyph_percent[match(env_ITS$Plot_ID, AMdata$Plot_ID)]) %>%
   mutate(AM_biomass = env_ITS$AM_biomass <- 
-           HLD$AM_biomass_gkg[match(env_ITS$Plot_ID, HLD$Pot)]) %>%
+           HLD$AM_biomass_gkg[match(env_ITS$Plot_ID, HLD$pot)]) %>%
   mutate(total_fun_biomass = env_ITS$total_fun_biomass <- 
-           HLD$total_fun_gkg[match(env_ITS$Plot_ID, HLD$Pot)])
+           HLD$total_fun_gkg[match(env_ITS$Plot_ID, HLD$pot)])
 
 
 #alpha diversity calcs - asv
@@ -1976,20 +1986,26 @@ summary_SOM_13C <- SOM_13C[-176,] %>% #remove outlier 13C value until remeasure
 
 #add columns from other datasets to compare
 SOM_13C_T0 <- SOM_13C_T0 %>%
+  mutate(shoot_13C_mg = plant13C_shoots$excess13C_mg[match(SOM_13C_T0$Plot_ID, plant13C_shoots$pot)]) %>%
+  mutate(root_13C_mg = plant13C_roots$excess13C_mg[match(SOM_13C_T0$Plot_ID, plant13C_roots$pot)]) %>%
+  mutate(recovery = (SOM_pot13C_mg + shoot_13C_mg + root_13C_mg)/122 * 100) %>% #percent recovery
+  
   mutate(AM_hyph_per = AMdata$hyph_percent[match(SOM_13C_T0$Plot_ID, AMdata$Plot_ID)]) %>%
   mutate(AM_hyph_ct = AMdata$Hyphae[match(SOM_13C_T0$Plot_ID, AMdata$Plot_ID)]) %>%
   mutate(AM_arb_per = AMdata$arbuscule_percent[match(SOM_13C_T0$Plot_ID, AMdata$Plot_ID)]) %>%
   mutate(AM_arb_ct = AMdata$Arbuscule[match(SOM_13C_T0$Plot_ID, AMdata$Plot_ID)]) %>%
   mutate(AM_ves_ct = AMdata$Vesicle[match(SOM_13C_T0$Plot_ID, AMdata$Plot_ID)]) %>%
   mutate(AM_absent = AMdata$Nothing[match(SOM_13C_T0$Plot_ID, AMdata$Plot_ID)]) %>%
-  mutate(spores_g = HLD_T0$spores_g[match(SOM_13C_T0$Plot_ID, HLD_T0$Pot)]) %>%
-  mutate(AM_mm_g = HLD_T0$AM_mm_g[match(SOM_13C_T0$Plot_ID, HLD_T0$Pot)]) %>%
-  mutate(other_mm_g = HLD_T0$other_mm_g[match(SOM_13C_T0$Plot_ID, HLD_T0$Pot)]) %>%
-  mutate(AM_biomass_gkg = HLD_T0$AM_biomass_gkg[match(SOM_13C_T0$Plot_ID, HLD_T0$Pot)]) %>%
-  mutate(total_fun_gkg = HLD_T0$total_fun_gkg[match(SOM_13C_T0$Plot_ID, HLD_T0$Pot)]) %>%
-  mutate(AM_C_mgkg = HLD_T0$AM_C_mgkg[match(SOM_13C_T0$Plot_ID, HLD_T0$Pot)]) %>%
-  mutate(otherfun_C_mgkg = HLD_T0$otherfun_C_mgkg[match(SOM_13C_T0$Plot_ID, HLD_T0$Pot)]) %>%
-  mutate(total_fun_C_mgkg = HLD_T0$total_fun_C_mgkg[match(SOM_13C_T0$Plot_ID, HLD_T0$Pot)]) %>%
+  mutate(spores_g = HLD_T0$spores_g[match(SOM_13C_T0$Plot_ID, HLD_T0$pot)]) %>%
+  mutate(AM_mm_g = HLD_T0$AM_mm_g[match(SOM_13C_T0$Plot_ID, HLD_T0$pot)]) %>%
+  mutate(other_mm_g = HLD_T0$other_mm_g[match(SOM_13C_T0$Plot_ID, HLD_T0$pot)]) %>%
+  mutate(AM_biomass_gkg = HLD_T0$AM_biomass_gkg[match(SOM_13C_T0$Plot_ID, HLD_T0$pot)]) %>%
+  mutate(total_fun_gkg = HLD_T0$total_fun_gkg[match(SOM_13C_T0$Plot_ID, HLD_T0$pot)]) %>%
+  mutate(AM_C_mgkg = HLD_T0$AM_C_mgkg[match(SOM_13C_T0$Plot_ID, HLD_T0$pot)]) %>%
+  mutate(otherfun_C_mgkg = HLD_T0$otherfun_C_mgkg[match(SOM_13C_T0$Plot_ID, HLD_T0$pot)]) %>%
+  mutate(total_fun_C_mgkg = HLD_T0$total_fun_C_mgkg[match(SOM_13C_T0$Plot_ID, HLD_T0$pot)]) %>%
+  mutate(fun_C_soil_C = ((total_fun_C_mgkg/1000)/SOM_C)*100) %>%
+  mutate(fun_C_POM_C = ((total_fun_C_mgkg/1000)/POM_C)*100) %>%
   mutate(pH = SOM_13C_T0$pH <- site_data$pH[match(SOM_13C_T0$Plot_ID, site_data$Plot_ID)]) %>%
   mutate(pH_range = case_when(pH <= 5 ~ "Very Strongly Acidic",
                                 pH > 5 & pH <= 5.5 ~ "Strongly Acidic",
@@ -2001,14 +2017,14 @@ SOM_13C_T0 <- SOM_13C_T0 %>%
 SOM_13C_T6 <- SOM_13C %>%
   filter(Incubation_T == 6) #filter 6 mos
 SOM_13C_T6 <- SOM_13C_T6 %>% #add fungi and pH
-  mutate(spores_g = HLD_T6$spores_g[match(SOM_13C_T6$Plot_ID, HLD_T6$Pot)]) %>%
-  mutate(AM_mm_g = HLD_T6$AM_mm_g[match(SOM_13C_T6$Plot_ID, HLD_T6$Pot)]) %>%
-  mutate(other_mm_g = HLD_T6$other_mm_g[match(SOM_13C_T6$Plot_ID, HLD_T6$Pot)]) %>%
-  mutate(AM_biomass_gkg = HLD_T6$AM_biomass_gkg[match(SOM_13C_T6$Plot_ID, HLD_T6$Pot)]) %>%
-  mutate(total_fun_gkg = HLD_T6$total_fun_gkg[match(SOM_13C_T6$Plot_ID, HLD_T6$Pot)]) %>%
-  mutate(AM_C_mgkg = HLD_T6$AM_C_mgkg[match(SOM_13C_T6$Plot_ID, HLD_T6$Pot)]) %>%
-  mutate(otherfun_C_mgkg = HLD_T6$otherfun_C_mgkg[match(SOM_13C_T6$Plot_ID, HLD_T6$Pot)]) %>%
-  mutate(total_fun_C_mgkg = HLD_T6$total_fun_C_mgkg[match(SOM_13C_T6$Plot_ID, HLD_T6$Pot)]) %>%
+  mutate(spores_g = HLD_T6$spores_g[match(SOM_13C_T6$Plot_ID, HLD_T6$pot)]) %>%
+  mutate(AM_mm_g = HLD_T6$AM_mm_g[match(SOM_13C_T6$Plot_ID, HLD_T6$pot)]) %>%
+  mutate(other_mm_g = HLD_T6$other_mm_g[match(SOM_13C_T6$Plot_ID, HLD_T6$pot)]) %>%
+  mutate(AM_biomass_gkg = HLD_T6$AM_biomass_gkg[match(SOM_13C_T6$Plot_ID, HLD_T6$pot)]) %>%
+  mutate(total_fun_gkg = HLD_T6$total_fun_gkg[match(SOM_13C_T6$Plot_ID, HLD_T6$pot)]) %>%
+  mutate(AM_C_mgkg = HLD_T6$AM_C_mgkg[match(SOM_13C_T6$Plot_ID, HLD_T6$pot)]) %>%
+  mutate(otherfun_C_mgkg = HLD_T6$otherfun_C_mgkg[match(SOM_13C_T6$Plot_ID, HLD_T6$pot)]) %>%
+  mutate(total_fun_C_mgkg = HLD_T6$total_fun_C_mgkg[match(SOM_13C_T6$Plot_ID, HLD_T6$pot)]) %>%
   mutate(pH = SOM_13C_T6$pH <- site_data$pH[match(SOM_13C_T6$Plot_ID, site_data$Plot_ID)]) 
 
 #order variables
@@ -2138,7 +2154,36 @@ soilC_compare$vegetation <- factor(soilC_compare$vegetation,
 #                                              "Neutral", "Alkaline"))
 
 
+
 ```
+
+
+#### UK microbial plant data
+```{r load UK microbial data}
+
+#load data - DIGFOR - CWM with Tianyang
+UK_AMpl <- read_csv("DIGFOR_combined_simplified.csv") %>%
+  dplyr::select(vegetation, type, site, PH, 
+                AM, mean_AM, median_AM, speciesr, shannon, simpson) %>%
+  rename("pH" = "PH") %>% #match case with Wigan data
+  rename("Site" = "site") %>% #match case with Wigan data
+  filter(type == "U") %>% #use only unimproved sites
+  mutate(vegetation = str_replace(vegetation, "wet_grassland", "Wet Grassland")) %>% #match naming with Wigan data
+  filter(vegetation == "Wet Grassland" | vegetation == "Mesotrophic") %>%
+  mutate("AM_hyph_per" = AM)
+  
+AMdata_compare <- SOM_13C_T0 %>%
+  mutate(type = "R") %>% #R for restored
+  mutate(vegetation = case_when(grepl("BU", Site_ID) #use grepl to find a substring within a column
+															  ~ "Wet Grassland", #set value in new column 
+															  grepl("BM", Site_ID) ~ "Wet Grassland", 
+															  grepl("AM", Site_ID) ~ "Mesotrophic",
+															  grepl("FM", Site_ID) ~ "Mesotrophic")) %>%
+  bind_rows(UK_AMpl) %>%
+  dplyr::select(vegetation, type, Site, Site_ID, pH, AM_hyph_per)
+
+```
+
 
 ### Incubation biomass decomposition
 
@@ -5085,7 +5130,28 @@ ggsave('fungal_biomass_stacked.svg', #save plot name and type - can be "eps", "p
 ```
 
 
-### By pH
+### Test other possible
+
+```{r fungal metrics}
+
+#define what to analyze
+factors <- c("pH","SOM_N","SOM_CN","AM_hyph_per") #predictor variable
+
+#factors <- "pH_range"
+continuous_vars <- c("AM_biomass","total_fun_biomass") #response variables
+data <- env_ITS
+
+#evaluate group sizes
+#evaluate_group_sizes(data, factors, continuous_vars) 
+summarize_group_sizes(data, factors, continuous_vars) 
+
+#run the analysis
+#hyph_siteid_diff <- differences_multifactor(data, factors, continuous_vars)
+hyph_siteid_diff <- differences(data, factors, continuous_vars)
+
+
+```
+
 
 ```{r spores pH}
 
@@ -5290,7 +5356,7 @@ ggplot(aes(x=Site_ID, y=total_fun_C_mgkg, fill=Timepoint)) +
 	geom_boxplot() + 
   scale_fill_manual(values = colors4) + #define colors to use
   my_theme + xlab("") + 
-  scale_y_continuous(name = expression("Total fungal carbon (mg C/kg soil)"))  #change y axis, label
+  scale_y_continuous(name = expression("Total fungal biomass carbon (mg C/kg soil)"))  #change y axis, label
   
 
 ggsave('totalfungal_C_site.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
@@ -6152,7 +6218,7 @@ x16s_nmds_scores$Site_ID = env_16S$Site_ID
 x16s_nmds_vectors <- as.data.frame(scores(x16s_nmdsfit, display = "vectors")) #extracts relevant scores from envfit
 x16s_nmds_vectors <- cbind(x16s_nmds_vectors, variable = rownames(x16s_nmds_vectors)) #and then gives them their names
 x16s_nmds_vectors <- cbind(x16s_nmds_vectors, pval = x16s_nmdsfit$vectors$pvals) # add pvalues to dataframe
-x16s_sig_vectors <- subset(x16s_nmds_vectors, pval<=0.1) #subset data to show variables somewhat significant at rounded 0.1
+x16s_sig_vectors <- subset(x16s_nmds_vectors, pval<=0.05) #subset data to show variables significant at 0.05
 
 #plot scores with ggplot
 ggplot(x16s_nmds_scores) + 
@@ -6181,7 +6247,7 @@ ggplot(x16s_nmds_scores) +
   my_theme
 
 #save figure - name, type, folder, dimensions, resolution, background specs
-ggsave('16S_asv_NMDS_260626.svg', path = "Figures", width = 6, height = 4, units = "in", dpi = 300, bg=NULL)
+ggsave('16S_asv_NMDS_260726.svg', path = "Figures", width = 6, height = 4, units = "in", dpi = 300, bg=NULL)
 
 ```
 
@@ -6638,7 +6704,7 @@ its_nmds_scores$Site_ID = env_ITS$Site_ID
 its_nmds_vectors <- as.data.frame(scores(its_nmdsfit, display = "vectors")) #extracts relevant scores from envfit
 its_nmds_vectors <- cbind(its_nmds_vectors, variable = rownames(its_nmds_vectors)) #and then gives them their names
 its_nmds_vectors <- cbind(its_nmds_vectors, pval = its_nmdsfit$vectors$pvals) # add pvalues to dataframe
-its_sig_vectors <- subset(its_nmds_vectors, pval<=0.1) #subset data to show variables somewhat significant at rounded 0.1
+its_sig_vectors <- subset(its_nmds_vectors, pval<=0.05) #subset data to show variables significant at 0.05
 
 #plot scores with ggplot
 ggplot(its_nmds_scores) + 
@@ -6667,7 +6733,7 @@ ggplot(its_nmds_scores) +
   my_theme
 
 #save figure - name, type, folder, dimensions, resolution, background specs
-ggsave('ITS_asv_NMDS_210526.svg', path = "Figures", width = 6, height = 4, units = "in", dpi = 300, bg=NULL)
+ggsave('ITS_asv_NMDS_210726.svg', path = "Figures", width = 6, height = 4, units = "in", dpi = 300, bg=NULL)
 
 ```
 
@@ -7052,6 +7118,40 @@ ggsave('ITS_g_NMDS_210526.svg', path = "Figures", width = 6, height = 4, units =
 
 # Isotope and Incubation Results
 
+## Isotope recovery
+```{r recovery}
+
+SOM_13C_T0 %>%
+ggplot(aes(x=Site_ID, y=recovery, fill=Site_ID)) + 
+	geom_boxplot() +
+  scale_fill_manual(values=colors4) + #define colors to use
+  #scale_x_discrete(labels = c("Bickershaw U", "Bickershaw M", "Amberswood M", "Flashes M")) + #change x axis labels
+  #ggtitle("Rocks and Debris per site") + #add a graph title
+  xlab("") + ylab(expression(""^13*"C Recovery (%)")) + #define/change X and Y labels
+  my_theme +
+  theme(legend.position = "none")
+
+#save figure
+ggsave('recovery_13C0726.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 6, height = 4, units = "in", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
+#diagnostics
+shapiro.test(resid(lm(recovery ~ Site_ID, data = SOM_13C_T0))) #normal
+leveneTest(lm(recovery ~ Site_ID, data = SOM_13C_T0)) #homogenous
+
+#ANOVA and Tukey
+summary(aov(recovery ~ Site_ID, data = SOM_13C_T0)) #not sig
+
+#try other factors
+shapiro.test(resid(lm(recovery ~ AM_hyph_per, data = SOM_13C_T0))) #normal
+summary(aov(recovery ~ AM_hyph_per, data = SOM_13C_T0)) #not sig
+
+
+```
+
 ## Plant 13C allocation
 ```{r plant 13C shoots}
 
@@ -7065,7 +7165,7 @@ ggplot(aes(x=site_id, y=excess13C_mg_mean, fill=site_id)) +
   geom_errorbar(aes(ymin=excess13C_mg_mean-excess13C_mg_se, ymax=excess13C_mg_mean+excess13C_mg_se), 
                 color = "grey10", width = 0.7, position = "dodge") + 
   #ggtitle("") + #add a graph title
-  xlab("") + ylab(expression(""^13*"C in Shoots (mg/pot)")) + #define/change X and Y labels
+  xlab("") + ylab(expression(""^13*"C in Shoots (mg/mesocosm)")) + #define/change X and Y labels
   my_theme +
   theme(legend.position = "none")
 
@@ -7098,7 +7198,7 @@ ggplot(aes(x=site_id, y=excess13C_mg_mean, fill=site_id)) +
   geom_errorbar(aes(ymin=excess13C_mg_mean-excess13C_mg_se, ymax=excess13C_mg_mean+excess13C_mg_se), 
                 color = "grey10", width = 0.7, position = "dodge") + 
   #ggtitle("") + #add a graph title
-  xlab("") + ylab(expression(""^13*"C in Roots (mg/pot)")) + #define/change X and Y labels
+  xlab("") + ylab(expression(""^13*"C in Roots (mg/mesocosm)")) + #define/change X and Y labels
   my_theme +
   theme(legend.position = "none")
 
@@ -7319,7 +7419,7 @@ ggplot(aes(x=Site_ID, y=pot_13C_mg_mean, fill=Site_ID)) +
   color = "grey10", width = 0.7, position = "dodge") + 
   #scale_y_continuous(labels = scales::number_format(scale=1*1000, accuracy=1), breaks = pretty) + #change y axis to mg
   #ggtitle("Rocks and Debris per site") + #add a graph title
-  xlab("") + ylab(expression(""^13*"C transferred to soil (mg/pot)")) + #define/change X and Y labels
+  xlab("") + ylab(expression(""^13*"C transferred to soil (mg/mesocosm)")) + #define/change X and Y labels
   my_theme +
   theme(legend.position = "none")
 
@@ -7344,7 +7444,7 @@ ggplot(aes(x=Site_ID, y=pot_13C_mg_mean, fill=Site_ID)) +
   geom_errorbar(aes(ymin=pot_13C_mg_mean-pot_13C_mg_se, ymax=pot_13C_mg_mean+pot_13C_mg_se), 
                 color = "grey10", width = 0.7, position = "dodge") + 
   #ggtitle("") + #add a graph title
-  xlab("") + ylab(expression(""^13*"C in POM (mg/pot)")) + #define/change X and Y labels
+  xlab("") + ylab(expression(""^13*"C in POM (mg/mesocosm)")) + #define/change X and Y labels
   my_theme +
   theme(legend.position = "none")
 
@@ -7374,7 +7474,7 @@ ggplot(aes(x=Site_ID, y=pot_13C_mg_mean, fill=Site_ID)) +
   geom_errorbar(aes(ymin=pot_13C_mg_mean-pot_13C_mg_se, ymax=pot_13C_mg_mean+pot_13C_mg_se), 
                 color = "grey10", width = 0.7, position = "dodge") + 
   #ggtitle("") + #add a graph title
-  xlab("") + ylab(expression(""^13*"C in MAOM (mg/pot)")) + #define/change X and Y labels
+  xlab("") + ylab(expression(""^13*"C in MAOM (mg/mesocosm)")) + #define/change X and Y labels
   my_theme +
   theme(legend.position = "none")
 
@@ -7558,7 +7658,7 @@ ggplot(aes(x=Site_ID, y=pot_13C_mg_mean, fill=Site_ID)) +
   geom_errorbar(aes(ymin=pot_13C_mg_mean-pot_13C_mg_se, ymax=pot_13C_mg_mean+pot_13C_mg_se), 
                 color = "grey10", width = 0.7, position = "dodge") + 
   #ggtitle("") + #add a graph title
-  xlab("") + ylab(expression(""^13*"C in SOM (mg/pot)")) + #define/change X and Y labels
+  xlab("") + ylab(expression(""^13*"C in SOM (mg/mesocosm)")) + #define/change X and Y labels
   my_theme +
   theme(legend.position = "none")
 
@@ -8030,7 +8130,74 @@ ggplot(data = plant_harvest_est[-c(118,153),], #species data minus major outlier
 
 ```
 
-## Biomass
+## Plant Biomass
+
+### Harvested shoot biomass
+```{r shoot biomass}
+
+#bar plot of shoot biomass with error bars
+summary_plant13C %>%
+  filter(sample_type == "shoot") %>%
+ggplot(aes(x=site_id, y=biomass_g_mean, fill=site_id)) + 
+	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
+  scale_fill_manual(values=colors4) + #define colors to use
+  scale_y_continuous(breaks = pretty) +
+  geom_errorbar(aes(ymin=biomass_g_mean-biomass_g_se, ymax=biomass_g_mean+biomass_g_se), 
+                color = "grey10", width = 0.7, position = "dodge") + 
+  #ggtitle("") + #add a graph title
+  xlab("") + ylab(expression("Shoot dry mass (g)")) + #define/change X and Y labels
+  my_theme +
+  theme(legend.position = "none")
+
+#save figure
+ggsave('shoot_biomass.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 6, height = 4, units = "in", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
+#diagnostics
+shapiro.test(resid(lm(shoot ~ site_id, data = total_pots))) #normal
+leveneTest(lm(shoot ~ site_id, data = total_pots)) #homogenous
+
+#ANOVA and Tukey
+summary(aov(shoot ~ site_id, data = total_pots)) #very sig
+TukeyHSD(aov(shoot ~ site_id, data = total_pots)) #BU < all
+
+```
+
+### Harvested root biomass
+```{r harvest root biomass}
+
+#bar plot of biomass with error bars
+summary_plant13C %>%
+  filter(sample_type == "root") %>%
+ggplot(aes(x=site_id, y=biomass_g_mean, fill=site_id)) + 
+	geom_bar(stat = "identity", width = 0.7, position = "dodge") +
+  scale_fill_manual(values=colors4) + #define colors to use
+  scale_y_continuous(breaks = pretty) +
+  geom_errorbar(aes(ymin=biomass_g_mean-biomass_g_se, ymax=biomass_g_mean+biomass_g_se), 
+                color = "grey10", width = 0.7, position = "dodge") + 
+  #ggtitle("") + #add a graph title
+  xlab("") + ylab(expression("Root dry mass (g)")) + #define/change X and Y labels
+  my_theme +
+  theme(legend.position = "none")
+
+#save figure
+ggsave('harvest_root_biomass.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 6, height = 4, units = "in", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
+#diagnostics
+shapiro.test(resid(lm(root ~ site_id, data = total_pots[total_pots$harvesttime=="T0",]))) #normal
+leveneTest(lm(root ~ site_id, data = total_pots[total_pots$harvesttime=="T0",])) #homogenous
+
+#ANOVA and Tukey
+summary(aov(root ~ site_id, data = total_pots[total_pots$harvesttime=="T0",])) #not sig
+
+```
 
 ### Beginning combined roots
 ```{r beg root bio, warning=FALSE}
@@ -8051,11 +8218,42 @@ ggsave('beg_roots.svg', #save plot name and type - can be "eps", "pdf", "jpeg", 
        dpi = 300, #set resolution
        bg=NULL) #background from plot specifications
 
+#diagnostics
+shapiro.test(resid(lm(root ~ site_id, data = total_pots[total_pots$harvesttime=="T10mos",]))) #normal
+leveneTest(lm(root ~ site_id, data = total_pots[total_pots$harvesttime=="T10mos",])) #homogenous
+
 #ANOVA and Tukey
-summary(aov(est_beg_drymass ~ factor(Site_ID), data = endbiomass)) #sig
-TukeyHSD(aov(est_beg_drymass ~ factor(Site_ID), data = endbiomass)) #Flashes < Amberswood & Bick 2
+summary(aov(root ~ site_id, data = total_pots[total_pots$harvesttime=="T10mos",])) #sig
+TukeyHSD(aov(root ~ site_id, data = total_pots[total_pots$harvesttime=="T10mos",])) #FM < BM, AM
 
 ```
+
+```{r root biomass in same graph}
+
+#plot of root biomass
+total_pots %>%
+  mutate(set = case_when(harvesttime == "T0" ~ "1. Harvested Biomass", 
+                         harvesttime == "T10mos" ~ "2. Estimated for Incubation"
+                         )) %>%
+ggplot(aes(x=site_id, y=root, fill=site_id)) + 
+	geom_boxplot() +
+  facet_grid(~set) +
+  scale_fill_manual(values=colors4) + #define colors to use
+  scale_y_continuous(breaks = pretty) +
+  #ggtitle("") + #add a graph title
+  xlab("") + ylab(expression("Root dry mass at T0 (g)")) + #define/change X and Y labels
+  my_theme +
+  theme(legend.position = "none")
+
+#save figure
+ggsave('root_biomass_compare.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 6, height = 4, units = "in", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
+```
+
 
 ### Ending combined roots
 ```{r end root bio, warning=FALSE}
@@ -8066,19 +8264,24 @@ ggplot(data = summary_endbio, aes(x=Site_ID, y=end_drymass_clean_mean, fill=Site
   scale_fill_manual(values=colors4) + #define colors to use
   geom_errorbar(aes(ymin=end_drymass_clean_mean-end_drymass_clean_se, ymax=end_drymass_clean_mean+end_drymass_clean_se),
   color = "grey10", width = 0.7, position = "dodge") + 
-  ggtitle("Ending biomass per site") + #add a graph title
-  xlab("Site") + ylab("Root dry mass (g)") + #define/change X and Y labels
-  my_theme
+  #ggtitle("Ending biomass per site") + #add a graph title
+  xlab("") + ylab("Remaining root dry mass at 10 months (g)") + #define/change X and Y labels
+  my_theme +
+  theme(legend.position = "none")
 
-ggsave('end_roots.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+ggsave('end_roots_072026.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
        path = "Figures", #save to folder
        width = 7, height = 4, units = "in", #set dimensions
        dpi = 300, #set resolution
        bg=NULL) #background from plot specifications
 
+#diagnostics
+shapiro.test(resid(lm(end_drymass_clean ~ factor(Site_ID), data = endbiomass))) #normal
+leveneTest(lm(end_drymass_clean ~ Site_ID, data = endbiomass)) #homogenous
+
 #ANOVA and Tukey
 summary(aov(end_drymass_clean ~ factor(Site_ID), data = endbiomass)) #sig
-TukeyHSD(aov(end_drymass_clean ~ factor(Site_ID), data = endbiomass)) #Flashes < Bick 1, almost Bick 2
+TukeyHSD(aov(end_drymass_clean ~ factor(Site_ID), data = endbiomass)) #FM < BU, almost BM
 
 ```
 
@@ -8166,11 +8369,13 @@ ggsave('decomp_waste.svg', #save plot name and type - can be "eps", "pdf", "jpeg
 
 ```{r decomp stats}
 
+endbiomass$decomp_per_adj <- as.numeric(endbiomass$decomp_per_adj)
+
 #ANOVA and Tukey - Site comparison
+shapiro.test(resid(lm(decomp_per_adj ~ Site_ID, data = endbiomass[-1,]))) #normal
+leveneTest(lm(decomp_per_adj ~ Site_ID, data = endbiomass[-1,])) #homogenous
 summary(aov(decomp_per_adj ~ factor(Site_ID), data = endbiomass[-1,])) #sig
-TukeyHSD(aov(decomp_per_adj ~ factor(Site_ID), data = endbiomass[-1,])) #Flashes > Bick 1 & 2, Amberswood > Bick 1
-kruskal.test(decomp_per_adj ~ factor(Site_ID), data = endbiomass[-1,]) #Kruskal-Wallis rank sum test also sig
-dunn.test(endbiomass[-1,]$decomp_per_adj, endbiomass[-1,]$Site_ID, method="bonferroni", kw=TRUE) #KW P=0.01, Flashes > Bick 1 & 2 only
+TukeyHSD(aov(decomp_per_adj ~ factor(Site_ID), data = endbiomass[-1,])) #FM > BU, BM, AM > BU
 
 #AM association
 shapiro.test(resid(lm(decomp_per_adj ~ AM_hyph_per + AM_arb_per + AM_ves_ct, data = endbiomass[-1,]))) #check normality of residuals - normal
@@ -8189,14 +8394,13 @@ decomp_pH_lme <- lmer(decomp_per_adj ~ pH + (1|Site_ID),
     REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
     data = endbiomass[-1,], #choose dataframe
     na.action = na.omit)
-summary(decomp_pH_lme) #random accounts for most variance
+summary(decomp_pH_lme) #random accounts for less variance
 shapiro.test(resid(decomp_pH_lme)) #not normal, log was worse
-performance::r2(decomp_pH_lme, multivariate=TRUE) #calculate R-squared for model fit
-MuMIn::AICc(decomp_pH_lme, k=2) #calculate AICc for for model comparison with small sample sizes
+model_performance(decomp_pH_lme)
 
 #decomp versus coal waste
-shapiro.test(resid(lm(decomp_per_adj ~ rocks_debris + Site_ID, data = endbiomass[-1,]))) #check normality of residuals - normal
-summary(aov(decomp_per_adj ~ rocks_debris + Site_ID, data = endbiomass[-1,])) #debris very sig
+shapiro.test(resid(lm(decomp_per_adj ~ rocks_debris, data = endbiomass[-1,]))) #check normality of residuals - normal
+summary(aov(decomp_per_adj ~ rocks_debris, data = endbiomass[-1,])) #very sig
 
 Anova(lmer(decomp_per_adj ~ rocks_debris + (1|Site_ID), 
     REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
@@ -8209,8 +8413,15 @@ decomp_debris_lme <- lmer(decomp_per_adj ~ rocks_debris + (1|Site_ID),
     na.action = na.omit)
 summary(decomp_debris_lme) #random accounts for less variance
 shapiro.test(resid(decomp_debris_lme)) #normal
-performance::r2(decomp_debris_lme, multivariate=TRUE) #calculate R-squared for model fit
-MuMIn::AICc(decomp_debris_lme, k=2) #calculate AICc for for model comparison with small sample sizes
+model_performance(decomp_debris_lme)
+
+#decomp versus coal waste and pH
+shapiro.test(resid(lm(decomp_per_adj ~ rocks_debris + pH, data = endbiomass[-1,]))) #normal
+summary(aov(decomp_per_adj ~ rocks_debris + pH, data = endbiomass[-1,])) #debris only very sig
+Anova(lmer(decomp_per_adj ~ rocks_debris + pH + (1|Site_ID), 
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = endbiomass[-1,], #choose dataframe
+    na.action = na.omit), type=3) #neither quite
 
 #decomp versus worms
 shapiro.test(resid(lm(decomp_per_adj ~ worms, data = endbiomass[-1,]))) #check normality of residuals - normal
