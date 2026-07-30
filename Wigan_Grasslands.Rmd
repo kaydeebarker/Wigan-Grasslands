@@ -1529,33 +1529,20 @@ dna_16S <- read.FASTA('DNA/16S/rep-set.fasta')
 
 #add some site, plant, other fungal data to env df
 env_16S <- env_16S %>%
-  mutate(pH = env_16S$pH <- site_data$pH[match(env_16S$Plot_ID, site_data$Plot_ID)]) %>%
-  mutate(ppm_Ca = env_16S$ppm_Ca <- 
-           site_data$ppm_Ca1[match(env_16S$Plot_ID, site_data$Plot_ID)]) %>%
-  mutate(ppm_Mg = env_16S$ppm_Mg <- 
-           site_data$ppm_Mg[match(env_16S$Plot_ID, site_data$Plot_ID)]) %>%
-  mutate(ppm_Fe = env_16S$ppm_Fe <- 
-           site_data$ppm_Fe[match(env_16S$Plot_ID, site_data$Plot_ID)]) %>%
-  mutate(ppm_K = env_16S$ppm_K <- 
-           site_data$ppm_K[match(env_16S$Plot_ID, site_data$Plot_ID)]) %>%
-  mutate(ppm_Na = env_16S$ppm_Na <- 
-           site_data$ppm_Na[match(env_16S$Plot_ID, site_data$Plot_ID)]) %>%
-  mutate(ppm_P = env_16S$ppm_P <- 
-           site_data$ppm_P1[match(env_16S$Plot_ID, site_data$Plot_ID)]) %>%
-  mutate(ppm_S = env_16S$ppm_S <- 
-           site_data$ppm_S1[match(env_16S$Plot_ID, site_data$Plot_ID)]) %>%
-  mutate(plant_r = env_16S$plant_r <- 
-           diversity$species_richness[match(env_16S$Plot_ID, diversity$pot)]) %>%
-  mutate(plant_shannon = env_16S$plant_shannon <- 
-           diversity$shannon[match(env_16S$Plot_ID, diversity$pot)]) %>%
-  mutate(plant_simpson = env_16S$plant_simpson <- 
-           diversity$simpson[match(env_16S$Plot_ID, diversity$pot)]) %>%
-  mutate(AM_assoc = env_16S$AM_assoc <-
-           AMdata$hyph_percent[match(env_16S$Plot_ID, AMdata$Plot_ID)]) %>%
-  mutate(AM_biomass = env_16S$AM_biomass <- 
-           HLD$AM_biomass_gkg[match(env_16S$Plot_ID, HLD$pot)]) %>%
-  mutate(total_fun_biomass = env_16S$total_fun_biomass <- 
-           HLD$total_fun_gkg[match(env_16S$Plot_ID, HLD$pot)])
+  mutate(pH = env_16S$pH <- site_data$pH[match(env_16S$Plot_ID, soil_metals_wide$Plot_ID)]) %>%
+  mutate(ppm_Ca = soil_metals_wide$ppm_Ca1[match(env_16S$Plot_ID, soil_metals_wide$Plot_ID)]) %>%
+  mutate(ppm_Mg = soil_metals_wide$ppm_Mg[match(env_16S$Plot_ID, soil_metals_wide$Plot_ID)]) %>%
+  mutate(ppm_Fe = soil_metals_wide$ppm_Fe[match(env_16S$Plot_ID, soil_metals_wide$Plot_ID)]) %>%
+  mutate(ppm_K = soil_metals_wide$ppm_K[match(env_16S$Plot_ID, soil_metals_wide$Plot_ID)]) %>%
+  mutate(ppm_Na = soil_metals_wide$ppm_Na[match(env_16S$Plot_ID, soil_metals_wide$Plot_ID)]) %>%
+  mutate(ppm_P = soil_metals_wide$ppm_P1[match(env_16S$Plot_ID, soil_metals_wide$Plot_ID)]) %>%
+  mutate(ppm_S = soil_metals_wide$ppm_S1[match(env_16S$Plot_ID, soil_metals_wide$Plot_ID)]) %>%
+  mutate(plant_r = diversity$species_richness[match(env_16S$Plot_ID, diversity$pot)]) %>%
+  mutate(plant_shannon = diversity$shannon[match(env_16S$Plot_ID, diversity$pot)]) %>%
+  mutate(plant_simpson = diversity$simpson[match(env_16S$Plot_ID, diversity$pot)]) %>%
+  mutate(AM_assoc = AMdata$hyph_percent[match(env_16S$Plot_ID, AMdata$Plot_ID)]) %>%
+  mutate(AM_biomass = HLD$AM_biomass_gkg[match(env_16S$Plot_ID, HLD$pot)]) %>%
+  mutate(total_fun_biomass = HLD$total_fun_gkg[match(env_16S$Plot_ID, HLD$pot)])
 
 
 #set row names of asv file from env
@@ -1662,29 +1649,20 @@ taxa_ITS[is.na(taxa_ITS)] <- "unknown" #replace NA values with text
 
 #add some site, plant, other fungal data to env df
 env_ITS <- env_ITS %>%
-  mutate(pH = env_ITS$pH <- site_data$pH[match(env_ITS$Plot_ID, site_data$Plot_ID)]) %>%
-  mutate(ppm_Ca = site_data$ppm_Ca1[match(env_ITS$Plot_ID, site_data$Plot_ID)]) %>%
-  mutate(ppm_Mg = site_data$ppm_Mg[match(env_ITS$Plot_ID, site_data$Plot_ID)]) %>%
-  mutate(ppm_Fe = site_data$ppm_Fe[match(env_ITS$Plot_ID, site_data$Plot_ID)]) %>%
-  mutate(ppm_K = site_data$ppm_K[match(env_ITS$Plot_ID, site_data$Plot_ID)]) %>%
-  mutate(ppm_Na = env_ITS$ppm_Na <- 
-           site_data$ppm_Na[match(env_ITS$Plot_ID, site_data$Plot_ID)]) %>%
-  mutate(ppm_P = env_ITS$ppm_P <- 
-           site_data$ppm_P1[match(env_ITS$Plot_ID, site_data$Plot_ID)]) %>%
-  mutate(ppm_S = env_ITS$ppm_S <- 
-           site_data$ppm_S1[match(env_ITS$Plot_ID, site_data$Plot_ID)]) %>%
-  mutate(plant_r = env_ITS$plant_r <- 
-           diversity$species_richness[match(env_ITS$Plot_ID, diversity$pot)]) %>%
-  mutate(plant_shannon = env_ITS$plant_shannon <- 
-           diversity$shannon[match(env_ITS$Plot_ID, diversity$pot)]) %>%
-  mutate(plant_simpson = env_ITS$plant_simpson <- 
-           diversity$simpson[match(env_ITS$Plot_ID, diversity$pot)]) %>%
-  mutate(AM_assoc = env_ITS$AM_assoc <-
-           AMdata$hyph_percent[match(env_ITS$Plot_ID, AMdata$Plot_ID)]) %>%
-  mutate(AM_biomass = env_ITS$AM_biomass <- 
-           HLD$AM_biomass_gkg[match(env_ITS$Plot_ID, HLD$pot)]) %>%
-  mutate(total_fun_biomass = env_ITS$total_fun_biomass <- 
-           HLD$total_fun_gkg[match(env_ITS$Plot_ID, HLD$pot)])
+  mutate(pH = env_ITS$pH <- soil_metals_wide$pH[match(env_ITS$Plot_ID, soil_metals_wide$Plot_ID)]) %>%
+  mutate(ppm_Ca = soil_metals_wide$ppm_Ca1[match(env_ITS$Plot_ID, soil_metals_wide$Plot_ID)]) %>%
+  mutate(ppm_Mg = soil_metals_wide$ppm_Mg[match(env_ITS$Plot_ID, soil_metals_wide$Plot_ID)]) %>%
+  mutate(ppm_Fe = soil_metals_wide$ppm_Fe[match(env_ITS$Plot_ID, soil_metals_wide$Plot_ID)]) %>%
+  mutate(ppm_K = soil_metals_wide$ppm_K[match(env_ITS$Plot_ID, soil_metals_wide$Plot_ID)]) %>%
+  mutate(ppm_Na = soil_metals_wide$ppm_Na[match(env_ITS$Plot_ID, soil_metals_wide$Plot_ID)]) %>%
+  mutate(ppm_P = soil_metals_wide$ppm_P1[match(env_ITS$Plot_ID, soil_metals_wide$Plot_ID)]) %>%
+  mutate(ppm_S = soil_metals_wide$ppm_S1[match(env_ITS$Plot_ID, soil_metals_wide$Plot_ID)]) %>%
+  mutate(plant_r = diversity$species_richness[match(env_ITS$Plot_ID, diversity$pot)]) %>%
+  mutate(plant_shannon = diversity$shannon[match(env_ITS$Plot_ID, diversity$pot)]) %>%
+  mutate(plant_simpson = diversity$simpson[match(env_ITS$Plot_ID, diversity$pot)]) %>%
+  mutate(AM_assoc = AMdata$hyph_percent[match(env_ITS$Plot_ID, AMdata$Plot_ID)]) %>%
+  mutate(AM_biomass = HLD$AM_biomass_gkg[match(env_ITS$Plot_ID, HLD$pot)]) %>%
+  mutate(total_fun_biomass = HLD$total_fun_gkg[match(env_ITS$Plot_ID, HLD$pot)])
 
 
 #alpha diversity calcs - asv
@@ -1989,7 +1967,12 @@ SOM_13C_T0 <- SOM_13C_T0 %>%
   mutate(shoot_13C_mg = plant13C_shoots$excess13C_mg[match(SOM_13C_T0$Plot_ID, plant13C_shoots$pot)]) %>%
   mutate(root_13C_mg = plant13C_roots$excess13C_mg[match(SOM_13C_T0$Plot_ID, plant13C_roots$pot)]) %>%
   mutate(recovery = (SOM_pot13C_mg + shoot_13C_mg + root_13C_mg)/122 * 100) %>% #percent recovery
-  
+  mutate(root_mass = total_pots$root[match(SOM_13C_T0$Plot_ID, total_pots$pot)]) %>%
+  mutate(shoot_mass = total_pots$shoot[match(SOM_13C_T0$Plot_ID, total_pots$pot)]) %>%
+  mutate(plant_biomass = root_mass + shoot_mass) %>%
+  mutate(plant_r = diversity$species_richness[match(SOM_13C_T0$Plot_ID, diversity$pot)]) %>%
+  mutate(plant_shannon = diversity$shannon[match(SOM_13C_T0$Plot_ID, diversity$pot)]) %>%
+  mutate(plant_simpson = diversity$simpson[match(SOM_13C_T0$Plot_ID, diversity$pot)]) %>%
   mutate(AM_hyph_per = AMdata$hyph_percent[match(SOM_13C_T0$Plot_ID, AMdata$Plot_ID)]) %>%
   mutate(AM_hyph_ct = AMdata$Hyphae[match(SOM_13C_T0$Plot_ID, AMdata$Plot_ID)]) %>%
   mutate(AM_arb_per = AMdata$arbuscule_percent[match(SOM_13C_T0$Plot_ID, AMdata$Plot_ID)]) %>%
@@ -7142,15 +7125,97 @@ ggsave('recovery_13C0726.svg', #save plot name and type - can be "eps", "pdf", "
 shapiro.test(resid(lm(recovery ~ Site_ID, data = SOM_13C_T0))) #normal
 leveneTest(lm(recovery ~ Site_ID, data = SOM_13C_T0)) #homogenous
 
-#ANOVA and Tukey
+#ANOVA 
 summary(aov(recovery ~ Site_ID, data = SOM_13C_T0)) #not sig
 
 #try other factors
-shapiro.test(resid(lm(recovery ~ AM_hyph_per, data = SOM_13C_T0))) #normal
 summary(aov(recovery ~ AM_hyph_per, data = SOM_13C_T0)) #not sig
+summary(aov(recovery ~ plant_r, data = SOM_13C_T0)) #not sig
+summary(aov(recovery ~ plant_shannon, data = SOM_13C_T0)) #not sig
+summary(aov(recovery ~ plant_simpson, data = SOM_13C_T0)) #not sig
+summary(aov(recovery ~ plant_biomass, data = SOM_13C_T0)) #not sig
+summary(aov(recovery ~ shoot_mass, data = SOM_13C_T0)) #sig!
+summary(aov(recovery ~ root_mass, data = SOM_13C_T0)) #not sig
+summary(aov(recovery ~ pH, data = SOM_13C_T0)) #not sig
+summary(aov(recovery ~ SOM_N, data = SOM_13C_T0)) #sig!
+summary(aov(recovery ~ SOM_CN, data = SOM_13C_T0)) #sig!
+
+shapiro.test(resid(lm(recovery ~ shoot_mass, data = SOM_13C_T0))) #normal
+Anova(lmer(recovery ~ shoot_mass + (1|Site_ID), 
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0, #choose dataframe
+    na.action = na.omit), type = 3) #very
+rcvy_shoot_lme <- lmer(recovery ~ shoot_mass + (1|Site_ID), 
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0, #choose dataframe
+    na.action = na.omit)
+summary(rcvy_shoot_lme) #random accounts for less
+model_performance(rcvy_shoot_lme) #AICc, BIC, R2
+cor.test(SOM_13C_T0$recovery, SOM_13C_T0$shoot_mass, method = "pearson") #0.75
+
+shapiro.test(resid(lm(recovery ~ SOM_N, data = SOM_13C_T0))) #normal
+Anova(lmer(recovery ~ SOM_N + (1|Site_ID), 
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0, #choose dataframe
+    na.action = na.omit), type = 3)
+rcvy_N_lme <- lmer(recovery ~ SOM_N + (1|Site_ID), 
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0, #choose dataframe
+    na.action = na.omit)
+summary(rcvy_N_lme) #random accounts for less
+model_performance(rcvy_N_lme) #AICc, BIC, R2
+cor.test(SOM_13C_T0$recovery, SOM_13C_T0$SOM_N, method = "pearson") #0.56
+
+shapiro.test(resid(lm(recovery ~ SOM_CN, data = SOM_13C_T0))) #not normal
+shapiro.test(resid(lm(log(recovery) ~ SOM_CN, data = SOM_13C_T0))) #normal
+Anova(lmer(log(recovery) ~ SOM_CN + (1|Site_ID), 
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0, #choose dataframe
+    na.action = na.omit), type = 3)
+rcvy_CN_lme <- lmer(log(recovery) ~ SOM_CN + (1|Site_ID), 
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0, #choose dataframe
+    na.action = na.omit)
+summary(rcvy_CN_lme) #random accounts for less
+model_performance(rcvy_CN_lme) #AICc, BIC, R2 
+cor.test(SOM_13C_T0$recovery, SOM_13C_T0$SOM_CN, method = "pearson") #0.56
+
+```
+
+```{r recovery lm plot}
+
+#recovery plot - CN
+ggplot(data = SOM_13C_T0, aes(x=SOM_CN, y=recovery)) + 
+  geom_point(aes(color = factor(Site_ID))) + #add points to plot
+  geom_smooth(method="lm", se=TRUE, color="grey10", fill=fill_color) +
+  scale_color_manual(values = colors4) + #define colors to use
+  xlab("SOM C:N Ratio") + ylab(expression(""^13*"C Recovery (%)")) + #define/change X and Y labels
+  my_theme 
+
+ggsave('recovery_CN_0726.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+#recovery plot - N
+ggplot(data = SOM_13C_T0, aes(x=SOM_N, y=recovery)) + 
+  geom_point(aes(color = factor(Site_ID))) + #add points to plot
+  geom_smooth(method="lm", se=TRUE, color="grey10", fill=fill_color) +
+  scale_color_manual(values = colors4) + #define colors to use
+  xlab("SOM N (g/kg soil)") + ylab(expression(""^13*"C Recovery (%)")) + #define/change X and Y labels
+  my_theme 
+
+ggsave('recovery_N_0726.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
 
 
 ```
+
 
 ## Plant 13C allocation
 ```{r plant 13C shoots}
