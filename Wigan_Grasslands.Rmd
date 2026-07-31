@@ -1213,6 +1213,58 @@ sites_sf <- site_locations %>%
 
 ```
 
+### Coal concentrations
+```{r load coal data}
+
+#read in color calibration data
+color_cal <- read_csv("Coal_calibration_colorimeter.csv") %>%
+  filter(!grepl("Target", name)) %>%
+  dplyr::select(!`360nm`:`390nm`) %>%
+  dplyr::select(!`710nm`:`780nm`) %>%
+  mutate(coal_per2 = str_remove(sample, "_\\d+$")) #make a new column with first part of sample column
+
+#calc summary stats
+calibration_stats <- color_cal %>%
+  group_by(coal_per) %>%
+  summarise(across(where(is.numeric), summary_stats)) #run all summary stats
+
+#write csv
+write.csv(calibration_stats, "color_cal_stats.csv") #saves as csv in current workspace
+
+#means 
+color_cal_means <- color_cal %>%
+  group_by(coal_per) %>%
+  summarise(across(where(is.numeric), mean)) #mean
+
+#write csv
+#write.csv(color_cal_means, "color_cal_means.csv") #saves as csv in current workspace
+
+#pivot wavelengths
+color_nm_long <- color_cal %>%
+  pivot_longer(
+    cols = c(8:38), #pick columns to pivot
+    names_to = "wavelength", #name column to put original column names in
+    values_to = "reflectance") #name column to put values in
+
+#pivot LAB
+color_lab_long <- color_cal %>%
+  dplyr::select(sample:b) %>%
+  pivot_longer(
+    cols = c(4:6), #pick columns to pivot
+    names_to = "channel", #name column to put original column names in
+    values_to = "value") #name column to put values in
+
+#set up for PCA
+#scale
+color_cal_std <- color_cal %>%
+  mutate_if(is.numeric,scale)
+
+#select numeric
+color_cal_std_num <- color_cal_std %>%
+  dplyr::select_if(is.numeric)
+
+```
+
 ### Soil compounds and properties
 ```{r load site data}
 
@@ -2382,6 +2434,140 @@ tm_basemap("OpenStreetMap", alpha = 0.9) +
 #save figure
 tmap_save(filename = "Figures/Sites_map.png", width = 8, height = 6, dpi = 300)
 
+
+
+```
+
+## Coal content
+
+### Plot values
+```{r plot color LAB}
+
+color_lab_long$channel <- factor(color_lab_long$channel, 
+                             levels = c("L","a","b"))
+
+#facet_wrap plot
+color_lab_long %>%
+ggplot(aes(x=factor(coal_per), y=value, fill=factor(coal_per))) + 
+  geom_boxplot() +
+  facet_wrap(~channel, scales = "free", nrow=1) + #create a separate plot for each site
+  scale_fill_manual(values=colors_ramp2) + #define colors to use
+  xlab("Coal concentration (%)") + ylab(expression("Value")) + #define/change X and Y labels
+  theme(#axis.text.x = element_text(angle=90), #set angle of variable labels
+        panel.grid.major.y = element_line(color = "grey40", size = 0.25)) + 
+  #scale_x_discrete(labels = "", "", "", "") + #remove x axis labels
+  my_theme +
+  theme(legend.position='none') 
+
+#save figure
+ggsave('lab_calibration.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder within working directory
+       width = 8, height = 6, units = "in", #set dimensions for figure
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+```
+
+
+```{r plot color reflectance nm}
+
+#facet_wrap plot
+color_nm_long %>%
+ggplot(aes(x=factor(coal_per), y=reflectance, fill=factor(coal_per))) + 
+  geom_boxplot() +
+  facet_wrap(~wavelength, scales = "free", nrow=6) + #create a separate plot for each site
+  scale_fill_manual(values=colors_ramp2) + #define colors to use
+  xlab("") + ylab(expression("Reflectance")) + #define/change X and Y labels
+  theme(#axis.text.x = element_text(angle=90), #set angle of variable labels
+        panel.grid.major.y = element_line(color = "grey40", size = 0.25)) + 
+  #scale_x_discrete(labels = "", "", "", "") + #remove x axis labels
+  my_theme +
+  theme(legend.position='none') 
+
+#save figure
+ggsave('reflectance.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder within working directory
+       width = 10, height = 6, units = "in", #set dimensions for figure
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+```
+
+### Calibration PCAs
+```{r coal calibration PCA}
+
+#PCA on all
+color_cal_pca <- prcomp(color_cal_std_num) #perform PCA
+
+summary(color_cal_pca) #view importance of principal components and proportion of variances
+
+color_cal_pca$rotation #view loadings from the standardized data
+screeplot(color_cal_pca) # diagnostic plot to make sure principal components are in order
+
+#basic plot
+biplot(color_cal_pca)
+
+#customized plot
+autoplot(color_cal_pca, data = color_cal_std, colour = 'coal_per2', fill = 'coal_per2',
+         loadings = TRUE, loadings.colour = 'black',
+         loadings.label = TRUE, loadings.label.size = 3,
+         frame = TRUE, frame.type = 'norm', frame.colour = 'coal_per2', frame.fill = 'coal_per2',
+         shape = 21) +
+  scale_color_manual(values = colors_ramp2) +
+  scale_fill_manual(values = colors_ramp2) +
+  my_theme +
+  ggtitle("Principal Components of Reflectance & LAB Values") 
+
+
+#PCA on only LAB
+color_cal_pca <- prcomp(color_cal_std_num[,2:4]) #perform PCA
+
+summary(color_cal_pca) #view importance of principal components and proportion of variances
+
+color_cal_pca$rotation #view loadings from the standardized data
+screeplot(color_cal_pca) # diagnostic plot to make sure principal components are in order
+
+#customized plot
+autoplot(color_cal_pca, data = color_cal_std, colour = 'coal_per2', fill = 'coal_per2',
+         loadings = TRUE, loadings.colour = 'black',
+         loadings.label = TRUE, loadings.label.size = 3,
+         frame = TRUE, frame.type = 'norm', frame.colour = 'coal_per2', frame.fill = 'coal_per2',
+         shape = 21) +
+  scale_color_manual(values = colors_ramp2) +
+  scale_fill_manual(values = colors_ramp2) +
+  my_theme +
+  ggtitle("Principal Components of LAB Values") 
+
+
+#PCA on reflectance only
+color_cal_pca <- prcomp(color_cal_std_num[,5:35]) #perform PCA
+
+summary(color_cal_pca) #view importance of principal components and proportion of variances
+
+color_cal_pca$rotation #view loadings from the standardized data
+screeplot(color_cal_pca) # diagnostic plot to make sure principal components are in order
+
+#basic plot
+#biplot(color_cal_pca)
+
+#customized plot
+autoplot(color_cal_pca, data = color_cal_std, colour = 'coal_per2', fill = 'coal_per2',
+         loadings = FALSE, #loadings.colour = 'black',
+         #loadings.label = TRUE, loadings.label.size = 3,
+         frame = TRUE, frame.type = 'norm', frame.colour = 'coal_per2', frame.fill = 'coal_per2',
+         shape = 21) +
+  scale_color_manual(values = colors_ramp2) +
+  scale_fill_manual(values = colors_ramp2) +
+  my_theme +
+  ggtitle("Principal Components of Reflectance Values") 
+
+
+#save figure
+ggsave('_PCA.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder within working directory
+       width = 6, height = 4, units = "in", #set dimensions for figure
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
 
 
 ```
