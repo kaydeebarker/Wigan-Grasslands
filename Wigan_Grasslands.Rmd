@@ -27,10 +27,10 @@ knitr::opts_chunk$set(echo = TRUE) #default display code in knit output (FALSE w
 datalib <- c("dplyr", "tidyr", "readr", "readxl", "stringr", "tibble", "reshape2", "janitor", "DescTools") 
 
 ##2. For data visualization (note ggplot2 is in tidyverse)
-vislib <- c("ggplot2", "ggthemes", "ggfortify", "ggrepel", "ggsignif", "plotrix", "RColorBrewer", "Polychrome", "colorBlindness", "Cairo", "sjPlot", "multcompView")
+vislib <- c("ggplot2", "ggthemes", "ggfortify", "ggrepel", "ggsignif", "plotrix", "RColorBrewer", "Polychrome", "colorBlindness", "Cairo", "sjPlot", "multcompView", "plotly")
 
-##3. For calculation and stats functions, including ecology and microbial-specific libraries
-statlib <- c("car", "MASS", "rcompanion", "zoo", "lme4", "MuMIn", "emmeans", "ARTool", "rcompanion", "dunn.test", "performance", "see", "corrplot", "BAT", "vegan", "ape")
+##3. For calculation and stats functions, including ecology and microbial-specific libraries and predictive models
+statlib <- c("car", "MASS", "rcompanion", "zoo", "lme4", "MuMIn", "emmeans", "ARTool", "rcompanion", "dunn.test", "performance", "see", "corrplot", "BAT", "vegan", "ape", "caret", "pls", "ranger", "doParallel", "tictoc")
 
 ##4. For spacial data
 spaclib <- c("sf","rnaturalearth","rnaturalearthdata","tmap")
@@ -1214,26 +1214,27 @@ sites_sf <- site_locations %>%
 ```
 
 ### Coal concentrations
-```{r load coal data}
+```{r load coal calibration data}
 
 #read in color calibration data
 color_cal <- read_csv("Coal_calibration_colorimeter.csv") %>%
   filter(!grepl("Target", name)) %>%
   dplyr::select(!`360nm`:`390nm`) %>%
   dplyr::select(!`710nm`:`780nm`) %>%
-  mutate(coal_per2 = str_remove(sample, "_\\d+$")) #make a new column with first part of sample column
+  clean_names() %>%
+  mutate(sample_grp = str_remove(sample, "_\\d+$")) #make a new column with first part of sample column
 
 #calc summary stats
 calibration_stats <- color_cal %>%
-  group_by(coal_per) %>%
+  group_by(sample_grp) %>%
   summarise(across(where(is.numeric), summary_stats)) #run all summary stats
 
 #write csv
-write.csv(calibration_stats, "color_cal_stats.csv") #saves as csv in current workspace
+#write.csv(calibration_stats, "color_cal_stats.csv") #saves as csv in current workspace
 
 #means 
 color_cal_means <- color_cal %>%
-  group_by(coal_per) %>%
+  group_by(sample_grp) %>%
   summarise(across(where(is.numeric), mean)) #mean
 
 #write csv
@@ -1264,6 +1265,25 @@ color_cal_std_num <- color_cal_std %>%
   dplyr::select_if(is.numeric)
 
 ```
+
+```{r sample color data}
+
+#read in color soil data
+color_soil26 <- read_csv("2026_Wigan_color.csv") %>%
+  filter(!grepl("Target", name)) %>%
+  dplyr::select(!`360nm`:`390nm`) %>%
+  dplyr::select(!`710nm`:`780nm`) %>%
+  clean_names() %>%
+  mutate(sample_grp = str_remove(sample, "_\\d+$")) %>% #make a new column with first part of sample column
+  mutate(site_id = str_remove(sample_grp, "\\d")) #identify site by removing number from sample group
+
+#calc summary stats
+colorsoil26_stats <- color_soil26 %>%
+  group_by(sample_grp) %>%
+  summarise(across(where(is.numeric), summary_stats)) #run all summary stats
+
+```
+
 
 ### Soil compounds and properties
 ```{r load site data}
@@ -2440,7 +2460,7 @@ tmap_save(filename = "Figures/Sites_map.png", width = 8, height = 6, dpi = 300)
 
 ## Coal content
 
-### Plot values
+### Plot calibration values
 ```{r plot color LAB}
 
 color_lab_long$channel <- factor(color_lab_long$channel, 
@@ -2465,6 +2485,26 @@ ggsave('lab_calibration.svg', #save plot name and type - can be "eps", "pdf", "j
        width = 8, height = 6, units = "in", #set dimensions for figure
        dpi = 300, #set resolution
        bg=NULL) #background from plot specifications
+
+color_lab_long %>%
+ggplot(aes(x=coal_per, y=value)) + 
+  geom_point(aes(color = factor(channel))) + #add points to plot
+  #geom_smooth(method="lm", se=TRUE, color="grey10", fill=fill_color) +
+  scale_color_manual(values = colors3) + #define colors to use
+  #scale_y_continuous(labels = scales::percent_format(accuracy = 1)) + #change to %
+  xlab("Coal concentration (%)") + ylab(expression("Value")) + #define/change X and Y labels
+  my_theme 
+
+# 3D CIE LAB plots
+plot_ly(color_cal, x = ~L, y = ~a, z = ~b, type = "scatter3d", mode = "markers",
+                  marker = list(size = 3))
+
+library(ggcube)
+
+ggplot(color_cal, aes(x = a, y = L, z = b, color = coal_per)) +
+  geom_point() +
+  coord_3d() +
+  my_theme
 
 ```
 
@@ -2569,6 +2609,248 @@ ggsave('_PCA.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff
        dpi = 300, #set resolution
        bg=NULL) #background from plot specifications
 
+
+```
+
+### C and N coal samples 
+
+#### Percent carbon in coal calibration samples
+```{r coal calibration C}
+
+#load csv
+coal_quant <- read.csv("coal_quant.csv")
+
+#coal lm plot % carbon vs % coal
+ggplot(data = coal_quant, aes(x=per_coal, y=perC)) + 
+	geom_point(size=2) +
+  geom_smooth(method="lm", se=FALSE, color=plotline_color, fill=fill_color) +
+  scale_x_continuous(name="Coal (%)", breaks = pretty(c(0,100), n=10)) + #set limits and change tick marks on x axis
+  scale_y_continuous(name="Carbon (%)", breaks = c(0,10,20,30,40,50,60,70)) + #set limits and change tick marks on y axis
+  my_theme
+
+#save figure
+ggsave('per_coal_C.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 6, height = 4, units = "in", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
+#R-squared for coal calibration
+performance::r2(lm(perC ~ per_coal, data = coal_quant)) #adj R-sq value
+
+```
+
+#### Percent nitrogen in coal calibration samples
+
+```{r coal calibration N}
+
+#coal lm plot % N vs % coal
+ggplot(data = coal_quant, aes(x=per_coal, y=perN)) + 
+	geom_point(size=2) +
+  geom_smooth(method="lm", se=FALSE, color=plotline_color, fill=fill_color) +
+  scale_x_continuous(name="Coal (%)", breaks = pretty(c(0,100), n=10)) + #set limits and change tick marks on x axis
+  scale_y_continuous(name="Nitrogen (%)", breaks = c(0,0.2,0.4,0.6,0.8,1,1.2,1.4,1.6)) + #set limits and change tick marks on y axis
+  my_theme
+
+#save figure
+ggsave('per_coal_N.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 6, height = 4, units = "in", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
+#R-squared for coal calibration
+performance::r2(lm(perN ~ per_coal, data = coal_quant)) #adj R-sq value
+
+```
+
+#### C:N in coal calibration samples
+
+```{r coal calibration CN}
+
+#add quadratic term for percent coal 
+coal_quant$per_coalsq <- coal_quant$per_coal^2
+
+#create fitted lm and add fitted values to dataframe
+coalCN_lm <- lm(CN ~ per_coal + per_coalsq, data = coal_quant)
+summary(coalCN_lm) #quadratic term sig
+performance::r2(coalCN_lm) #adj R-sq value
+coal_quant$CN_fitted <- coalCN_lm$fitted.values #add fitted values to dataframe
+
+#coal lm plot CN vs % coal
+ggplot(data = coal_quant, aes(x=per_coal, y=CN)) + 
+	geom_point(size=2, mapping = aes(x=per_coal, y=CN)) +
+  geom_smooth(mapping = aes(x = per_coal, y = CN_fitted), color=plotline_color) +
+  scale_x_continuous(name="Coal (%)", breaks = pretty(c(0,100), n=10)) + #set limits and change tick marks on x axis
+  scale_y_continuous(name="C:N Ratio", breaks = c(0,10,20,30,40,50)) + #set limits and change tick marks on y axis
+  my_theme
+
+#save figure
+ggsave('per_coal_CN.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 6, height = 4, units = "in", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
+
+```
+
+
+### Prediction modeling
+
+#### Set up
+
+```{r predict coal}
+
+#difference function to compare colors
+#comparecolor <- function(x) {
+#return(sqrt(())
+#}
+
+
+#predictive modeling
+
+#create chroma and hue function
+add_ch <- function(df){
+  df %>%
+    mutate(
+      chroma = sqrt(a^2 + b^2),
+      hue = atan2(b, a) * 180 / pi  # degrees
+    )
+}
+
+#add chroma and hue to calibration and unknown dataframes
+color_cal <- add_ch(color_cal)
+color_soil26 <- add_ch(color_soil26)
+
+#pre-define variables
+target <- "coal_per"   # change if different
+feature_base <- c("l", "a", "b")
+spectral_cols <- names(color_cal) %>% keep(~ grepl("^\\d+nm$", .x)) #selects columns with nm
+predictors <- c(feature_base, spectral_cols, "chroma", "hue") 
+group_col    <- "sample_grp" #group by coal_per to keep technical replicates together
+cv_type      <- "grouped" #"grouped" (groupKFold) or "logo" (leave-one-group-out by coal_per)
+
+
+
+#train control: grouped, but repeated CV as backup if no group
+if ("sample_grp" %in% names(color_cal)) {
+  idx <- caret::groupKFold(factor(color_cal$sample_grp), k = min(5, length(unique(color_cal$sample_grp))))
+  tr_ctrl <- trainControl(method="cv", index = idx, savePredictions="final", summaryFunction = defaultSummary, allowParallel=TRUE)
+} else {
+  tr_ctrl <- trainControl(method="repeatedcv", number=5, repeats=5, savePredictions="final", summaryFunction = defaultSummary, allowParallel=TRUE)
+  message("sample_grp not found; using repeated CV")
+}
+
+#set up parallel backend
+cl <- makePSOCKcluster(parallel::detectCores() - 1); registerDoParallel(cl); 
+on.exit({ stopCluster(cl); registerDoSEQ() })
+
+
+
+```
+
+#### Partial Least Squares Regression
+```{r pls coal}
+
+#PLS via caret/pls
+set.seed(42)
+tic("tuning pls")
+pls_fit <- train(x = color_cal %>% select(all_of(predictors)), y = color_cal[[target]],
+                 method="pls", preProc=c("center","scale"),
+                 tuneLength = min(10, length(predictors)), trControl = tr_ctrl, metric="RMSE")
+toc(); print(pls_fit)
+
+#PLS final using pls::plsr with the selected ncomp
+ncomp <- pls_fit$bestTune$ncomp #3      RMSE 2.153403 R2 0.9095253  MAE 1.888872
+pls_formula <- as.formula(paste(target, "~", paste(predictors, collapse = " + ")))
+pls_final <- plsr(pls_formula, data = color_cal, ncomp = ncomp, scale = TRUE, validation = "none")
+summary(pls_final)
+
+#bootstrap PLS PIs if color_soil exists (n_boot inline)
+bootstrap_pls_pi <- function(df_train, color_soil26, formula, ncomp, n_boot = 200){
+  if (is.null(color_soil26) || nrow(color_soil26)==0) return(NULL)
+  preds <- replicate(n_boot, {
+    b <- df_train[sample(nrow(df_train), replace=TRUE), ]
+    as.numeric(predict(plsr(formula, data=b, ncomp=ncomp, scale=TRUE), newdata = color_soil26, ncomp = ncomp))
+  })
+  tibble(pred_pls = apply(preds,1,median), pred_pls_lo = apply(preds,1,quantile,0.025), pred_pls_hi = apply(preds,1,quantile,0.975))
+}
+if (exists("color_soil26")) { message("Computing PLS bootstrap PIs..."); tic("PLS boot"); 
+  pls_res <- bootstrap_pls_pi(color_cal, color_soil26, pls_formula, ncomp, n_boot=200); toc(); 
+if (!is.null(pls_res)) pls_res <- pls_res %>% mutate(across(everything(), ~pmin(pmax(.x,0),100))) }
+
+#add results to df
+color_soil26 <- color_soil26 %>%
+  cbind(pls_res) 
+
+
+```
+
+#### Random Forest
+```{r rf coal}
+
+#Random Forest via caret/ranger package
+set.seed(42)
+tic("tuning rf")
+ranger_fit <- train(x = color_cal %>% select(all_of(predictors)), y = color_cal[[target]],
+                    method="ranger", preProc=c("center","scale"),
+                    tuneLength = 5, trControl = tr_ctrl, metric="RMSE",
+                    num.trees = 1000, importance="permutation", num.threads = 1)
+toc(); print(ranger_fit)
+best <- ranger_fit$bestTune # mtry 5 extratrees  RMSE 1.096074  R2 0.9540550  MAE 0.9793094
+
+#prepare scaled data and fit final quantile forest with more trees
+scaler <- preProcess(color_cal %>% select(all_of(predictors)), method = c("center","scale"))
+color_cal_proc <- predict(scaler, color_cal %>% select(all_of(predictors))); color_cal_proc[[target]] <- color_cal[[target]]
+r_qrf <- ranger::ranger(dependent.variable.name = target, data = color_cal_proc,
+                        num.trees = 2000, mtry = best$mtry,
+                        splitrule = if("splitrule" %in% names(best)) best$splitrule else "variance",
+                        min.node.size = if("min.node.size" %in% names(best)) best$min.node.size else 5,
+                        importance = "permutation", quantreg = TRUE, write.forest = TRUE, num.threads = 1)
+
+#predict (point + quantiles) on color_soil if exists
+if (exists("color_soil26")) {
+  color_soil_proc <- predict(scaler, color_soil26 %>% select(all_of(predictors)))
+  p_point <- predict(r_qrf, data = color_soil_proc, type="response")$predictions
+  p_q <- predict(r_qrf, data = color_soil_proc, type="quantiles", quantiles=c(0.025,0.975))$predictions
+  predict_res <- color_soil26 %>% mutate(pred_rf = pmin(pmax(p_point,0),100), pred_rf_lo = pmin(pmax(p_q[,1],0),100), pred_rf_hi = pmin(pmax(p_q[,2],0),100))
+  print(head(rf_res))
+} else message("color_soil26 not found; ranger fitted on calibration data only")
+
+
+```
+
+##### Plot results
+```{r plot pls res}
+
+predict_res$site_id <- factor(predict_res$site_id, levels = order_IDs)
+
+#pivot results
+pred_res_long <- predict_res %>%
+  dplyr::select(sample, site_id, pred_pls, pred_rf) %>%
+  pivot_longer(
+    cols = c(3:4), #pick columns to pivot
+    names_to = "model", #name column to put original column names in
+    values_to = "coal_per") #name column to put values in
+
+#boxplot
+pred_res_long %>%
+ggplot(aes(x=site_id, y=coal_per, fill=factor(site_id))) + 
+  geom_boxplot() +
+  geom_jitter(shape=16, position=position_jitter(0.1), size = 0.85) +
+  facet_wrap(~model, scales = "free", nrow=1) + #create a separate plot for each model
+  scale_fill_manual(values=colors6) + #define colors to use
+  xlab("") + ylab(expression("Estimated coal concentration (%)")) + #define/change X and Y labels
+  my_theme +
+  theme(legend.position='none') 
+
+#save figure
+ggsave('est_coal_pls_2026.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder within working directory
+       width = 8, height = 6, units = "in", #set dimensions for figure
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
 
 ```
 
@@ -8761,88 +9043,5 @@ ggsave('coal2.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tif
 	width = 6, height = 4, units = "in", #set dimensions for figure
 	dpi = 300, #set resolution
 	bg=NULL) #background from plot specifications
-
-```
-
-### Coal calibration samples
-
-#### Percent carbon in coal calibration samples
-```{r coal calibration C}
-
-#load csv
-coal_quant <- read.csv("coal_quant.csv")
-
-#coal lm plot % carbon vs % coal
-ggplot(data = coal_quant, aes(x=per_coal, y=perC)) + 
-	geom_point(size=2) +
-  geom_smooth(method="lm", se=FALSE, color=plotline_color, fill=fill_color) +
-  scale_x_continuous(name="Coal (%)", breaks = pretty(c(0,100), n=10)) + #set limits and change tick marks on x axis
-  scale_y_continuous(name="Carbon (%)", breaks = c(0,10,20,30,40,50,60,70)) + #set limits and change tick marks on y axis
-  my_theme
-
-#save figure
-ggsave('per_coal_C.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
-	path = "Figures", #save to folder within working directory
-	width = 6, height = 4, units = "in", #set dimensions for figure
-	dpi = 300, #set resolution
-	bg=NULL) #background from plot specifications
-
-#R-squared for coal calibration
-performance::r2(lm(perC ~ per_coal, data = coal_quant)) #adj R-sq value
-
-```
-
-#### Percent nitrogen in coal calibration samples
-
-```{r coal calibration N}
-
-#coal lm plot % N vs % coal
-ggplot(data = coal_quant, aes(x=per_coal, y=perN)) + 
-	geom_point(size=2) +
-  geom_smooth(method="lm", se=FALSE, color=plotline_color, fill=fill_color) +
-  scale_x_continuous(name="Coal (%)", breaks = pretty(c(0,100), n=10)) + #set limits and change tick marks on x axis
-  scale_y_continuous(name="Nitrogen (%)", breaks = c(0,0.2,0.4,0.6,0.8,1,1.2,1.4,1.6)) + #set limits and change tick marks on y axis
-  my_theme
-
-#save figure
-ggsave('per_coal_N.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
-	path = "Figures", #save to folder within working directory
-	width = 6, height = 4, units = "in", #set dimensions for figure
-	dpi = 300, #set resolution
-	bg=NULL) #background from plot specifications
-
-#R-squared for coal calibration
-performance::r2(lm(perN ~ per_coal, data = coal_quant)) #adj R-sq value
-
-```
-
-#### C:N in coal calibration samples
-
-```{r coal calibration CN}
-
-#add quadratic term for percent coal 
-coal_quant$per_coalsq <- coal_quant$per_coal^2
-
-#create fitted lm and add fitted values to dataframe
-coalCN_lm <- lm(CN ~ per_coal + per_coalsq, data = coal_quant)
-summary(coalCN_lm) #quadratic term sig
-performance::r2(coalCN_lm) #adj R-sq value
-coal_quant$CN_fitted <- coalCN_lm$fitted.values #add fitted values to dataframe
-
-#coal lm plot CN vs % coal
-ggplot(data = coal_quant, aes(x=per_coal, y=CN)) + 
-	geom_point(size=2, mapping = aes(x=per_coal, y=CN)) +
-  geom_smooth(mapping = aes(x = per_coal, y = CN_fitted), color=plotline_color) +
-  scale_x_continuous(name="Coal (%)", breaks = pretty(c(0,100), n=10)) + #set limits and change tick marks on x axis
-  scale_y_continuous(name="C:N Ratio", breaks = c(0,10,20,30,40,50)) + #set limits and change tick marks on y axis
-  my_theme
-
-#save figure
-ggsave('per_coal_CN.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
-	path = "Figures", #save to folder within working directory
-	width = 6, height = 4, units = "in", #set dimensions for figure
-	dpi = 300, #set resolution
-	bg=NULL) #background from plot specifications
-
 
 ```
