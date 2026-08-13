@@ -27,10 +27,10 @@ knitr::opts_chunk$set(echo = TRUE) #default display code in knit output (FALSE w
 datalib <- c("dplyr", "tidyr", "readr", "readxl", "stringr", "tibble", "reshape2", "janitor", "DescTools") 
 
 ##2. For data visualization (note ggplot2 is in tidyverse)
-vislib <- c("ggplot2", "ggthemes", "ggfortify", "ggrepel", "ggsignif", "plotrix", "RColorBrewer", "Polychrome", "colorBlindness", "Cairo", "sjPlot", "multcompView", "plotly")
+vislib <- c("ggplot2", "ggthemes", "ggfortify", "ggrepel", "ggsignif", "plotrix", "RColorBrewer", "Polychrome", "colorBlindness", "Cairo", "sjPlot", "multcompView", "plotly", "ggcube", "corrplot")
 
 ##3. For calculation and stats functions, including ecology and microbial-specific libraries and predictive models
-statlib <- c("car", "MASS", "rcompanion", "zoo", "lme4", "MuMIn", "emmeans", "ARTool", "rcompanion", "dunn.test", "performance", "see", "corrplot", "BAT", "vegan", "ape", "caret", "pls", "ranger", "doParallel", "tictoc")
+statlib <- c("car", "MASS", "rcompanion", "zoo", "lme4", "emmeans", "ARTool", "rcompanion", "dunn.test", "performance", "see", "corrplot", "BAT", "vegan", "ape", "caret", "pls", "ranger", "doParallel", "tictoc")
 
 ##4. For spacial data
 spaclib <- c("sf","rnaturalearth","rnaturalearthdata","tmap")
@@ -42,7 +42,7 @@ spaclib <- c("sf","rnaturalearth","rnaturalearthdata","tmap")
 lapply(c(datalib, vislib, statlib, spaclib), library, character.only = TRUE)
 
 #Remove lists from environment to clean up
-rm(datalib, vislib, statlib, spaclib)
+#rm(datalib, vislib, statlib, spaclib)
 
 ```
 
@@ -85,7 +85,7 @@ colors10 <- c("#7b887f", "#c25205", "#8d5744", "#00666a",  #for 4 UK survey site
               "#ffbc85", "#f28749", 
               "#afeeeb", "#44a6a6")
 
-colors13 <- c("#7b887f", "#8ebf9f", "#c3d0c7", "#c25205", "#f28749", "#ffbc85", "#00666a", "#44a6a6", "#afeeeb", "#8d5744", "#bf846f", "#bda59c", "#fffdf9")
+colors14 <- c("#7b887f", "#8ebf9f", "#c3d0c7", "#c25205", "#f28749", "#ffbc85", "#00666a", "#44a6a6", "#afeeeb", "#8d5744", "#bf846f", "#bda59c", "#fffdf9", "antiquewhite2")
 
 swatch(colors13) #view as swatch
 
@@ -830,7 +830,7 @@ differences <- function(data, factors, continuous_vars) {
 
 ```
 
-```{r set up multifactoral/lme function}
+```{r set up multifactoral function}
 
 #analysis function for multifactor models with interactions, Shapiro test, Levene test, Bartlett's test, group size evaluation, and NA omission
 differences_multifactor <- function(data, factors, continuous_vars, random_var = NULL) {
@@ -1214,63 +1214,157 @@ sites_sf <- site_locations %>%
 ```
 
 ### Coal concentrations
+
+#### Calibration data
 ```{r load coal calibration data}
 
-#read in color calibration data
-color_cal <- read_csv("Coal_calibration_colorimeter.csv") %>%
+#create chroma and hue function
+add_ch <- function(df){
+  df %>%
+    mutate(
+      chroma = sqrt(a^2 + b^2),
+      hue = atan2(b, a) * 180 / pi  # degrees
+    )
+}
+
+
+#read in color calibration data - ground only
+color_cal_g1 <- read_csv("Coal_calibration_colorimeter1.csv") %>%
   filter(!grepl("Target", name)) %>%
   dplyr::select(!`360nm`:`390nm`) %>%
   dplyr::select(!`710nm`:`780nm`) %>%
   clean_names() %>%
+  na.omit() %>%
   mutate(sample_grp = str_remove(sample, "_\\d+$")) #make a new column with first part of sample column
 
+color_cal_g2 <- read_csv("Coal_calibration_colorimeter2.csv") %>%
+  filter(!grepl("Target", name)) %>%
+  dplyr::select(!`360nm`:`390nm`) %>%
+  dplyr::select(!`710nm`:`780nm`) %>%
+  clean_names() %>%
+  na.omit() %>%
+  mutate(sample_grp = str_remove(sample, "_\\d+$")) #make a new column with first part of sample column
+
+#read in color calibration data - sieved at 125 um
+color_cal_s <- read_csv("Coal_calibration_colorimeter_Sieved.csv") %>%
+  filter(!grepl("Target", name)) %>%
+  dplyr::select(!`360nm`:`390nm`) %>%
+  dplyr::select(!`710nm`:`780nm`) %>%
+  clean_names() %>%
+  na.omit() %>%
+  mutate(sample_grp = str_remove(sample, "_\\d+$")) #make a new column with first part of sample column
+
+#add chroma and hue to calibration dataframes
+color_cal_g1 <- add_ch(color_cal_g1)
+color_cal_g2 <- add_ch(color_cal_g2)
+color_cal_s <- add_ch(color_cal_s)
+
 #calc summary stats
-calibration_stats <- color_cal %>%
+calibration_stats_g1 <- color_cal_g1 %>%
+  group_by(sample_grp) %>%
+  summarise(across(where(is.numeric), summary_stats)) #run all summary stats
+
+calibration_stats_g2 <- color_cal_g2 %>%
+  group_by(sample_grp) %>%
+  summarise(across(where(is.numeric), summary_stats)) #run all summary stats
+
+calibration_stats_s <- color_cal_s %>%
   group_by(sample_grp) %>%
   summarise(across(where(is.numeric), summary_stats)) #run all summary stats
 
 #write csv
 #write.csv(calibration_stats, "color_cal_stats.csv") #saves as csv in current workspace
 
-#means 
-color_cal_means <- color_cal %>%
-  group_by(sample_grp) %>%
-  summarise(across(where(is.numeric), mean)) #mean
-
-#write csv
-#write.csv(color_cal_means, "color_cal_means.csv") #saves as csv in current workspace
-
 #pivot wavelengths
-color_nm_long <- color_cal %>%
+color_g1_nm_long <- color_cal_g1 %>%
   pivot_longer(
-    cols = c(8:38), #pick columns to pivot
+    cols = c(7:37), #pick columns to pivot
+    names_to = "wavelength", #name column to put original column names in
+    values_to = "reflectance") #name column to put values in
+
+
+color_g2_nm_long <- color_cal_g2 %>%
+  pivot_longer(
+    cols = c(7:37), #pick columns to pivot
+    names_to = "wavelength", #name column to put original column names in
+    values_to = "reflectance") #name column to put values in
+
+color_s_nm_long <- color_cal_s %>%
+  pivot_longer(
+    cols = c(7:37), #pick columns to pivot
     names_to = "wavelength", #name column to put original column names in
     values_to = "reflectance") #name column to put values in
 
 #pivot LAB
-color_lab_long <- color_cal %>%
+color_g1_lab_long <- color_cal_g1 %>%
   dplyr::select(sample:b) %>%
   pivot_longer(
     cols = c(4:6), #pick columns to pivot
     names_to = "channel", #name column to put original column names in
     values_to = "value") #name column to put values in
 
-#set up for PCA
-#scale
-color_cal_std <- color_cal %>%
-  mutate_if(is.numeric,scale)
+color_g1_lab_long$channel <- factor(color_g1_lab_long$channel, 
+                             levels = c("l","a","b"))
 
-#select numeric
-color_cal_std_num <- color_cal_std %>%
-  dplyr::select_if(is.numeric)
+color_g2_lab_long <- color_cal_g2 %>%
+  dplyr::select(sample:b) %>%
+  pivot_longer(
+    cols = c(3:5), #pick columns to pivot
+    names_to = "channel", #name column to put original column names in
+    values_to = "value") #name column to put values in
+
+color_g2_lab_long$channel <- factor(color_g2_lab_long$channel, 
+                             levels = c("l","a","b"))
+
+color_s_lab_long <- color_cal_s %>%
+  dplyr::select(sample:b) %>%
+  pivot_longer(
+    cols = c(3:5), #pick columns to pivot
+    names_to = "channel", #name column to put original column names in
+    values_to = "value") #name column to put values in
+
+color_s_lab_long$channel <- factor(color_s_lab_long$channel, 
+                             levels = c("l","a","b"))
+
 
 ```
 
+#### Samples colorimetry
 ```{r sample color data}
 
-#read in color soil data
-color_soil26 <- read_csv("2026_Wigan_color.csv") %>%
+#read in ground color soil data - 2023
+color_soil23 <- read_csv("2023_Wigan_color.csv") %>%
   filter(!grepl("Target", name)) %>%
+  filter(!grepl("std", sample)) %>%
+  dplyr::select(!`360nm`:`390nm`) %>%
+  dplyr::select(!`710nm`:`780nm`) %>%
+  clean_names() %>%
+  mutate(sample_grp = str_remove(sample, "_\\d+$")) #make a new column with first part of sample column
+
+#calc summary stats
+colorsoil23_stats <- color_soil23 %>%
+  group_by(sample_grp, site_id) %>%
+  summarise(across(where(is.numeric), summary_stats)) #run all summary stats
+
+#order sites
+color_soil23$site_id <- factor(color_soil23$site_id, levels = order_IDs)
+colorsoil23_stats$site_id <- factor(colorsoil23_stats$site_id, levels = order_IDs)
+
+
+#read in color soil data - 2026 ground
+color_soil26_g <- read_csv("2026_Wigan_color2.csv") %>%
+  filter(!grepl("Target", name)) %>%
+  filter(!grepl("std", sample)) %>%
+  dplyr::select(!`360nm`:`390nm`) %>%
+  dplyr::select(!`710nm`:`780nm`) %>%
+  clean_names() %>%
+  mutate(sample_grp = str_remove(sample, "_\\d+$")) %>% #make a new column with first part of sample column
+  mutate(site_id = str_remove(sample_grp, "\\d")) #identify site by removing number from sample group
+
+#read in color soil data - 2026 sieved
+color_soil26_s <- read_csv("2026_Wigan_Sieved.csv") %>%
+  filter(!grepl("Target", name)) %>%
+  filter(!grepl("std", sample)) %>%
   dplyr::select(!`360nm`:`390nm`) %>%
   dplyr::select(!`710nm`:`780nm`) %>%
   clean_names() %>%
@@ -1278,9 +1372,22 @@ color_soil26 <- read_csv("2026_Wigan_color.csv") %>%
   mutate(site_id = str_remove(sample_grp, "\\d")) #identify site by removing number from sample group
 
 #calc summary stats
-colorsoil26_stats <- color_soil26 %>%
-  group_by(sample_grp) %>%
+colorsoil26_g_stats <- color_soil26_g %>%
+  group_by(sample_grp, site_id) %>%
   summarise(across(where(is.numeric), summary_stats)) #run all summary stats
+
+colorsoil26_s_stats <- color_soil26_s %>%
+  group_by(sample_grp, site_id) %>%
+  summarise(across(where(is.numeric), summary_stats)) #run all summary stats
+
+#order sites
+color_soil26_g$site_id <- factor(color_soil26_g$site_id, levels = order_IDs)
+color_soil26_s$site_id <- factor(color_soil26_s$site_id, levels = order_IDs)
+
+#add chroma and hue to dataframes
+color_soil23 <- add_ch(color_soil23)
+color_soil26_g <- add_ch(color_soil26_g)
+color_soil26_s <- add_ch(color_soil26_s)
 
 ```
 
@@ -1589,66 +1696,6 @@ summary_MBC <- MBC %>%
 
 ```
 
-#### Bacteria
-```{r load 16S}
-
-#load data
-asv_16S <- read.table('DNA/16S/asv.csv',header=TRUE,sep=',',row.names=1)
-env_16S <- read.table('DNA/16S/env.csv',header=TRUE,sep=',',row.names=1) #sample numbers - make into row numbers
-env_16S$Site_ID <- factor(env_16S$Site_ID, levels = order_IDs) #order sites
-taxa_16S <- read.table('DNA/16S/taxa.csv',header=TRUE,sep=',')
-dna_16S <- read.FASTA('DNA/16S/rep-set.fasta')
-
-#add some site, plant, other fungal data to env df
-env_16S <- env_16S %>%
-  mutate(pH = env_16S$pH <- site_data$pH[match(env_16S$Plot_ID, soil_metals_wide$Plot_ID)]) %>%
-  mutate(ppm_Ca = soil_metals_wide$ppm_Ca1[match(env_16S$Plot_ID, soil_metals_wide$Plot_ID)]) %>%
-  mutate(ppm_Mg = soil_metals_wide$ppm_Mg[match(env_16S$Plot_ID, soil_metals_wide$Plot_ID)]) %>%
-  mutate(ppm_Fe = soil_metals_wide$ppm_Fe[match(env_16S$Plot_ID, soil_metals_wide$Plot_ID)]) %>%
-  mutate(ppm_K = soil_metals_wide$ppm_K[match(env_16S$Plot_ID, soil_metals_wide$Plot_ID)]) %>%
-  mutate(ppm_Na = soil_metals_wide$ppm_Na[match(env_16S$Plot_ID, soil_metals_wide$Plot_ID)]) %>%
-  mutate(ppm_P = soil_metals_wide$ppm_P1[match(env_16S$Plot_ID, soil_metals_wide$Plot_ID)]) %>%
-  mutate(ppm_S = soil_metals_wide$ppm_S1[match(env_16S$Plot_ID, soil_metals_wide$Plot_ID)]) %>%
-  mutate(plant_r = diversity$species_richness[match(env_16S$Plot_ID, diversity$pot)]) %>%
-  mutate(plant_shannon = diversity$shannon[match(env_16S$Plot_ID, diversity$pot)]) %>%
-  mutate(plant_simpson = diversity$simpson[match(env_16S$Plot_ID, diversity$pot)]) %>%
-  mutate(AM_assoc = AMdata$hyph_percent[match(env_16S$Plot_ID, AMdata$Plot_ID)]) %>%
-  mutate(AM_biomass = HLD$AM_biomass_gkg[match(env_16S$Plot_ID, HLD$pot)]) %>%
-  mutate(total_fun_biomass = HLD$total_fun_gkg[match(env_16S$Plot_ID, HLD$pot)])
-
-
-#set row names of asv file from env
-#asv_16S <- asv_16S.tmp[which(row.names(asv_16S.tmp)%in%row.names(env_16S)),which(colnames(asv_16S.tmp)%in%names(dna_16S))]
-#row.names(asv_16S)==row.names(env_16S) #check it worked
-#rm(asv_16S.tmp) #remove temp file
-
-#alpha diversity - asv
-#observation richness
-x16s_sobs.list <-  replicate(100, 1:dim(asv_16S)[1], simplify = FALSE)
-for (i in 1:100) {
-  x16s_sobs.list[[i]] <- specnumber(as.matrix(rrarefy(asv_16S,sample=170)))
-}
-env_16S$sobs <- Reduce("+", x16s_sobs.list) / length(x16s_sobs.list)
-rm(x16s_sobs.list)
-
-#shannon
-x16s_shannon.list <-  replicate(100, 1:dim(asv_16S)[1], simplify = FALSE)
-for (i in 1:100) {
-  x16s_shannon.list[[i]] <- diversity(as.matrix(rrarefy(asv_16S,sample=170)), index = "shannon")
-}
-env_16S$shannon <- Reduce("+", x16s_shannon.list) / length(x16s_shannon.list)
-rm(x16s_shannon.list)
-
-#gini
-x16s_gini.list <-  replicate(100, 1:dim(asv_16S)[1], simplify = FALSE)
-for (i in 1:100) {
-  x16s_gini.list[[i]] <- apply(as.matrix(rrarefy(asv_16S,sample=170)), 1, function(x) Gini(x))
-}
-env_16S$gini <- Reduce("+", x16s_gini.list) / length(x16s_gini.list)
-rm(x16s_gini.list)
-
-```
-
 #### Fungi
 
 ```{r load AM and biomass fungi data}
@@ -1716,12 +1763,10 @@ asv_ITS <- read.table('DNA/ITS/asv.csv',header=TRUE,sep=',',row.names=1)
 dna_ITS <- read.FASTA('DNA/ITS/rep-set.fasta')
 env_ITS <- read.table('DNA/ITS/env.csv',header=TRUE,sep=',',row.names=1)
 env_ITS$Site_ID <- factor(env_ITS$Site_ID, levels = order_IDs) #order sites
-taxa_ITS <- read.table('DNA/ITS/taxa.csv',header=TRUE,sep=',')
-taxa_ITS[is.na(taxa_ITS)] <- "unknown" #replace NA values with text
 
 #add some site, plant, other fungal data to env df
 env_ITS <- env_ITS %>%
-  mutate(pH = env_ITS$pH <- soil_metals_wide$pH[match(env_ITS$Plot_ID, soil_metals_wide$Plot_ID)]) %>%
+  mutate(pH = env_ITS$pH <- site_data$pH[match(env_ITS$Plot_ID, site_data$Plot_ID)]) %>%
   mutate(ppm_Ca = soil_metals_wide$ppm_Ca1[match(env_ITS$Plot_ID, soil_metals_wide$Plot_ID)]) %>%
   mutate(ppm_Mg = soil_metals_wide$ppm_Mg[match(env_ITS$Plot_ID, soil_metals_wide$Plot_ID)]) %>%
   mutate(ppm_Fe = soil_metals_wide$ppm_Fe[match(env_ITS$Plot_ID, soil_metals_wide$Plot_ID)]) %>%
@@ -1733,8 +1778,8 @@ env_ITS <- env_ITS %>%
   mutate(plant_shannon = diversity$shannon[match(env_ITS$Plot_ID, diversity$pot)]) %>%
   mutate(plant_simpson = diversity$simpson[match(env_ITS$Plot_ID, diversity$pot)]) %>%
   mutate(AM_assoc = AMdata$hyph_percent[match(env_ITS$Plot_ID, AMdata$Plot_ID)]) %>%
-  mutate(AM_biomass = HLD$AM_biomass_gkg[match(env_ITS$Plot_ID, HLD$pot)]) %>%
-  mutate(total_fun_biomass = HLD$total_fun_gkg[match(env_ITS$Plot_ID, HLD$pot)])
+  mutate(AM_biomass = HLD_T0$AM_biomass_gkg[match(env_ITS$Plot_ID, HLD_T0$Pot)]) %>%
+  mutate(total_fun_biomass = HLD_T0$total_fun_gkg[match(env_ITS$Plot_ID, HLD_T0$Pot)])
 
 
 #alpha diversity calcs - asv
@@ -1770,16 +1815,28 @@ for (i in 1:100) {
 env_ITS$gini <- Reduce("+", its_gini.list) / length(its_gini.list)
 rm(its_gini.list)
 
+#taxa data
+taxa_ITS <- read.table('DNA/ITS/taxa.csv',header=TRUE,sep=',')
+taxa_ITS[is.na(taxa_ITS)] <- "unknown" #replace NA values with text
 
-#amalgamating the data with species & genus
-taxa_ITS$genus.species <- paste(taxa_ITS$Genus,taxa_ITS$Species, sep = ".")
+#clean and amalgamate the data with species & genus
+taxa_ITS <- taxa_ITS %>%
+  filter(Genus != "unknown") %>%
+  mutate(asv = gsub(" ", "", asv)) %>% #remove spaces from taxa_ITS$asv to match the column naming format
+  mutate(Phylum = str_remove(Phylum, ".\\w.")) %>% #make column without first part of column
+  mutate(Class = str_remove(Class, ".\\w.")) %>%
+  mutate(Order = str_remove(Order, ".\\w.")) %>%
+  mutate(Family = str_remove(Family, ".\\w.")) %>%
+  mutate(Genus = str_remove(Genus, ".\\w.")) %>%
+  mutate(Species = str_remove(Species, ".\\w.")) %>%
+  mutate(Species = case_when(Species == "nown" ~ "unknown", TRUE ~ Species)) %>%
+  mutate(genus.species = paste(Genus, Species, sep = "."))
+  
 unique(taxa_ITS$genus.species) 
 
-taxa_ITS$asv <- gsub(" ", "", taxa_ITS$asv) #remove spaces from taxa_ITS$asv to match the column naming format
-
-taxa_ITS.sp <- taxa_ITS %>% #check asvs allocated just to genus have same reference sequence
-  filter(Genus != "unknown") %>%
-  filter(Species == "unknown")
+#check asvs allocated just to genus have same reference sequence
+taxa_ITS.sp <- taxa_ITS %>% 
+  filter(Species == "unknown") 
 
 sp.tf <- data.frame(genus.species=unique(taxa_ITS.sp$genus.species),
                     all.same=1:length(unique(taxa_ITS.sp$genus.species)),
@@ -1801,7 +1858,8 @@ for (i in 1:length(unique(taxa_ITS$genus.species))) {
   temp2 <- asv_ITS[, which(colnames(asv_ITS) %in% temp$asv), drop=FALSE]
   asv_ITS.s[,i] <- rowSums(temp2)
 }
-asv_ITS.s <- as.data.frame(asv_ITS.s)
+asv_ITS.s <- as.data.frame(asv_ITS.s) #make df
+
 
 
 #alpha - species
@@ -1874,9 +1932,177 @@ for (i in 1:1000) {
 }
 env_ITS$gini.g <- Reduce("+", its_gini.list.g) / length(its_gini.list.g)
 
+#combine at order level
+asv_ITS.o <- matrix(0, nrow=nrow(asv_ITS), ncol=length(unique(taxa_ITS$Order)))
+rownames(asv_ITS.o) <- rownames(asv_ITS)
+colnames(asv_ITS.o) <- unique(taxa_ITS$Order)
+for (i in 1:length(unique(taxa_ITS$Order))) {
+  temp <- taxa_ITS[which(taxa_ITS$Order == unique(taxa_ITS$Order)[i]),]
+  temp2 <- asv_ITS[, which(colnames(asv_ITS) %in% temp$asv), drop=FALSE]
+  asv_ITS.o[,i] <- rowSums(temp2)
+}
+asv_ITS.o <- as.data.frame(asv_ITS.o)
+
+
+#combine at phylum level
+asv_ITS.p <- matrix(0, nrow=nrow(asv_ITS), ncol=length(unique(taxa_ITS$Phylum)))
+rownames(asv_ITS.p) <- rownames(asv_ITS)
+colnames(asv_ITS.p) <- unique(taxa_ITS$Phylum)
+for (i in 1:length(unique(taxa_ITS$Phylum))) {
+  temp <- taxa_ITS[which(taxa_ITS$Phylum == unique(taxa_ITS$Phylum)[i]),]
+  temp2 <- asv_ITS[, which(colnames(asv_ITS) %in% temp$asv), drop=FALSE]
+  asv_ITS.p[,i] <- rowSums(temp2)
+}
+asv_ITS.p <- as.data.frame(asv_ITS.p)
+
+#pivot for graphs, add site
+
+#species
+asv_ITS.s_long <- asv_ITS.s %>%
+  mutate(Site_ID = env_ITS$Site_ID) %>% #add site ID to samples
+pivot_longer(
+    cols = c(1:712), #pick columns to pivot
+    names_to = "species", #name column to put original column names in
+    values_to = "count") #name column to put values in
+
+#genus
+asv_ITS.g_long <- asv_ITS.g %>%
+  mutate(Site_ID = env_ITS$Site_ID) %>% #add site ID to samples
+pivot_longer(
+    cols = c(1:447), #pick columns to pivot
+    names_to = "genus", #name column to put original column names in
+    values_to = "count") #name column to put values in
+
+#order
+asv_ITS.o_long <- asv_ITS.o %>%
+  mutate(Site_ID = env_ITS$Site_ID) %>% #add site ID to samples
+pivot_longer(
+    cols = c(1:115), #pick columns to pivot
+    names_to = "order", #name column to put original column names in
+    values_to = "count") #name column to put values in
+
+#phylum
+asv_ITS.p_long <- asv_ITS.p %>%
+  mutate(Site_ID = env_ITS$Site_ID) %>% #add site ID to samples
+pivot_longer(
+    cols = c(1:14), #pick columns to pivot
+    names_to = "phylum", #name column to put original column names in
+    values_to = "count") #name column to put values in
 
 ```
 
+
+
+
+#### Bacteria
+```{r load 16S}
+
+#load data
+asv_16S <- read.table('DNA/16S/asv.csv',header=TRUE,sep=',',row.names=1)
+env_16S <- read.table('DNA/16S/env.csv',header=TRUE,sep=',',row.names=1) #sample numbers - make into row numbers
+env_16S$Site_ID <- factor(env_16S$Site_ID, levels = order_IDs) #order sites
+taxa_16S <- read.table('DNA/16S/taxa.csv',header=TRUE,sep=',')
+dna_16S <- read.FASTA('DNA/16S/rep-set.fasta')
+
+#add some site, plant, other fungal data to env df
+env_16S <- env_16S %>%
+  mutate(pH = env_16S$pH <- site_data$pH[match(env_16S$Plot_ID, site_data$Plot_ID)]) %>%
+  mutate(ppm_Ca = soil_metals_wide$ppm_Ca1[match(env_16S$Plot_ID, soil_metals_wide$Plot_ID)]) %>%
+  mutate(ppm_Mg = soil_metals_wide$ppm_Mg[match(env_16S$Plot_ID, soil_metals_wide$Plot_ID)]) %>%
+  mutate(ppm_Fe = soil_metals_wide$ppm_Fe[match(env_16S$Plot_ID, soil_metals_wide$Plot_ID)]) %>%
+  mutate(ppm_K = soil_metals_wide$ppm_K[match(env_16S$Plot_ID, soil_metals_wide$Plot_ID)]) %>%
+  mutate(ppm_Na = soil_metals_wide$ppm_Na[match(env_16S$Plot_ID, soil_metals_wide$Plot_ID)]) %>%
+  mutate(ppm_P = soil_metals_wide$ppm_P1[match(env_16S$Plot_ID, soil_metals_wide$Plot_ID)]) %>%
+  mutate(ppm_S = soil_metals_wide$ppm_S1[match(env_16S$Plot_ID, soil_metals_wide$Plot_ID)]) %>%
+  mutate(plant_r = diversity$species_richness[match(env_16S$Plot_ID, diversity$pot)]) %>%
+  mutate(plant_shannon = diversity$shannon[match(env_16S$Plot_ID, diversity$pot)]) %>%
+  mutate(plant_simpson = diversity$simpson[match(env_16S$Plot_ID, diversity$pot)]) %>%
+  mutate(AM_assoc = AMdata$hyph_percent[match(env_16S$Plot_ID, AMdata$Plot_ID)]) %>%
+  mutate(AM_biomass = HLD_T0$AM_biomass_gkg[match(env_16S$Plot_ID, HLD_T0$Pot)]) %>%
+  mutate(total_fun_biomass = HLD_T0$total_fun_gkg[match(env_16S$Plot_ID, HLD_T0$Pot)])
+
+#clean up taxa
+taxa_16S <- taxa_16S %>%
+  mutate(asv = gsub(" ", "", asv)) %>% #remove spaces from taxa_ITS$asv to match the column naming format
+  mutate(Phylum = str_remove(Phylum, ".\\w.")) %>% #make column without first part of column
+  mutate(Class = str_remove(Class, ".\\w.")) %>%
+  mutate(Order = str_remove(Order, ".\\w.")) %>%
+  mutate(Family = str_remove(Family, ".\\w.")) %>%
+  mutate(Genus = str_remove(Genus, ".\\w.")) 
+taxa_16S[is.na(taxa_16S)] <- "unknown" #replace NA values with text
+
+#set row names of asv file from env
+#asv_16S <- asv_16S.tmp[which(row.names(asv_16S.tmp)%in%row.names(env_16S)),which(colnames(asv_16S.tmp)%in%names(dna_16S))]
+#row.names(asv_16S)==row.names(env_16S) #check it worked
+#rm(asv_16S.tmp) #remove temp file
+
+#alpha diversity - asv
+#observation richness
+x16s_sobs.list <-  replicate(100, 1:dim(asv_16S)[1], simplify = FALSE)
+for (i in 1:100) {
+  x16s_sobs.list[[i]] <- specnumber(as.matrix(rrarefy(asv_16S,sample=170)))
+}
+env_16S$sobs <- Reduce("+", x16s_sobs.list) / length(x16s_sobs.list)
+rm(x16s_sobs.list)
+
+#shannon
+x16s_shannon.list <-  replicate(100, 1:dim(asv_16S)[1], simplify = FALSE)
+for (i in 1:100) {
+  x16s_shannon.list[[i]] <- diversity(as.matrix(rrarefy(asv_16S,sample=170)), index = "shannon")
+}
+env_16S$shannon <- Reduce("+", x16s_shannon.list) / length(x16s_shannon.list)
+rm(x16s_shannon.list)
+
+#gini
+x16s_gini.list <-  replicate(100, 1:dim(asv_16S)[1], simplify = FALSE)
+for (i in 1:100) {
+  x16s_gini.list[[i]] <- apply(as.matrix(rrarefy(asv_16S,sample=170)), 1, function(x) Gini(x))
+}
+env_16S$gini <- Reduce("+", x16s_gini.list) / length(x16s_gini.list)
+rm(x16s_gini.list)
+
+#combine at phylum level
+asv_16S.p <- matrix(0, nrow=nrow(asv_16S), ncol=length(unique(taxa_16S$Phylum)))
+rownames(asv_16S.p) <- rownames(asv_16S)
+colnames(asv_16S.p) <- unique(taxa_16S$Phylum)
+for (i in 1:length(unique(taxa_16S$Phylum))) {
+  temp <- taxa_16S[which(taxa_16S$Phylum == unique(taxa_16S$Phylum)[i]),]
+  temp2 <- asv_16S[, which(colnames(asv_16S) %in% temp$asv), drop=FALSE]
+  asv_16S.p[,i] <- rowSums(temp2)
+}
+asv_16S.p <- as.data.frame(asv_16S.p)
+
+#combine at family level
+asv_16S.f <- matrix(0, nrow=nrow(asv_16S), ncol=length(unique(taxa_16S$Family)))
+rownames(asv_16S.f) <- rownames(asv_16S)
+colnames(asv_16S.f) <- unique(taxa_16S$Family)
+for (i in 1:length(unique(taxa_16S$Family))) {
+  temp <- taxa_16S[which(taxa_16S$Family == unique(taxa_16S$Family)[i]),]
+  temp2 <- asv_16S[, which(colnames(asv_16S) %in% temp$asv), drop=FALSE]
+  asv_16S.f[,i] <- rowSums(temp2)
+}
+asv_16S.f <- as.data.frame(asv_16S.f)
+
+#pivot for graphs, add site
+
+#phylum
+asv_16S.p_long <- asv_16S.p %>%
+  mutate(Site_ID = env_ITS$Site_ID) %>% #add site ID to samples
+pivot_longer(
+    cols = c(1:5), #pick columns to pivot
+    names_to = "phylum", #name column to put original column names in
+    values_to = "count") #name column to put values in
+
+#family
+asv_ITS.f_long <- asv_ITS.f %>%
+  mutate(Site_ID = env_ITS$Site_ID) %>% #add site ID to samples
+pivot_longer(
+    cols = c(1:4), #pick columns to pivot
+    names_to = "family", #name column to put original column names in
+    values_to = "count") #name column to put values in
+
+
+```
 
 ### 13C respiration
 
@@ -1958,7 +2184,7 @@ summary_SOM_Kimpton$Site <- factor(summary_SOM_Kimpton$Site, levels = order_site
 
 ```
 
-```{r load SOM-13C data}
+```{r load SOM-13C data, warning=FALSE}
 
 #read in soil C/N and 13C data
 SOM_13C <- read_csv("SOM_13C.csv")
@@ -2051,14 +2277,14 @@ SOM_13C_T0 <- SOM_13C_T0 %>%
   mutate(AM_arb_ct = AMdata$Arbuscule[match(SOM_13C_T0$Plot_ID, AMdata$Plot_ID)]) %>%
   mutate(AM_ves_ct = AMdata$Vesicle[match(SOM_13C_T0$Plot_ID, AMdata$Plot_ID)]) %>%
   mutate(AM_absent = AMdata$Nothing[match(SOM_13C_T0$Plot_ID, AMdata$Plot_ID)]) %>%
-  mutate(spores_g = HLD_T0$spores_g[match(SOM_13C_T0$Plot_ID, HLD_T0$pot)]) %>%
-  mutate(AM_mm_g = HLD_T0$AM_mm_g[match(SOM_13C_T0$Plot_ID, HLD_T0$pot)]) %>%
-  mutate(other_mm_g = HLD_T0$other_mm_g[match(SOM_13C_T0$Plot_ID, HLD_T0$pot)]) %>%
-  mutate(AM_biomass_gkg = HLD_T0$AM_biomass_gkg[match(SOM_13C_T0$Plot_ID, HLD_T0$pot)]) %>%
-  mutate(total_fun_gkg = HLD_T0$total_fun_gkg[match(SOM_13C_T0$Plot_ID, HLD_T0$pot)]) %>%
-  mutate(AM_C_mgkg = HLD_T0$AM_C_mgkg[match(SOM_13C_T0$Plot_ID, HLD_T0$pot)]) %>%
-  mutate(otherfun_C_mgkg = HLD_T0$otherfun_C_mgkg[match(SOM_13C_T0$Plot_ID, HLD_T0$pot)]) %>%
-  mutate(total_fun_C_mgkg = HLD_T0$total_fun_C_mgkg[match(SOM_13C_T0$Plot_ID, HLD_T0$pot)]) %>%
+  mutate(spores_g = HLD_T0$spores_g[match(SOM_13C_T0$Plot_ID, HLD_T0$Pot)]) %>%
+  mutate(AM_mm_g = HLD_T0$AM_mm_g[match(SOM_13C_T0$Plot_ID, HLD_T0$Pot)]) %>%
+  mutate(other_mm_g = HLD_T0$other_mm_g[match(SOM_13C_T0$Plot_ID, HLD_T0$Pot)]) %>%
+  mutate(AM_biomass_gkg = HLD_T0$AM_biomass_gkg[match(SOM_13C_T0$Plot_ID, HLD_T0$Pot)]) %>%
+  mutate(total_fun_gkg = HLD_T0$total_fun_gkg[match(SOM_13C_T0$Plot_ID, HLD_T0$Pot)]) %>%
+  mutate(AM_C_mgkg = HLD_T0$AM_C_mgkg[match(SOM_13C_T0$Plot_ID, HLD_T0$Pot)]) %>%
+  mutate(otherfun_C_mgkg = HLD_T0$otherfun_C_mgkg[match(SOM_13C_T0$Plot_ID, HLD_T0$Pot)]) %>%
+  mutate(total_fun_C_mgkg = HLD_T0$total_fun_C_mgkg[match(SOM_13C_T0$Plot_ID, HLD_T0$Pot)]) %>%
   mutate(fun_C_soil_C = ((total_fun_C_mgkg/1000)/SOM_C)*100) %>%
   mutate(fun_C_POM_C = ((total_fun_C_mgkg/1000)/POM_C)*100) %>%
   mutate(pH = SOM_13C_T0$pH <- site_data$pH[match(SOM_13C_T0$Plot_ID, site_data$Plot_ID)]) %>%
@@ -2072,14 +2298,14 @@ SOM_13C_T0 <- SOM_13C_T0 %>%
 SOM_13C_T6 <- SOM_13C %>%
   filter(Incubation_T == 6) #filter 6 mos
 SOM_13C_T6 <- SOM_13C_T6 %>% #add fungi and pH
-  mutate(spores_g = HLD_T6$spores_g[match(SOM_13C_T6$Plot_ID, HLD_T6$pot)]) %>%
-  mutate(AM_mm_g = HLD_T6$AM_mm_g[match(SOM_13C_T6$Plot_ID, HLD_T6$pot)]) %>%
-  mutate(other_mm_g = HLD_T6$other_mm_g[match(SOM_13C_T6$Plot_ID, HLD_T6$pot)]) %>%
-  mutate(AM_biomass_gkg = HLD_T6$AM_biomass_gkg[match(SOM_13C_T6$Plot_ID, HLD_T6$pot)]) %>%
-  mutate(total_fun_gkg = HLD_T6$total_fun_gkg[match(SOM_13C_T6$Plot_ID, HLD_T6$pot)]) %>%
-  mutate(AM_C_mgkg = HLD_T6$AM_C_mgkg[match(SOM_13C_T6$Plot_ID, HLD_T6$pot)]) %>%
-  mutate(otherfun_C_mgkg = HLD_T6$otherfun_C_mgkg[match(SOM_13C_T6$Plot_ID, HLD_T6$pot)]) %>%
-  mutate(total_fun_C_mgkg = HLD_T6$total_fun_C_mgkg[match(SOM_13C_T6$Plot_ID, HLD_T6$pot)]) %>%
+  mutate(spores_g = HLD_T6$spores_g[match(SOM_13C_T6$Plot_ID, HLD_T6$Pot)]) %>%
+  mutate(AM_mm_g = HLD_T6$AM_mm_g[match(SOM_13C_T6$Plot_ID, HLD_T6$Pot)]) %>%
+  mutate(other_mm_g = HLD_T6$other_mm_g[match(SOM_13C_T6$Plot_ID, HLD_T6$Pot)]) %>%
+  mutate(AM_biomass_gkg = HLD_T6$AM_biomass_gkg[match(SOM_13C_T6$Plot_ID, HLD_T6$Pot)]) %>%
+  mutate(total_fun_gkg = HLD_T6$total_fun_gkg[match(SOM_13C_T6$Plot_ID, HLD_T6$Pot)]) %>%
+  mutate(AM_C_mgkg = HLD_T6$AM_C_mgkg[match(SOM_13C_T6$Plot_ID, HLD_T6$Pot)]) %>%
+  mutate(otherfun_C_mgkg = HLD_T6$otherfun_C_mgkg[match(SOM_13C_T6$Plot_ID, HLD_T6$Pot)]) %>%
+  mutate(total_fun_C_mgkg = HLD_T6$total_fun_C_mgkg[match(SOM_13C_T6$Plot_ID, HLD_T6$Pot)]) %>%
   mutate(pH = SOM_13C_T6$pH <- site_data$pH[match(SOM_13C_T6$Plot_ID, site_data$Plot_ID)]) 
 
 #order variables
@@ -2102,7 +2328,7 @@ summary_SOM_13C_T0$Site_ID <- factor(summary_SOM_13C_T0$Site_ID, levels = order_
 
 #### 2026
 
-```{r load 2026 SOM data}
+```{r load 2026 SOM data, warning=FALSE}
 
 #read in field soil C/N data from 2026 and calculate additional
 SOM_2026 <- read_csv("SOM_2026.csv") %>%
@@ -2146,7 +2372,7 @@ SOM_multiyr$Site_ID <- factor(SOM_multiyr$Site_ID, levels = order_IDs)
 
 Manning, Peter; De Vries, Franciska T.; Tallowin, Jerry R. B. et al. (2016). Data from: Simple measures of climate, soil properties and plant traits predict national scale grassland soil carbon stocks [Dataset]. Dryad. https://doi.org/10.5061/dryad.s7867
 
-```{r load UK data}
+```{r load UK data, warning=FALSE}
 
 #load dataset UK grasslands - from DRYAD repository, Manning et al. 2016
 UK_soil <- read_csv("Manning2015_dryad.csv") %>%
@@ -2176,13 +2402,12 @@ soilC_compare <- SOM_2026 %>%
   rename("POM_C" = "POM53_C_kgm2_7cm") %>%
   rename("MAOM_C" = "MAOM45_C_kgm2_7cm") %>%
   mutate(type = "R") %>% #R for restored
-  mutate(vegetation = case_when(grepl("BU", site) #use grepl to find a substring within a column
-															  ~ "BU Wet Grassland", #set value in new column 
-															  grepl("BM", site) ~ "BM Wet Grassland", 
-															  grepl("AU", site) ~ "AU Mesotrophic", 
-															  grepl("AM", site) ~ "AM Mesotrophic",
-															  grepl("FU", site) ~ "FU Mesotrophic",
-															  grepl("FM", site) ~ "FM Mesotrophic")) %>% 
+  mutate(vegetation = case_when(site == "BU" ~ "BU Wet Grassland", #set value in new column 
+															  site == "BM" ~ "BM Wet Grassland", 
+															  site == "AU" ~ "AU Mesotrophic", 
+															  site == "AM" ~ "AM Mesotrophic",
+															  site == "FU" ~ "FU Mesotrophic",
+															  site == "FM" ~ "FM Mesotrophic")) %>% 
   bind_rows(UK_soil) %>%
   mutate(pH_range = case_when(pH <= 5 ~ "Very Strongly Acidic", #make pH categories
                                 pH > 5 & pH <= 5.5 ~ "Strongly Acidic",
@@ -2214,7 +2439,7 @@ soilC_compare$vegetation <- factor(soilC_compare$vegetation,
 
 
 #### UK microbial plant data
-```{r load UK microbial data}
+```{r load UK microbial data, eval=FALSE}
 
 #load data - DIGFOR - CWM with Tianyang
 UK_AMpl <- read_csv("DIGFOR_combined_simplified.csv") %>%
@@ -2463,12 +2688,198 @@ tmap_save(filename = "Figures/Sites_map.png", width = 8, height = 6, dpi = 300)
 ### Plot calibration values
 ```{r plot color LAB}
 
+#facet_wrap plot
+color_g1_lab_long %>%
+ggplot(aes(x=factor(coal_per), y=value, fill=factor(coal_per))) + 
+  geom_boxplot() +
+  facet_wrap(~channel, scales = "free", nrow=1) + #create a separate plot for each site
+  scale_fill_manual(values=colors_ramp2) + #define colors to use
+  xlab("Coal concentration (%)") + ylab(expression("Value")) + #define/change X and Y labels
+  theme(#axis.text.x = element_text(angle=90), #set angle of variable labels
+        panel.grid.major.y = element_line(color = "grey40", size = 0.25)) + 
+  #scale_x_discrete(labels = "", "", "", "") + #remove x axis labels
+  my_theme +
+  theme(legend.position='none') 
+
+#save figure
+ggsave('lab_calibration_g1.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder within working directory
+       width = 8, height = 6, units = "in", #set dimensions for figure
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+
+
+#facet_wrap plot - 2
+color_g2_lab_long %>%
+ggplot(aes(x=factor(coal_per), y=value, fill=factor(coal_per))) + 
+  geom_boxplot() +
+  facet_wrap(~channel, scales = "free", nrow=1) + #create a separate plot for each site
+  scale_fill_manual(values=colors_ramp2) + #define colors to use
+  xlab("Coal concentration (%)") + ylab(expression("Value")) + #define/change X and Y labels
+  theme(#axis.text.x = element_text(angle=90), #set angle of variable labels
+        panel.grid.major.y = element_line(color = "grey40", size = 0.25)) + 
+  #scale_x_discrete(labels = "", "", "", "") + #remove x axis labels
+  my_theme +
+  theme(legend.position='none') 
+
+#save figure
+ggsave('lab_calibration_g2.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder within working directory
+       width = 8, height = 6, units = "in", #set dimensions for figure
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+#facet_wrap plot - sieved
+color_s_lab_long %>%
+ggplot(aes(x=factor(coal_per), y=value, fill=factor(coal_per))) + 
+  geom_boxplot() +
+  facet_wrap(~channel, scales = "free", nrow=1) + #create a separate plot for each site
+  scale_fill_manual(values=colors_ramp2) + #define colors to use
+  xlab("Coal concentration (%)") + ylab(expression("Value")) + #define/change X and Y labels
+  theme(#axis.text.x = element_text(angle=90), #set angle of variable labels
+        panel.grid.major.y = element_line(color = "grey40", size = 0.25)) + 
+  #scale_x_discrete(labels = "", "", "", "") + #remove x axis labels
+  my_theme +
+  theme(legend.position='none') 
+
+#save figure
+ggsave('lab_calibration_s.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder within working directory
+       width = 8, height = 6, units = "in", #set dimensions for figure
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+
+#plot points w/all 3
+
+par(mfrow=c(3,1)) # Make a matrix of plots (for any plots, can change numbers to set however many side by side)
+
+ggplot(aes(x=coal_per, y=value), data=color_g1_lab_long) + 
+  geom_point(aes(color = factor(channel))) + #add points to plot
+  #geom_smooth(method="lm", se=TRUE, color="grey10", fill=fill_color) +
+  scale_color_manual(values = colors3) + #define colors to use
+  #scale_y_continuous(labels = scales::percent_format(accuracy = 1)) + #change to %
+  xlab("Coal concentration (%)") + ylab(expression("Value")) + #define/change X and Y labels
+  my_theme 
+
+ggplot(aes(x=coal_per, y=value), data=color_g2_lab_long) + 
+  geom_point(aes(color = factor(channel))) + #add points to plot
+  #geom_smooth(method="lm", se=TRUE, color="grey10", fill=fill_color) +
+  scale_color_manual(values = colors3) + #define colors to use
+  #scale_y_continuous(labels = scales::percent_format(accuracy = 1)) + #change to %
+  xlab("Coal concentration (%)") + ylab(expression("Value")) + #define/change X and Y labels
+  my_theme 
+
+ggplot(aes(x=coal_per, y=value), data=color_s_lab_long) + 
+  geom_point(aes(color = factor(channel))) + #add points to plot
+  #geom_smooth(method="lm", se=TRUE, color="grey10", fill=fill_color) +
+  scale_color_manual(values = colors3) + #define colors to use
+  #scale_y_continuous(labels = scales::percent_format(accuracy = 1)) + #change to %
+  xlab("Coal concentration (%)") + ylab(expression("Value")) + #define/change X and Y labels
+  my_theme 
+
+#save figure
+ggsave('lab_calibration_dots_g1.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder within working directory
+       width = 8, height = 6, units = "in", #set dimensions for figure
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+# 3D CIE LAB plot
+ggplot(color_cal_s, aes(x = a, y = l, z = b, color = sample_grp)) +
+  scale_color_manual(values=colors_ramp2) + #define colors to use
+  geom_point() +
+  ylab("L") +
+  coord_3d(rotate_labels = FALSE) +
+  theme_minimal()
+
+#save figure
+ggsave('lab_calibration_3d.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder within working directory
+       width = 6, height = 4, units = "in", #set dimensions for figure
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+```
+
+```{r plot color reflectance nm}
+
+#facet_wrap plot
+color_g1_nm_long %>%
+ggplot(aes(x=factor(coal_per), y=reflectance, fill=factor(coal_per))) + 
+  geom_boxplot() +
+  facet_wrap(~wavelength, scales = "free", nrow=6) + #create a separate plot for each site
+  scale_fill_manual(values=colors_ramp2) + #define colors to use
+  xlab("") + ylab(expression("Reflectance")) + #define/change X and Y labels
+  theme(#axis.text.x = element_text(angle=90), #set angle of variable labels
+        panel.grid.major.y = element_line(color = "grey40", size = 0.25)) + 
+  #scale_x_discrete(labels = "", "", "", "") + #remove x axis labels
+  my_theme +
+  theme(legend.position='none') 
+
+color_g2_nm_long %>%
+ggplot(aes(x=factor(coal_per), y=reflectance, fill=factor(coal_per))) + 
+  geom_boxplot() +
+  facet_wrap(~wavelength, scales = "free", nrow=6) + #create a separate plot for each site
+  scale_fill_manual(values=colors_ramp2) + #define colors to use
+  xlab("") + ylab(expression("Reflectance")) + #define/change X and Y labels
+  theme(#axis.text.x = element_text(angle=90), #set angle of variable labels
+        panel.grid.major.y = element_line(color = "grey40", size = 0.25)) + 
+  #scale_x_discrete(labels = "", "", "", "") + #remove x axis labels
+  my_theme +
+  theme(legend.position='none') 
+
+color_s_nm_long %>%
+ggplot(aes(x=factor(coal_per), y=reflectance, fill=factor(coal_per))) + 
+  geom_boxplot() +
+  facet_wrap(~wavelength, scales = "free", nrow=6) + #create a separate plot for each site
+  scale_fill_manual(values=colors_ramp2) + #define colors to use
+  xlab("") + ylab(expression("Reflectance")) + #define/change X and Y labels
+  theme(#axis.text.x = element_text(angle=90), #set angle of variable labels
+        panel.grid.major.y = element_line(color = "grey40", size = 0.25)) + 
+  #scale_x_discrete(labels = "", "", "", "") + #remove x axis labels
+  my_theme +
+  theme(legend.position='none') 
+
+#save figure
+ggsave('reflectance_cal_s.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder within working directory
+       width = 10, height = 6, units = "in", #set dimensions for figure
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+```
+
+### Remove outliers
+```{r remove outliers from calibrations}
+
+#remove outlier samples from calibration df (based on LAB and reflectance graphs)
+color_cal_g1 <- color_cal_g1 %>%
+  filter(!coal_per == 6)
+
+color_cal_g2 <- color_cal_g2 %>%
+  filter(!coal_per == 6) %>%
+  filter(!coal_per == 14) %>%
+  filter(!coal_per == 16)
+
+color_cal_s <- color_cal_s %>%
+  filter(!coal_per == 3) %>%
+  filter(!coal_per == 15) 
+
+
+```
+
+### Plot sample LAB values
+
+```{r plot color LAB, eval=FALSE}
+
 color_lab_long$channel <- factor(color_lab_long$channel, 
                              levels = c("L","a","b"))
 
 #facet_wrap plot
 color_lab_long %>%
-ggplot(aes(x=factor(coal_per), y=value, fill=factor(coal_per))) + 
+ggplot(aes(x=factor(coal_per), y=value, fill=factor(site_id))) + 
   geom_boxplot() +
   facet_wrap(~channel, scales = "free", nrow=1) + #create a separate plot for each site
   scale_fill_manual(values=colors_ramp2) + #define colors to use
@@ -2486,55 +2897,40 @@ ggsave('lab_calibration.svg', #save plot name and type - can be "eps", "pdf", "j
        dpi = 300, #set resolution
        bg=NULL) #background from plot specifications
 
-color_lab_long %>%
-ggplot(aes(x=coal_per, y=value)) + 
-  geom_point(aes(color = factor(channel))) + #add points to plot
-  #geom_smooth(method="lm", se=TRUE, color="grey10", fill=fill_color) +
-  scale_color_manual(values = colors3) + #define colors to use
-  #scale_y_continuous(labels = scales::percent_format(accuracy = 1)) + #change to %
-  xlab("Coal concentration (%)") + ylab(expression("Value")) + #define/change X and Y labels
-  my_theme 
-
 # 3D CIE LAB plots
-plot_ly(color_cal, x = ~L, y = ~a, z = ~b, type = "scatter3d", mode = "markers",
-                  marker = list(size = 3))
+plot_ly(color_cal, x = ~l, y = ~a, z = ~b, type = "scatter3d", mode = "markers",
+                  marker = list(size = 3)) #interactive
 
-library(ggcube)
-
-ggplot(color_cal, aes(x = a, y = L, z = b, color = coal_per)) +
+ggplot(color_soil26, aes(x = a, y = l, z = b, color = site_id)) +
+  scale_color_manual(values=colors6) + #define colors to use
   geom_point() +
-  coord_3d() +
-  my_theme
-
-```
-
-
-```{r plot color reflectance nm}
-
-#facet_wrap plot
-color_nm_long %>%
-ggplot(aes(x=factor(coal_per), y=reflectance, fill=factor(coal_per))) + 
-  geom_boxplot() +
-  facet_wrap(~wavelength, scales = "free", nrow=6) + #create a separate plot for each site
-  scale_fill_manual(values=colors_ramp2) + #define colors to use
-  xlab("") + ylab(expression("Reflectance")) + #define/change X and Y labels
-  theme(#axis.text.x = element_text(angle=90), #set angle of variable labels
-        panel.grid.major.y = element_line(color = "grey40", size = 0.25)) + 
-  #scale_x_discrete(labels = "", "", "", "") + #remove x axis labels
-  my_theme +
-  theme(legend.position='none') 
+  ylab("L") +
+  coord_3d(rotate_labels = FALSE) +
+  theme_minimal()
+  #my_theme
 
 #save figure
-ggsave('reflectance.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+ggsave('lab_soils_3d.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
        path = "Figures", #save to folder within working directory
-       width = 10, height = 6, units = "in", #set dimensions for figure
+       width = 6, height = 4, units = "in", #set dimensions for figure
        dpi = 300, #set resolution
        bg=NULL) #background from plot specifications
 
 ```
 
+
+
 ### Calibration PCAs
-```{r coal calibration PCA}
+```{r coal calibration PCA, eval=FALSE}
+
+#set up for PCA
+#scale
+color_cal_std <- color_cal %>%
+  mutate_if(is.numeric,scale)
+
+#select numeric
+color_cal_std_num <- color_cal_std %>%
+  dplyr::select_if(is.numeric)
 
 #PCA on all
 color_cal_pca <- prcomp(color_cal_std_num) #perform PCA
@@ -2548,10 +2944,10 @@ screeplot(color_cal_pca) # diagnostic plot to make sure principal components are
 biplot(color_cal_pca)
 
 #customized plot
-autoplot(color_cal_pca, data = color_cal_std, colour = 'coal_per2', fill = 'coal_per2',
+autoplot(color_cal_pca, data = color_cal_std, colour = 'sample_grp', fill = 'sample_grp',
          loadings = TRUE, loadings.colour = 'black',
          loadings.label = TRUE, loadings.label.size = 3,
-         frame = TRUE, frame.type = 'norm', frame.colour = 'coal_per2', frame.fill = 'coal_per2',
+         frame = TRUE, frame.type = 'norm', frame.colour = 'sample_grp', frame.fill = 'sample_grp',
          shape = 21) +
   scale_color_manual(values = colors_ramp2) +
   scale_fill_manual(values = colors_ramp2) +
@@ -2568,10 +2964,10 @@ color_cal_pca$rotation #view loadings from the standardized data
 screeplot(color_cal_pca) # diagnostic plot to make sure principal components are in order
 
 #customized plot
-autoplot(color_cal_pca, data = color_cal_std, colour = 'coal_per2', fill = 'coal_per2',
+autoplot(color_cal_pca, data = color_cal_std, colour = 'sample_grp', fill = 'sample_grp',
          loadings = TRUE, loadings.colour = 'black',
          loadings.label = TRUE, loadings.label.size = 3,
-         frame = TRUE, frame.type = 'norm', frame.colour = 'coal_per2', frame.fill = 'coal_per2',
+         frame = TRUE, frame.type = 'norm', frame.colour = 'sample_grp', frame.fill = 'sample_grp',
          shape = 21) +
   scale_color_manual(values = colors_ramp2) +
   scale_fill_manual(values = colors_ramp2) +
@@ -2591,10 +2987,10 @@ screeplot(color_cal_pca) # diagnostic plot to make sure principal components are
 #biplot(color_cal_pca)
 
 #customized plot
-autoplot(color_cal_pca, data = color_cal_std, colour = 'coal_per2', fill = 'coal_per2',
+autoplot(color_cal_pca, data = color_cal_std, colour = 'sample_grp', fill = 'sample_grp',
          loadings = FALSE, #loadings.colour = 'black',
          #loadings.label = TRUE, loadings.label.size = 3,
-         frame = TRUE, frame.type = 'norm', frame.colour = 'coal_per2', frame.fill = 'coal_per2',
+         frame = TRUE, frame.type = 'norm', frame.colour = 'sample_grp', frame.fill = 'sample_grp',
          shape = 21) +
   scale_color_manual(values = colors_ramp2) +
   scale_fill_manual(values = colors_ramp2) +
@@ -2603,7 +2999,7 @@ autoplot(color_cal_pca, data = color_cal_std, colour = 'coal_per2', fill = 'coal
 
 
 #save figure
-ggsave('_PCA.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+ggsave('reflectance_PCA.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
        path = "Figures", #save to folder within working directory
        width = 6, height = 4, units = "in", #set dimensions for figure
        dpi = 300, #set resolution
@@ -2619,6 +3015,11 @@ ggsave('_PCA.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff
 
 #load csv
 coal_quant <- read.csv("coal_quant.csv")
+
+#check if predictable by formula... not really based on 65% carbon for pure coal, works better for 50% carbon. Also 20 & 25% coal samples are off, may need to re-measure
+coal_quant <- coal_quant %>%
+  mutate(coal_C = (per_coal/100)*50) %>%
+  mutate(soil_C = perC - coal_C)
 
 #coal lm plot % carbon vs % coal
 ggplot(data = coal_quant, aes(x=per_coal, y=perC)) + 
@@ -2636,7 +3037,7 @@ ggsave('per_coal_C.svg', #save plot name and type - can be "eps", "pdf", "jpeg",
 	bg=NULL) #background from plot specifications
 
 #R-squared for coal calibration
-performance::r2(lm(perC ~ per_coal, data = coal_quant)) #adj R-sq value
+performance::r2(lm(perC ~ per_coal, data = coal_quant)) #adj R-sq value 0.996
 
 ```
 
@@ -2710,23 +3111,10 @@ ggsave('per_coal_CN.svg', #save plot name and type - can be "eps", "pdf", "jpeg"
 
 #predictive modeling
 
-#create chroma and hue function
-add_ch <- function(df){
-  df %>%
-    mutate(
-      chroma = sqrt(a^2 + b^2),
-      hue = atan2(b, a) * 180 / pi  # degrees
-    )
-}
-
-#add chroma and hue to calibration and unknown dataframes
-color_cal <- add_ch(color_cal)
-color_soil26 <- add_ch(color_soil26)
-
 #pre-define variables
 target <- "coal_per"   # change if different
 feature_base <- c("l", "a", "b")
-spectral_cols <- names(color_cal) %>% keep(~ grepl("^\\d+nm$", .x)) #selects columns with nm
+spectral_cols <- names(color_cal) %>% purrr::keep(~ grepl("^\\d+nm$", .x)) #selects columns with nm
 predictors <- c(feature_base, spectral_cols, "chroma", "hue") 
 group_col    <- "sample_grp" #group by coal_per to keep technical replicates together
 cv_type      <- "grouped" #"grouped" (groupKFold) or "logo" (leave-one-group-out by coal_per)
@@ -2734,8 +3122,8 @@ cv_type      <- "grouped" #"grouped" (groupKFold) or "logo" (leave-one-group-out
 
 
 #train control: grouped, but repeated CV as backup if no group
-if ("sample_grp" %in% names(color_cal)) {
-  idx <- caret::groupKFold(factor(color_cal$sample_grp), k = min(5, length(unique(color_cal$sample_grp))))
+if ("sample_grp" %in% names(color_cal_g1)) {
+  idx <- caret::groupKFold(factor(color_cal_g1$sample_grp), k = min(5, length(unique(color_cal_g1$sample_grp))))
   tr_ctrl <- trainControl(method="cv", index = idx, savePredictions="final", summaryFunction = defaultSummary, allowParallel=TRUE)
 } else {
   tr_ctrl <- trainControl(method="repeatedcv", number=5, repeats=5, savePredictions="final", summaryFunction = defaultSummary, allowParallel=TRUE)
@@ -2743,94 +3131,547 @@ if ("sample_grp" %in% names(color_cal)) {
 }
 
 #set up parallel backend
-cl <- makePSOCKcluster(parallel::detectCores() - 1); registerDoParallel(cl); 
-on.exit({ stopCluster(cl); registerDoSEQ() })
+cl <- makePSOCKcluster(parallel::detectCores() - 1); registerDoParallel(cl); on.exit({ stopCluster(cl); registerDoSEQ() })
 
 
 
 ```
 
-#### Partial Least Squares Regression
-```{r pls coal}
+#### Partial Least Squares Regression setup
+
+```{r pls coal g}
 
 #PLS via caret/pls
 set.seed(42)
 tic("tuning pls")
-pls_fit <- train(x = color_cal %>% select(all_of(predictors)), y = color_cal[[target]],
+pls_fit_g <- train(x = color_cal_g2 %>% #
+                   dplyr::select(all_of(predictors)), y = color_cal_g2[[target]],
                  method="pls", preProc=c("center","scale"),
                  tuneLength = min(10, length(predictors)), trControl = tr_ctrl, metric="RMSE")
-toc(); print(pls_fit)
+toc(); print(pls_fit_g)
 
 #PLS final using pls::plsr with the selected ncomp
-ncomp <- pls_fit$bestTune$ncomp #3      RMSE 2.153403 R2 0.9095253  MAE 1.888872
-pls_formula <- as.formula(paste(target, "~", paste(predictors, collapse = " + ")))
-pls_final <- plsr(pls_formula, data = color_cal, ncomp = ncomp, scale = TRUE, validation = "none")
-summary(pls_final)
+ncomp_g <- pls_fit_g$bestTune$ncomp #4      RMSE R2 MAE 2.831338  0.9398291  2.669456
+pls_formula_g <- as.formula(paste(target, "~", paste(predictors, collapse = " + ")))
+pls_final_g <- plsr(pls_formula_g, data = color_cal_g2, ncomp = ncomp_g, scale = TRUE, validation = "none")
+summary(pls_final_g)
 
-#bootstrap PLS PIs if color_soil exists (n_boot inline)
-bootstrap_pls_pi <- function(df_train, color_soil26, formula, ncomp, n_boot = 200){
-  if (is.null(color_soil26) || nrow(color_soil26)==0) return(NULL)
+#bootstrap PLS PIs function
+bootstrap_pls_pi_g <- function(df_train, unknown_df, formula, ncomp_g, n_boot = 200){
+  if (is.null(unknown_df) || nrow(unknown_df)==0) return(NULL)
   preds <- replicate(n_boot, {
     b <- df_train[sample(nrow(df_train), replace=TRUE), ]
-    as.numeric(predict(plsr(formula, data=b, ncomp=ncomp, scale=TRUE), newdata = color_soil26, ncomp = ncomp))
+    as.numeric(predict(plsr(formula, data=b, ncomp=ncomp_g, scale=TRUE), newdata = unknown_df, ncomp = ncomp_g))
   })
-  tibble(pred_pls = apply(preds,1,median), pred_pls_lo = apply(preds,1,quantile,0.025), pred_pls_hi = apply(preds,1,quantile,0.975))
+  tibble(pred_pls_g = apply(preds,1,median), pred_pls_lo_g = apply(preds,1,quantile,0.025), pred_pls_hi_g = apply(preds,1,quantile,0.975))
 }
-if (exists("color_soil26")) { message("Computing PLS bootstrap PIs..."); tic("PLS boot"); 
-  pls_res <- bootstrap_pls_pi(color_cal, color_soil26, pls_formula, ncomp, n_boot=200); toc(); 
-if (!is.null(pls_res)) pls_res <- pls_res %>% mutate(across(everything(), ~pmin(pmax(.x,0),100))) }
-
-#add results to df
-color_soil26 <- color_soil26 %>%
-  cbind(pls_res) 
 
 
 ```
 
-#### Random Forest
-```{r rf coal}
+```{r pls coal s}
+
+#PLS via caret/pls
+set.seed(42)
+tic("tuning pls")
+pls_fit_s <- train(x = color_cal_s %>% #
+                   dplyr::select(all_of(predictors)), y = color_cal_s[[target]],
+                 method="pls", preProc=c("center","scale"),
+                 tuneLength = min(10, length(predictors)), trControl = tr_ctrl, metric="RMSE")
+toc(); print(pls_fit_s)
+
+#PLS final using pls::plsr with the selected ncomp
+ncomp_s <- pls_fit_s$bestTune$ncomp #3      RMSE R2 MAE 1.065895  0.9893903  0.8936231
+pls_formula_s <- as.formula(paste(target, "~", paste(predictors, collapse = " + ")))
+pls_final_s <- plsr(pls_formula_s, data = color_cal_s, ncomp = ncomp_s, scale = TRUE, validation = "none")
+summary(pls_final_s)
+
+#bootstrap PLS PIs function
+bootstrap_pls_pi_s <- function(df_train, unknown_df, formula, ncomp_s, n_boot = 200){
+  if (is.null(unknown_df) || nrow(unknown_df)==0) return(NULL)
+  preds <- replicate(n_boot, {
+    b <- df_train[sample(nrow(df_train), replace=TRUE), ]
+    as.numeric(predict(plsr(formula, data=b, ncomp=ncomp_s, scale=TRUE), newdata = unknown_df, ncomp = ncomp_s))
+  })
+  tibble(pred_pls_s = apply(preds,1,median), pred_pls_lo_s = apply(preds,1,quantile,0.025), pred_pls_hi_s = apply(preds,1,quantile,0.975))
+}
+
+
+```
+
+#### Random Forest setup
+```{r rf coal g}
 
 #Random Forest via caret/ranger package
 set.seed(42)
 tic("tuning rf")
-ranger_fit <- train(x = color_cal %>% select(all_of(predictors)), y = color_cal[[target]],
+ranger_fit_g <- train(x = color_cal_g2 %>% 
+                      dplyr::select(all_of(predictors)), y = color_cal_g2[[target]],
                     method="ranger", preProc=c("center","scale"),
                     tuneLength = 5, trControl = tr_ctrl, metric="RMSE",
                     num.trees = 1000, importance="permutation", num.threads = 1)
-toc(); print(ranger_fit)
-best <- ranger_fit$bestTune # mtry 5 extratrees  RMSE 1.096074  R2 0.9540550  MAE 0.9793094
+toc()
+print(ranger_fit_g)
+best_g <- ranger_fit_g$bestTune # mtry 2 extratrees  RMSE R2 MAE 1.361917  0.9779578  1.199282
 
 #prepare scaled data and fit final quantile forest with more trees
-scaler <- preProcess(color_cal %>% select(all_of(predictors)), method = c("center","scale"))
-color_cal_proc <- predict(scaler, color_cal %>% select(all_of(predictors))); color_cal_proc[[target]] <- color_cal[[target]]
+scaler_g <- preProcess(color_cal_g2 %>% dplyr::select(all_of(predictors)), method = c("center","scale"))
+color_cal_proc_g <- predict(scaler_g, color_cal_g2 %>% dplyr::select(all_of(predictors))); color_cal_proc_g[[target]] <- color_cal_g2[[target]]
+
+r_qrf_g <- ranger::ranger(dependent.variable.name = target, data = color_cal_proc_g,
+                        num.trees = 2000, mtry = best_g$mtry,
+                        splitrule = if("splitrule" %in% names(best_g)) best_g$splitrule else "variance",
+                        min.node.size = if("min.node.size" %in% names(best_g)) best_g$min.node.size else 5,
+                        importance = "permutation", quantreg = TRUE, write.forest = TRUE, num.threads = 1)
+
+
+```
+
+```{r rf coal g}
+
+#Random Forest via caret/ranger package
+set.seed(42)
+tic("tuning rf")
+ranger_fit <- train(x = color_cal_s %>% 
+                      dplyr::select(all_of(predictors)), y = color_cal_s[[target]],
+                    method="ranger", preProc=c("center","scale"),
+                    tuneLength = 5, trControl = tr_ctrl, metric="RMSE",
+                    num.trees = 1000, importance="permutation", num.threads = 1)
+toc()
+print(ranger_fit)
+best <- ranger_fit$bestTune # mtry 5 extratrees  RMSE R2 MAE 1.691322  0.9770945  1.344681
+
+#prepare scaled data and fit final quantile forest with more trees
+scaler <- preProcess(color_cal_s %>% dplyr::select(all_of(predictors)), method = c("center","scale"))
+color_cal_proc <- predict(scaler, color_cal_s %>% dplyr::select(all_of(predictors))); color_cal_proc[[target]] <- color_cal_s[[target]]
 r_qrf <- ranger::ranger(dependent.variable.name = target, data = color_cal_proc,
                         num.trees = 2000, mtry = best$mtry,
                         splitrule = if("splitrule" %in% names(best)) best$splitrule else "variance",
                         min.node.size = if("min.node.size" %in% names(best)) best$min.node.size else 5,
                         importance = "permutation", quantreg = TRUE, write.forest = TRUE, num.threads = 1)
 
-#predict (point + quantiles) on color_soil if exists
-if (exists("color_soil26")) {
-  color_soil_proc <- predict(scaler, color_soil26 %>% select(all_of(predictors)))
-  p_point <- predict(r_qrf, data = color_soil_proc, type="response")$predictions
-  p_q <- predict(r_qrf, data = color_soil_proc, type="quantiles", quantiles=c(0.025,0.975))$predictions
-  predict_res <- color_soil26 %>% mutate(pred_rf = pmin(pmax(p_point,0),100), pred_rf_lo = pmin(pmax(p_q[,1],0),100), pred_rf_hi = pmin(pmax(p_q[,2],0),100))
-  print(head(rf_res))
-} else message("color_soil26 not found; ranger fitted on calibration data only")
+
+```
+
+#### Model validation
+```{r model predictions vs calibration - pls}
+
+#create df with randomly selected values from calibration data - g
+set.seed(42)
+val_idx <- sample(seq_len(nrow(color_cal_g2)), size = floor(nrow(color_cal_g2) * 0.2))
+
+#create splits
+df_val <- color_cal_g2[val_idx, ]
+df_train <- color_cal_g2[-val_idx, ]
+
+#sizes
+cat("Train rows:", nrow(df_train), " | Val rows:", nrow(df_val), "\n") 
+
+
+#PLS predictions
+if (exists("df_val")) { message("Computing PLS bootstrap PIs..."); tic("PLS boot"); 
+  pls_val <- bootstrap_pls_pi_g(color_cal_g2, df_val, pls_formula_g, ncomp_g, n_boot=200); toc(); 
+if (!is.null(pls_val)) pls_val <- pls_val %>% mutate(across(everything(), ~pmin(pmax(.x,0),100))) }
+
+#add results to df
+pls_val_g <- pls_val %>%
+  mutate(coal_per = df_val$coal_per)
+
+#compute rmse on prediction vs true coal_per
+rmse_vec <- function(true, pred) sqrt(mean((true - pred)^2, na.rm = TRUE))
+rmse_pls <- rmse_vec(pls_val_g$coal_per, pls_val_g$pred_pls_g)
+rmse_pls #1.7
+performance::r2(lm(coal_per ~ pred_pls_g, data=pls_val_g)) #adj R2 0.92
+performance::rmse(lm(coal_per ~ pred_pls_g, data=pls_val_g)) #1.59
+
+
+
+#create df with randomly selected values from calibration data - s
+set.seed(42)
+val_idx <- sample(seq_len(nrow(color_cal_s)), size = floor(nrow(color_cal_s) * 0.2))
+
+#create splits
+df_val <- color_cal_s[val_idx, ]
+df_train <- color_cal_s[-val_idx, ]
+
+#sizes
+cat("Train rows:", nrow(df_train), " | Val rows:", nrow(df_val), "\n") 
+
+
+#PLS predictions
+if (exists("df_val")) { message("Computing PLS bootstrap PIs..."); tic("PLS boot"); 
+  pls_val <- bootstrap_pls_pi_s(color_cal_s, df_val, pls_formula_s, ncomp_s, n_boot=200); toc(); 
+if (!is.null(pls_val)) pls_val <- pls_val %>% mutate(across(everything(), ~pmin(pmax(.x,0),100))) }
+
+#add results to df
+pls_val_s <- pls_val %>%
+  mutate(coal_per = df_val$coal_per)
+
+#compute rmse on prediction vs true coal_per
+rmse_pls <- rmse_vec(pls_val_s$coal_per, pls_val_s$pred_pls_s)
+rmse_pls #0.77
+performance::r2(lm(coal_per ~ pred_pls_s, data=pls_val_s)) #adj R2 0.986
+performance::rmse(lm(coal_per ~ pred_pls_s, data=pls_val_s)) #0.77
+
+
+```
+
+```{r model predictions vs calibration - rf}
+
+#create df with randomly selected values from calibration data
+set.seed(42)
+val_idx <- sample(seq_len(nrow(color_cal_g2)), size = floor(nrow(color_cal_g2) * 0.2))
+
+#create splits
+df_val <- color_cal_g2[val_idx, ]
+df_train <- color_cal_g2[-val_idx, ]
+
+#sizes
+cat("Train rows:", nrow(df_train), " | Val rows:", nrow(df_val), "\n") 
+
+
+#RF predictions
+val_proc <- predict(scaler_g, df_val %>% dplyr::select(all_of(predictors))) #scale for RF
+if (exists("r_qrf_g")) {
+  # ensure val_proc is a data.frame with same column names as used for fitting
+  p_point <- predict(r_qrf_g, data = val_proc, type = "response")$predictions
+  p_q  <- predict(r_qrf_g, data = val_proc, type = "quantiles", quantiles = c(0.025, 0.975))$predictions
+  rf_val_g <- data.frame(pred_rf_g = pmin(pmax(p_point,0),100), 
+           pred_rf_lo_g = pmin(pmax(p_q[,1],0),100), 
+           pred_rf_hi_g = pmin(pmax(p_q[,2],0),100)) %>%
+    mutate(coal_per = df_val$coal_per)
+} else p_point <- p_q <- NULL
+
+#compute rmse on prediction vs true coal_per
+rmse_rf <- rmse_vec(rf_val_g$coal_per, rf_val_g$pred_rf_g)
+rmse_rf #0.53
+performance::r2(lm(coal_per ~ pred_rf_g, data=rf_val_g)) #0.991
+performance::rmse(lm(coal_per ~ pred_rf_g, data=rf_val_g)) #0.53
+
+
+#create df with randomly selected values from calibration data
+set.seed(42)
+val_idx <- sample(seq_len(nrow(color_cal_s)), size = floor(nrow(color_cal_s) * 0.2))
+
+#create splits
+df_val <- color_cal_s[val_idx, ]
+df_train <- color_cal_s[-val_idx, ]
+
+#sizes
+cat("Train rows:", nrow(df_train), " | Val rows:", nrow(df_val), "\n") 
+
+
+
+#RF predictions
+val_proc <- predict(scaler, df_val %>% dplyr::select(all_of(predictors))) #scale for RF
+if (exists("r_qrf")) {
+  # ensure val_proc is a data.frame with same column names as used for fitting
+  p_point <- predict(r_qrf, data = val_proc, type = "response")$predictions
+  p_q  <- predict(r_qrf, data = val_proc, type = "quantiles", quantiles = c(0.025, 0.975))$predictions
+  rf_val <- data.frame(pred_rf = pmin(pmax(p_point,0),100), 
+           pred_rf_lo = pmin(pmax(p_q[,1],0),100), 
+           pred_rf_hi = pmin(pmax(p_q[,2],0),100)) %>%
+    mutate(coal_per = df_val$coal_per)
+} else p_point <- p_q <- NULL
+
+#compute rmse on prediction vs true coal_per
+rmse_rf <- rmse_vec(rf_val$coal_per, rf_val$pred_rf)
+rmse_rf #0.24
+performance::r2(lm(coal_per ~ pred_rf, data=rf_val)) #0.999
+performance::rmse(lm(coal_per ~ pred_rf, data=rf_val)) #0.23
+
+```
+
+
+```{r plot pls res validation}
+
+#ground only
+ggplot(pls_val_g, aes(x=pred_pls_g, y=coal_per, color = factor(coal_per))) + #
+  geom_point() + #add points to plot
+  geom_smooth(method="lm", se=FALSE, color="grey10", fill=fill_color) +
+  scale_color_manual(values=colors_ramp2) + #define colors to use
+  scale_y_continuous(breaks = c(0,5,10,15)) + #set specific tick marks on y axis
+  xlab("Predicted coal (%)") + ylab("Actual coal concentration (%)") + 
+  my_theme
+
+#save figure
+ggsave('pls_model_validation_g.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder within working directory
+       width = 8, height = 6, units = "in", #set dimensions for figure
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+
+#sieved
+ggplot(pls_val_s, aes(x=pred_pls_s, y=coal_per, color = factor(coal_per))) + #
+  geom_point() + #add points to plot
+  geom_smooth(method="lm", se=FALSE, color="grey10", fill=fill_color) +
+  scale_color_manual(values=colors_ramp2) + #define colors to use
+  scale_y_continuous(breaks = c(0,5,10,15)) + #set specific tick marks on y axis
+  xlab("Predicted coal (%)") + ylab("Actual coal concentration (%)") + 
+  my_theme
+
+#save figure
+ggsave('pls_model_validation_s.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder within working directory
+       width = 8, height = 6, units = "in", #set dimensions for figure
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+```
+
+
+```{r plot rf res validation}
+
+#ground only
+ggplot(rf_val_g, aes(x=pred_rf_g, y=coal_per, color = factor(coal_per))) + #
+  geom_point() + #add points to plot
+  geom_smooth(method="lm", se=FALSE, color="grey10", fill=fill_color) +
+  scale_color_manual(values=colors_ramp2) + #define colors to use
+  scale_y_continuous(breaks = c(0,5,10,15)) + #set specific tick marks on y axis
+  xlab("Predicted coal (%)") + ylab("Actual coal concentration (%)") + 
+  my_theme
+
+#save figure
+ggsave('rf_model_validation_g.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder within working directory
+       width = 8, height = 6, units = "in", #set dimensions for figure
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+
+#sieved
+ggplot(rf_val, aes(x=pred_rf, y=coal_per, color = factor(coal_per))) + #
+  geom_point() + #add points to plot
+  geom_smooth(method="lm", se=FALSE, color="grey10", fill=fill_color) +
+  scale_color_manual(values=colors_ramp2) + #define colors to use
+  scale_y_continuous(breaks = c(0,5,10,15)) + #set specific tick marks on y axis
+  xlab("Predicted coal (%)") + ylab("Actual coal concentration (%)") + 
+  my_theme
+
+#save figure
+ggsave('rf_model_validation_s.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder within working directory
+       width = 8, height = 6, units = "in", #set dimensions for figure
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+```
+
+#### 2023 samples prediction
+```{r predict 2023}
+
+#run PLSR on ground samples
+if (exists("color_soil23")) { message("Computing PLS bootstrap PIs..."); tic("PLS boot"); 
+  pls_res <- bootstrap_pls_pi_g(color_cal_g2, color_soil23, pls_formula_g, ncomp_g, n_boot=200); toc(); 
+if (!is.null(pls_res)) pls_res <- pls_res %>% mutate(across(everything(), ~pmin(pmax(.x,0),100))) }
+
+#add results to df
+color_soil23 <- color_soil23 %>%
+  cbind(pls_res) 
+
+
+#RFR predictions - ground
+color_proc <- predict(scaler_g, color_soil23 %>% dplyr::select(all_of(predictors))) #scale for RF
+if (exists("r_qrf_g")) {
+  # ensure val_proc is a data.frame with same column names as used for fitting
+  p_point <- predict(r_qrf_g, data = color_proc, type = "response")$predictions
+  p_q  <- predict(r_qrf_g, data = color_proc, type = "quantiles", quantiles = c(0.025, 0.975))$predictions
+  rf_res <- data.frame(pred_rf = pmin(pmax(p_point,0),100), 
+           pred_rf_lo = pmin(pmax(p_q[,1],0),100), 
+           pred_rf_hi = pmin(pmax(p_q[,2],0),100)) 
+} else p_point <- p_q <- NULL
+
+#add results to df
+color_soil23 <- color_soil23 %>%
+  cbind(rf_res) 
+
+#calc mean per sample
+#means 
+coal_soil23_means <- color_soil23 %>%
+  dplyr::select(sample_grp, site_id, pred_pls_g:pred_rf_hi) %>%
+  group_by(sample_grp, site_id) %>%
+  summarise(across(where(is.numeric), mean)) #mean
+
+
+#calculate percent carbon potentially attributable to coal - use low values for conservative est
+per_coal23 <- coal_soil23_means %>%
+  dplyr::select(sample_grp, pred_rf) %>%
+  rename("Plot_ID" = "sample_grp") %>%
+  rename("per_coal" = "pred_rf")
+
+SOM_13C_T0 <- SOM_13C_T0 %>%
+  merge(per_coal23, by="Plot_ID", all.x = TRUE) 
+
+SOM_13C_T0 <- SOM_13C_T0 %>%
+  mutate(coal_C = (per_coal/100)*65) %>% #percent C coal
+  mutate(new_C = SOM_perC - coal_C) #percent C non-coal (assumed new SOC)
 
 
 ```
 
 ##### Plot results
-```{r plot pls res}
 
-predict_res$site_id <- factor(predict_res$site_id, levels = order_IDs)
+```{r plot res soils}
 
 #pivot results
-pred_res_long <- predict_res %>%
-  dplyr::select(sample, site_id, pred_pls, pred_rf) %>%
+pred_res_long <- color_soil23 %>%
+  dplyr::select(sample, site_id, pred_pls_g, pred_pls_lo_g, pred_rf, pred_rf_lo) %>%
+  pivot_longer(
+    cols = c(3:6), #pick columns to pivot
+    names_to = "model", #name column to put original column names in
+    values_to = "coal_per") #name column to put values in 
+
+#boxplot
+pred_res_long %>%
+ggplot(aes(x=site_id, y=coal_per, fill=factor(site_id))) + 
+  geom_boxplot() +
+  geom_jitter(shape=16, position=position_jitter(0.1), size = 0.85) +
+  facet_wrap(~model, scales = "free", nrow=2) + #create a separate plot for each model
+  scale_fill_manual(values=colors6) + #define colors to use
+  xlab("") + ylab(expression("Estimated coal concentration (%)")) + #define/change X and Y labels
+  my_theme +
+  theme(legend.position='none') 
+
+#save figure
+ggsave('est_coal_models_2023_g.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder within working directory
+       width = 8, height = 6, units = "in", #set dimensions for figure
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+
+#boxplot only RFR
+color_soil23 %>%
+ggplot(aes(x=site_id, y=pred_rf, fill=factor(site_id))) + 
+  geom_boxplot() +
+  geom_jitter(shape=16, position=position_jitter(0.1), size = 0.85) +
+  scale_fill_manual(values=colors6) + #define colors to use
+  xlab("") + ylab(expression("Estimated coal concentration (%)")) + #define/change X and Y labels
+  my_theme +
+  theme(legend.position='none') 
+
+#save figure
+ggsave('est_coal_2023_g.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder within working directory
+       width = 8, height = 6, units = "in", #set dimensions for figure
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+```
+
+```{r plot coal vs new C}
+
+#pivot for source
+Csrc_2023_long <- SOM_13C_T0 %>%
+  dplyr::select(Plot_ID, Site_ID, coal_C, new_C) %>%
   pivot_longer(
     cols = c(3:4), #pick columns to pivot
+    names_to = "source", #name column to put original column names in
+    values_to = "perC") %>% #name column to put values in
+  mutate(C_gkg = perC*10) %>%
+  mutate(Sample_year = 2023)
+
+#order
+Csrc_2023_long$source <- factor(Csrc_2023_long$source, 
+                             levels = c("new_C","coal_C"))
+
+Csrc_2023_long$Site_ID <- factor(Csrc_2023_long$Site_ID, 
+                             levels = order_IDs)
+
+
+#stacked bar chart - percent C
+Csrc_2023_long %>%
+ggplot(aes(x=Site_ID, y=perC, fill=source)) + #use the fill part to set what you want to stack by
+  geom_bar(stat = "summary", add = "mean", width = 0.7, position="stack", colour="black") + #add mean bars with black outlines stacked by the fill variable
+  scale_fill_manual(values = colors4, labels = c("Est. new C", "Est. coal C")) + #define colors to use
+  my_theme + xlab("") + 
+  scale_y_continuous(name = expression("Organic C (%)"))  #change y axis, label
+
+#save figure
+ggsave('Cper_2023_src_stacked.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+
+#stacked bar chart - g/kg soil
+Csrc_2023_long %>%
+ggplot(aes(x=Site_ID, y=C_gkg, fill=source)) + #use the fill part to set what you want to stack by
+  geom_bar(stat = "summary", add = "mean", width = 0.7, position="stack", colour="black") + #add mean bars with black outlines stacked by the fill variable
+  scale_fill_manual(values = colors4, labels = c("Est. new C", "Est. coal C")) + #define colors to use
+  my_theme + xlab("") + 
+  scale_y_continuous(name = expression("Organic C (g C/kg soil)"))  #change y axis, label
+  
+#save figure
+ggsave('Cgkg_2023_src_stacked.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+```
+
+
+
+
+#### 2026 samples predictions
+```{r predict 2026}
+
+#run PLSR on samples
+if (exists("color_soil26")) { message("Computing PLS bootstrap PIs..."); tic("PLS boot"); 
+  pls_res <- bootstrap_pls_pi_g(color_cal_g2, color_soil26_g, pls_formula_g, ncomp_g, n_boot=200); toc(); 
+if (!is.null(pls_res)) pls_res <- pls_res %>% mutate(across(everything(), ~pmin(pmax(.x,0),100))) }
+
+#add results to df
+color_soil26_g <- color_soil26_g %>%
+  cbind(pls_res) 
+
+
+#RFR predictions
+color26_proc <- predict(scaler_g, color_soil26_g %>% dplyr::select(all_of(predictors))) #scale for RF
+if (exists("r_qrf_g")) {
+  # ensure val_proc is a data.frame with same column names as used for fitting
+  p_point <- predict(r_qrf_g, data = color26_proc, type = "response")$predictions
+  p_q  <- predict(r_qrf_g, data = color26_proc, type = "quantiles", quantiles = c(0.025, 0.975))$predictions
+  rf_res <- data.frame(pred_rf = pmin(pmax(p_point,0),100), 
+           pred_rf_lo = pmin(pmax(p_q[,1],0),100), 
+           pred_rf_hi = pmin(pmax(p_q[,2],0),100)) 
+} else p_point <- p_q <- NULL
+
+#add results to df, use lows for BU1 and BU5
+color_soil26_g <- color_soil26_g %>%
+  cbind(rf_res) 
+
+#calc mean per sample
+#means 
+coal_soil26_means <- color_soil26_g %>%
+  dplyr::select(sample_grp, site_id, pred_pls_g:pred_rf_hi) %>%
+  group_by(sample_grp) %>%
+  summarise(across(where(is.numeric), mean)) #mean
+
+
+#calculate percent carbon potentially attributable to coal
+SOM_2026 <- SOM_2026 %>%
+  mutate(per_coal = coal_soil26_means$pred_rf[match(SOM_2026$Sample_ID, coal_soil26_means$sample_grp)]) %>%
+  mutate(coal_C = (per_coal/100)*65) %>% #percent C coal
+  mutate(new_C = SOM_perC - coal_C) %>% #percent C non-coal (assumed new SOC)
+  mutate(new_C_kgm2_7cm = ((new_C/100) * adj_BD * (10/1000) * 10000 * 0.7)) %>% #calculate C per km2 to 7cm depth
+  mutate(fracC_coal = coal_C / (coal_C + new_C)) %>%
+  mutate(fracC_new = new_C / (coal_C + new_C))
+
+```
+
+##### Plot results
+
+```{r plot res soils g}
+
+#pivot results
+pred_res_long <- color_soil26_g %>%
+  dplyr::select(sample, site_id, pred_pls_g, pred_pls_lo_g, pred_rf, pred_rf_lo) %>%
+  pivot_longer(
+    cols = c(3:6), #pick columns to pivot
     names_to = "model", #name column to put original column names in
     values_to = "coal_per") #name column to put values in
 
@@ -2839,18 +3680,351 @@ pred_res_long %>%
 ggplot(aes(x=site_id, y=coal_per, fill=factor(site_id))) + 
   geom_boxplot() +
   geom_jitter(shape=16, position=position_jitter(0.1), size = 0.85) +
-  facet_wrap(~model, scales = "free", nrow=1) + #create a separate plot for each model
+  facet_wrap(~model, scales = "free", nrow=2) + #create a separate plot for each model
   scale_fill_manual(values=colors6) + #define colors to use
   xlab("") + ylab(expression("Estimated coal concentration (%)")) + #define/change X and Y labels
   my_theme +
   theme(legend.position='none') 
 
 #save figure
-ggsave('est_coal_pls_2026.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+ggsave('est_coal_models_g_2026.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
        path = "Figures", #save to folder within working directory
        width = 8, height = 6, units = "in", #set dimensions for figure
        dpi = 300, #set resolution
        bg=NULL) #background from plot specifications
+
+
+#boxplot only RFR
+color_soil26_g %>%
+ggplot(aes(x=site_id, y=pred_rf, fill=factor(site_id))) + 
+  geom_boxplot() +
+  geom_jitter(shape=16, position=position_jitter(0.1), size = 0.85) +
+  scale_fill_manual(values=colors6) + #define colors to use
+  xlab("Site") + ylab(expression("Estimated coal concentration (%)")) + #define/change X and Y labels
+  my_theme +
+  theme(legend.position='none') 
+
+#save figure
+ggsave('est_coal_2026_g.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder within working directory
+       width = 8, height = 6, units = "in", #set dimensions for figure
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+```
+
+```{r plot res soils s}
+
+#pivot results
+pred_res_long <- color_soil26_s %>%
+  dplyr::select(sample, site_id, pred_pls_g, pred_pls_lo_g, pred_rf, pred_rf_lo) %>%
+  pivot_longer(
+    cols = c(3:6), #pick columns to pivot
+    names_to = "model", #name column to put original column names in
+    values_to = "coal_per") #name column to put values in
+
+#boxplot
+pred_res_long %>%
+ggplot(aes(x=site_id, y=coal_per, fill=factor(site_id))) + 
+  geom_boxplot() +
+  geom_jitter(shape=16, position=position_jitter(0.1), size = 0.85) +
+  facet_wrap(~model, scales = "free", nrow=2) + #create a separate plot for each model
+  scale_fill_manual(values=colors6) + #define colors to use
+  xlab("") + ylab(expression("Estimated coal concentration (%)")) + #define/change X and Y labels
+  my_theme +
+  theme(legend.position='none') 
+
+#save figure
+ggsave('est_coal_models_sieved_2026.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder within working directory
+       width = 8, height = 6, units = "in", #set dimensions for figure
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+
+#boxplot only RFR
+color_soil26 %>%
+ggplot(aes(x=site_id, y=pred_rf, fill=factor(site_id))) + 
+  geom_boxplot() +
+  geom_jitter(shape=16, position=position_jitter(0.1), size = 0.85) +
+  scale_fill_manual(values=colors6) + #define colors to use
+  xlab("Site") + ylab(expression("Estimated coal concentration (%)")) + #define/change X and Y labels
+  my_theme +
+  theme(legend.position='none') 
+
+#save figure
+ggsave('est_coal_2026_sieved.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder within working directory
+       width = 8, height = 6, units = "in", #set dimensions for figure
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+```
+
+
+```{r plot coal vs new C}
+
+#pivot for source
+Csrc_2026_long <- SOM_2026 %>%
+  dplyr::select(Sample_ID, Site_ID, coal_C, new_C) %>%
+  pivot_longer(
+    cols = c(3:4), #pick columns to pivot
+    names_to = "source", #name column to put original column names in
+    values_to = "perC") %>% #name column to put values in
+  mutate(C_gkg = perC*10) %>%
+  mutate(Sample_year = 2026)
+
+#order
+Csrc_2026_long$source <- factor(Csrc_2026_long$source, 
+                             levels = c("new_C","coal_C"))
+
+Csrc_2026_long$Site_ID <- factor(Csrc_2026_long$Site_ID, 
+                             levels = order_IDs)
+
+
+#stacked bar chart - percent C
+Csrc_2026_long %>%
+ggplot(aes(x=Site_ID, y=perC, fill=source)) + #use the fill part to set what you want to stack by
+  geom_bar(stat = "summary", add = "mean", width = 0.7, position="stack", colour="black") + #add mean bars with black outlines stacked by the fill variable
+  scale_fill_manual(values = colors4, labels = c("Est. new C", "Est. coal C")) + #define colors to use
+  my_theme + xlab("") + 
+  scale_y_continuous(name = expression("Organic C (%)"))  #change y axis, label
+
+#save figure
+ggsave('Cper_2026_src_stacked.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+
+#stacked bar chart - g/kg soil
+Csrc_2026_long %>%
+ggplot(aes(x=Site_ID, y=C_gkg, fill=source)) + #use the fill part to set what you want to stack by
+  geom_bar(stat = "summary", add = "mean", width = 0.7, position="stack", colour="black") + #add mean bars with black outlines stacked by the fill variable
+  scale_fill_manual(values = colors4, labels = c("Est. new C", "Est. coal C")) + #define colors to use
+  my_theme + xlab("") + 
+  scale_y_continuous(name = expression("Organic C (g C/kg soil)"))  #change y axis, label
+  
+#save figure
+ggsave('Cgkg_2026_src_stacked.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+```
+
+#### Plot both years
+```{r plot coal both years}
+
+#combine years
+coal_multiyr <- SOM_13C_T0 %>%
+  bind_rows(SOM_2026) %>%
+  dplyr::select(Sample_year, Site, Site_ID, per_coal, coal_C, new_C) 
+
+coal_multiyr$Site_ID <- factor(coal_multiyr$Site_ID, 
+                             levels = order_IDs)
+
+coal_multiyr %>%
+ggplot(aes(x=factor(Sample_year), y=per_coal, fill=Site_ID)) +
+  geom_boxplot() +
+  #geom_jitter(aes(group=interaction(Sample_year, Site_ID)), shape=16, position=position_jitter(0.1), size = 0.85) +
+  #facet_wrap(~Sample_year, scales = "fixed", nrow=1) + #create a separate plot for each model
+  scale_fill_manual(values=colors6) + #define colors to use
+  xlab("") + ylab(expression("Estimated coal concentration (%)")) + #define/change X and Y labels
+  my_theme +
+  theme(legend.position='right') 
+
+#save figure
+ggsave('est_coal_yr_g.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+coal_multiyr %>%
+ggplot(aes(x=Site_ID, y=per_coal, fill=Site_ID)) +
+  geom_boxplot() +
+  geom_jitter(shape=16, position=position_jitter(0.1), size = 0.85) +
+  facet_wrap(~Sample_year, strip.position="bottom", scales="fixed", drop=TRUE, nrow=1) + #separate plot for each
+  scale_fill_manual(values=colors6) + #define colors to use
+  xlab("") + ylab(expression("Estimated coal concentration (%)")) + #define/change X and Y labels
+  my_theme +
+  theme(legend.position='right') 
+
+#save figure
+ggsave('est_coal_facetyr_g.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+coal_multiyr %>%
+ggplot(aes(x=factor(Sample_year), y=per_coal, fill=Site_ID)) +
+  geom_boxplot() +
+  geom_jitter(shape=16, position=position_jitter(0.1), size = 0.85) +
+  facet_wrap(~Site_ID, strip.position="bottom", scales="fixed", drop=TRUE, nrow=1) + #separate plot for each
+  scale_fill_manual(values=colors6) + #define colors to use
+  xlab("") + ylab(expression("Estimated coal concentration (%)")) + #define/change X and Y labels
+  my_theme +
+  theme(legend.position='right') 
+
+#save figure
+ggsave('est_coal_facetsite_g.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+```
+
+```{r plot coal C both years}
+
+#boxplot
+coal_multiyr %>%
+ggplot(aes(x=factor(Sample_year), y=coal_C, fill=Site_ID)) +
+  geom_boxplot() +
+  #geom_jitter(aes(group=interaction(Sample_year, Site_ID)), shape=16, position=position_jitter(0.1), size = 0.85) +
+  #facet_wrap(~Sample_year, scales = "fixed", nrow=1) + #create a separate plot for each model
+  scale_fill_manual(values=colors6) + #define colors to use
+  xlab("") + ylab(expression("Coal C (%)")) + #define/change X and Y labels
+  my_theme +
+  theme(legend.position='right') 
+
+#save figure
+ggsave('est_coalC_yr_g.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+
+#use pivots
+Csrc_long <- Csrc_2023_long %>%
+  bind_rows(Csrc_2026_long)
+  
+#order
+Csrc_long$source <- factor(Csrc_long$source, 
+                             levels = c("new_C","coal_C"))
+
+Csrc_long$Site_ID <- factor(Csrc_long$Site_ID, 
+                             levels = order_IDs)
+
+#stacked bar chart - percent C - facet year
+Csrc_long %>%
+ggplot(aes(x=Site_ID, y=perC, fill=source)) + #use the fill part to set what you want to stack by
+  geom_bar(stat = "summary", add = "mean", width = 0.7, position="stack", colour="black") + #add mean bars with black outlines stacked by the fill variable
+  facet_wrap(~Sample_year, strip.position="bottom", scales="fixed", drop=TRUE, nrow=1) + #separate plot for each
+  scale_fill_manual(values = colors4, labels = c("Est. new C", "Est. coal C")) + #define colors to use
+  my_theme + xlab("") + 
+  scale_y_continuous(name = expression("Organic C (%)"))  #change y axis, label
+
+#save figure
+ggsave('Cper_src_facetyr_g.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+#stacked bar chart - percent C - facet site
+Csrc_long %>%
+ggplot(aes(x=factor(Sample_year), y=perC, fill=source)) + #use the fill part to set what you want to stack by
+  geom_bar(stat = "summary", add = "mean", width = 0.7, position="stack", colour="black") + #add mean bars with black outlines stacked by the fill variable
+  facet_wrap(~Site_ID, strip.position="bottom", scales="fixed", drop=TRUE, nrow=1) + #separate plot for each
+  scale_fill_manual(values = colors4, labels = c("Est. new C", "Est. coal C")) + #define colors to use
+  my_theme + xlab("") + 
+  scale_y_continuous(name = expression("Organic C (%)"))  #change y axis, label
+
+#save figure
+ggsave('Cper_src_facetsite_g.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+
+
+```
+
+## Correlations
+```{r corr 2023}
+
+#2023
+
+#make numeric, remove irrelevant
+SOM_13C_T0_num <- SOM_13C_T0 %>% 
+  dplyr::select(SOM_C, SOM_N, SOM_CN, POM_C, POM_N, POM_CN, MAOM_C, MAOM_N, MAOM_CN, SOM_15N, 
+                g_debris, pH,
+                root_mass, shoot_mass, plant_r, plant_shannon, plant_simpson,
+                AM_hyph_per, AM_arb_per) %>%
+  cbind(soil_metals_wide) %>%
+  dplyr::select_if(is.numeric)
+
+
+#df
+df_corr23 <- round(cor(SOM_13C_T0_num, use = "pairwise.complete.obs", method="pearson"), 3) #create df for corr. matrix, will use only complete pairs (ignore other NAs), w/3 decimals
+df_corr23 #view correlations
+
+
+#test significance P values with 95% confidence interval
+cortest23 <- cor.mtest(SOM_13C_T0_num, conf.level = 0.95)
+cortest23 #view P values
+
+#plot matrix with corrplot
+corrplot::corrplot(df_corr23, method = 'circle', type = 'upper', #plot upper half, show as colors
+         col = colors_ramp2, #set gradient colors from defined palette in Chunk 3
+         mar=c(1,0,1,0), #set margins for all incl. title - BLTR
+         tl.col = 'black',tl.cex = 0.4, #text label color, size
+         tl.srt = 90, tl.offset = 0.4, #text label angle rotation, offset
+         order = 'alphabet',  #FPC first principal component order
+         p.mat = cortest23$p, #define p values
+         insig = 'label_sig', #add *s for significance levels
+         sig.level = c(0.001, 0.01, 0.05), #define significance levels
+         pch.cex = 0.3, #star sizes
+         cl.cex = 0.5, #color legend text size
+         cex.main = 1, #set title font size
+         title = "Correlation Matrix" #set title
+         )
+
+
+```
+
+```{r corr 2026}
+
+#2023
+
+#make numeric, remove irrelevant
+SOM_2026_num <- SOM_2026 %>% 
+  dplyr::select(SOM_perC, SOM_perN, SOM_CN, POM_perC, POM_perN, POM_CN, MAOM_perC, MAOM_perN, MAOM_CN,
+                pH, adj_BD, tot_debris_2mm_g, coal_2mm_g, per_coal, SOM_C_kgm2_7cm) 
+
+
+#df
+df_corr26 <- round(cor(SOM_2026_num, use = "pairwise.complete.obs", method="pearson"), 3) #create df for corr. matrix, will use only complete pairs (ignore other NAs), w/3 decimals
+df_corr26 #view correlations
+
+
+#test significance P values with 95% confidence interval
+cortest26 <- cor.mtest(SOM_2026_num, conf.level = 0.95)
+cortest26 #view P values
+
+#plot matrix with corrplot
+corrplot::corrplot(df_corr26, method = 'circle', type = 'upper', #plot upper half, show as colors
+         col = colors_ramp2, #set gradient colors from defined palette in Chunk 3
+         mar=c(1,0,1,0), #set margins for all incl. title - BLTR
+         tl.col = 'black',tl.cex = 0.4, #text label color, size
+         tl.srt = 90, tl.offset = 0.4, #text label angle rotation, offset
+         order = 'alphabet',  #FPC first principal component order
+         p.mat = cortest26$p, #define p values
+         insig = 'label_sig', #add *s for significance levels
+         sig.level = c(0.001, 0.01, 0.05), #define significance levels
+         pch.cex = 0.3, #star sizes
+         cl.cex = 0.5, #color legend text size
+         cex.main = 1, #set title font size
+         title = "Correlation Matrix" #set title
+         )
+
 
 ```
 
@@ -3973,6 +5147,39 @@ ggsave('SOC_comparison2_2026.svg', #save plot name and type - can be "eps", "pdf
 
 ```
 
+```{r compare soil C 3 - new C}
+
+#add new C to df to compare
+newC <- SOM_2026 %>%
+  dplyr::select(Site_ID, new_C_kgm2_7cm) %>%
+  rename("site" = "Site_ID")
+
+soilC_compare <- soilC_compare %>%
+  merge(newC, by="site", all.x = TRUE) #%>%
+
+soilC_compare <- soilC_compare %>%
+  mutate(TotalC2 = case_when(new_C_kgm2_7cm > 0 ~ new_C_kgm2_7cm, #when value in new col use it
+    TRUE ~ TotalC )) #otherwise use old col
+
+soilC_compare %>%
+  filter(Sample_year != 2023) %>%
+ggplot() + 
+	geom_boxplot(aes(x=type, y=TotalC2, fill=vegetation)) +
+  scale_fill_manual(values=colors10) + #define colors to use
+  #ggtitle("Soil Organic Matter C across the UK") + #add a graph title
+  xlab("") + ylab(expression("SOC (kg/m"^2*" in top 7cm)")) + #define/change X and Y labels
+  scale_x_discrete(labels = c("Unimproved Grasslands", "Restored Grasslands")) + #remove vegetation labels from x axis
+  my_theme 
+
+#save figure
+ggsave('SOC_comparison_newC_2026.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 2000, height = 1000, units = "px", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
+```
+
 
 ```{r compare POM C}
 
@@ -4117,7 +5324,7 @@ avg_unmg_SOM <- SOM_2026 %>%
 
 
 #create log response ratios
-LRR_SOM <- SOM_2026[c(3:5,31:57)] %>%
+LRR_SOM <- SOM_2026[c(3:5,31:63)] %>%
   dplyr::filter(Management == "Hay cutting") %>%
   #for SOM C
   mutate(SOM_perC_unmg = #add column for unmanaged means
@@ -4136,6 +5343,15 @@ LRR_SOM <- SOM_2026[c(3:5,31:57)] %>%
                      Site == "Flashes" 
                      ~ avg_unmg_SOM$SOM_C_Tha[avg_unmg_SOM$Site == "Flashes"])) %>%
   mutate(LRR_SOM_CTha = log(SOM_C_Tha/SOM_CTha_unmg)) %>% #calculate log response ratio
+  mutate(SOM_newC_unmg = #add column for unmanaged means
+           case_when(Site == "Bickershaw"
+                     ~ avg_unmg_SOM$new_C[avg_unmg_SOM$Site == "Bickershaw"],
+                     Site == "Amberswood"
+                     ~ avg_unmg_SOM$new_C[avg_unmg_SOM$Site == "Amberswood"],
+                     Site == "Flashes" 
+                     ~ avg_unmg_SOM$new_C[avg_unmg_SOM$Site == "Flashes"])) %>%
+  mutate(LRR_SOM_newC = log(new_C/SOM_newC_unmg)) %>% #calculate log response ratio percent C
+  
   #for SOM N
   mutate(SOM_perN_unmg = #add column for unmanaged means
            case_when(Site == "Bickershaw"
@@ -4145,6 +5361,7 @@ LRR_SOM <- SOM_2026[c(3:5,31:57)] %>%
                      Site == "Flashes" 
                      ~ avg_unmg_SOM$SOM_perN[avg_unmg_SOM$Site == "Flashes"])) %>%
   mutate(LRR_SOM_perN = log(SOM_perN/SOM_perN_unmg)) %>%
+  
   #for POM C
   mutate(POM_perC_unmg = #add column for unmanaged means
            case_when(Site == "Bickershaw"
@@ -4162,6 +5379,7 @@ LRR_SOM <- SOM_2026[c(3:5,31:57)] %>%
                      Site == "Flashes" 
                      ~ avg_unmg_SOM$POM_C_kgm2_7cm[avg_unmg_SOM$Site == "Flashes"])) %>%
   mutate(LRR_POM_C_kgm2 = log(POM_C_kgm2_7cm/POM_C_kgm2_unmg)) %>%
+  
   #for POM N
   mutate(POM_perN_unmg = #add column for unmanaged means
            case_when(Site == "Bickershaw"
@@ -4171,6 +5389,7 @@ LRR_SOM <- SOM_2026[c(3:5,31:57)] %>%
                      Site == "Flashes" 
                      ~ avg_unmg_SOM$POM_perN[avg_unmg_SOM$Site == "Flashes"])) %>%
   mutate(LRR_POM_perN = log(POM_perN/POM_perN_unmg)) %>% 
+  
   #for MAOM C
   mutate(MAOM_perC_unmg = #add column for unmanaged means
            case_when(Site == "Bickershaw"
@@ -4188,6 +5407,7 @@ LRR_SOM <- SOM_2026[c(3:5,31:57)] %>%
                      Site == "Flashes" 
                      ~ avg_unmg_SOM$MAOM_C_kgm2_7cm[avg_unmg_SOM$Site == "Flashes"])) %>%
   mutate(LRR_MAOM_C_kgm2 = log(MAOM_C_kgm2_7cm/MAOM_C_kgm2_unmg)) %>%
+  
   #for MAOM N
   mutate(MAOM_perN_unmg = #add column for unmanaged means
            case_when(Site == "Bickershaw"
@@ -4197,6 +5417,7 @@ LRR_SOM <- SOM_2026[c(3:5,31:57)] %>%
                      Site == "Flashes" 
                      ~ avg_unmg_SOM$MAOM_perN[avg_unmg_SOM$Site == "Flashes"])) %>%
   mutate(LRR_MAOM_perN = log(MAOM_perN/MAOM_perN_unmg)) %>%
+  
   #fMAOM-C
   mutate(fMAOM_C_unmg = #add column for unmanaged means
            case_when(Site == "Bickershaw"
@@ -4267,6 +5488,36 @@ ggsave('LRR_SOMC_Tha.svg', #save plot name and type - can be "eps", "pdf", "jpeg
 	bg=NULL) #background from plot specifications
 
 ```
+
+```{r hay cutting new C}
+
+#calculate confidence intervals for log response ratios
+predict(lm(LRR_SOM_newC ~ Site, data = LRR_SOM), interval = "confidence") #calculate confidence intervals for log response ratio of percent C
+
+#plot log response ratios with confidence intervals in ggplot
+ggplot(LRR_SOM, aes(y=Site, x=LRR_SOM_newC, fill=Site, color=Site)) +
+  geom_point(size=2) +
+  #geom_violin(alpha=0.2) +
+  geom_errorbar(aes(xmin=predict(lm(LRR_SOM_newC ~ Site, data = LRR_SOM), 
+                                 interval = "confidence")[,2],
+                    xmax=predict(lm(LRR_SOM_newC ~ Site, data = LRR_SOM), 
+                                 interval = "confidence")[,3]),
+                width=0.2) +
+  scale_color_manual(values = colors3) + scale_fill_manual(values = colors3) +
+  #ggtitle("Log Response Ratio of SOM %C for Hay Cutting vs Unmanaged") +
+  ylab("") + xlab("Log Response Ratio of Non-Coal C (%)") +
+  my_theme
+
+#save plot
+ggsave('LRR_SOM_newC.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 6, height = 3, units = "in", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
+
+```
+
 
 #### SOM-N
 ```{r hay cutting SOM-N}
@@ -4472,7 +5723,7 @@ ggsave('LRR_fMAOM_C.svg', #save plot name and type - can be "eps", "pdf", "jpeg"
 
 #define what to analyze - do restored vs unimproved first
 factors <- "type" #predictor variable
-continuous_vars <- c("TotalC", "POM_C", "MAOM_C") #response variables
+continuous_vars <- c("TotalC", "POM_C", "MAOM_C", "TotalC2") #response variables
 data <- soilC_compare
 
 #run the analysis
@@ -4491,7 +5742,7 @@ dunn.test(soilC_compare$TotalC, soilC_compare$type, method="bonferroni", kw=TRUE
 
 #define what to analyze - vegetation (compare grassland types and sites)
 factors <- "vegetation" #predictor variable
-continuous_vars <- c("TotalC", "POM_C", "MAOM_C") #response variables
+continuous_vars <- c("TotalC", "POM_C", "MAOM_C", "TotalC2") #response variables
 data <- soilC_compare
 
 #run the analysis
@@ -5021,6 +6272,104 @@ ggsave('AM_hyph.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "t
 
 ```
 
+### By multiple vars
+```{r AM vs multi}
+
+#hyphae
+summary(aov(AM_hyph_per ~ SOM_N, data = SOM_13C_T0)) #very
+cor.test(SOM_13C_T0$AM_hyph_per, SOM_13C_T0$SOM_N, method = "pearson") #0.46, P=0.003
+
+
+#together
+AMhyph_lme <- lmer(AM_hyph_per ~ SOM_15N + SOM_N + pH + g_debris + (1|Site_ID), 
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0, #choose dataframe
+    na.action = na.omit)
+summary(AMhyph_lme) #random accounts for less variance
+Anova(AMhyph_lme) #15N only significant
+shapiro.test(resid(AMhyph_lme)) #normal
+check_collinearity(AMhyph_lme) #check VIFs for collinearity in model
+performance::model_performance(AMhyph_lme) #AICc 19.2, R2 0.404
+
+
+
+#arbuscules
+AMarb_lme <- lmer(AM_arb_per ~ SOM_15N + pH + g_debris + (1|Site_ID), 
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0, #choose dataframe
+    na.action = na.omit)
+summary(AMarb_lme) #random accounts for less variance
+Anova(AMarb_lme) #15N only significant
+shapiro.test(resid(AMarb_lme)) #not normal but close
+check_collinearity(AMarb_lme) #check VIFs for collinearity in model
+performance::model_performance(AMarb_lme) #
+
+
+
+```
+
+### By 15N only
+```{r AM hyph 15N}
+
+#stats model
+summary(aov(AM_hyph_per ~ SOM_15N, data = SOM_13C_T0)) #very
+AM_15N_lme <- lmer(AM_hyph_per ~ SOM_15N + (1|Site_ID), 
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0, #choose dataframe
+    na.action = na.omit)
+summary(AM_15N_lme) #random accounts for less variance
+shapiro.test(resid(AM_15N_lme)) #normal
+performance::model_performance(AM_15N_lme) #AICc -10, R2=0.37
+cor.test(SOM_13C_T0$AM_hyph_per, SOM_13C_T0$SOM_15N, method = "pearson") #-0.62, P=0.00002
+
+#AM hyph plot
+ggplot(data = SOM_13C_T0, aes(x=SOM_15N, y=AM_hyph_per)) + 
+  geom_point(aes(color = factor(Site_ID))) + #add points to plot
+  geom_smooth(method="lm", se=TRUE, color="grey10", fill=fill_color) +
+  scale_color_manual(values = colors4) + #define colors to use
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) + #change to %
+  my_theme +
+  xlab("SOM 15N Content") + ylab("AM Hyphae (% of Root)") #define/change X and Y labels
+
+ggsave('AMhyph_by15N_100826.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+```
+
+```{r AM arb 15N}
+
+#stats model
+summary(aov(AM_arb_per ~ SOM_15N, data = SOM_13C_T0)) #very
+AMarb_15N_lme <- lmer(AM_arb_per ~ SOM_15N + (1|Site_ID), 
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0, #choose dataframe
+    na.action = na.omit)
+summary(AMarb_15N_lme) #random accounts for less variance
+shapiro.test(resid(AMarb_15N_lme)) #normal
+performance::model_performance(AMarb_15N_lme) #AICc -50.6, R2=0.26
+cor.test(SOM_13C_T0$AM_arb_per, SOM_13C_T0$SOM_15N, method = "pearson") #-0.51, P=0.0007
+
+#AM hyph plot
+ggplot(data = SOM_13C_T0, aes(x=SOM_15N, y=AM_arb_per)) + 
+  geom_point(aes(color = factor(Site_ID))) + #add points to plot
+  geom_smooth(method="lm", se=TRUE, color="grey10", fill=fill_color) +
+  scale_color_manual(values = colors4) + #define colors to use
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) + #change to %
+  my_theme +
+  xlab("SOM 15N Content") + ylab("Presence of AM Arbuscules (% of Root)") #define/change X and Y labels
+
+ggsave('AMarb_by15N_100826.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+```
+
+
 ### By pH 
 
 #### ANOVA range
@@ -5119,7 +6468,6 @@ shapiro.test(resid(lmer(AM_hyph_per ~ pH + (1|Site_ID), #site random
     REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
     data = SOM_13C_T0, #choose dataframe
     na.action = na.omit))) #check normality of residuals - normal
-leveneTest(lm(AM_hyph_per ~ pH_range, data = SOM_13C_T0)) #homogeneous
 
 AM_hyph_pH_lme <- lmer(AM_hyph_per ~ pH + (1|Site_ID), 
     REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
@@ -5200,7 +6548,7 @@ ggsave('AMarb_bypH_190726.svg', #save plot name and type - can be "eps", "pdf", 
 ```
 
 
-### By coal waste
+### By coal
 
 ```{r AM assoc waste 1}
 
@@ -5244,8 +6592,8 @@ AM_debris_lme <- lmer(AM_hyph_per ~ g_debris + (1|Site_ID),
     na.action = na.omit)
 summary(AM_debris_lme) #random accounts for less variance
 shapiro.test(resid(AM_debris_lme)) #normal
-performance::r2(AM_debris_lme) #calculate R-squared for model fit
-MuMIn::AICc(AM_debris_lme, k=2) #calculate AICc for for model comparison with small sample sizes
+performance::model_performance(AM_debris_lme)
+cor.test(SOM_13C_T0$AM_hyph_per, SOM_13C_T0$g_debris, method = "pearson") #0.56
 
 ```
 
@@ -5316,10 +6664,10 @@ Anova(lmer(AM_arb_per ~ g_debris + (1|Site_ID),
     REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
     data = SOM_13C_T0, #choose dataframe
     na.action = na.omit), type=3) #debris almost but not
+cor.test(SOM_13C_T0$AM_arb_per, SOM_13C_T0$g_debris, method = "pearson") #0.41
 
 
 ```
-
 
 ## HLD
 
@@ -6211,7 +7559,6 @@ ggsave('ITS_asv_gini.svg', #save plot name and type - can be "eps", "pdf", "jpeg
 
 #stats
 shapiro.test(resid(lm(sobs.s ~ Site_ID, data = env_ITS))) #check normality of residuals - not normal but high W
-shapiro.test(resid(lm(log(sobs.s) ~ Site_ID, data = env_ITS))) #check normality of residuals - not normal, worse
 summary(aov(sobs.s ~ Site_ID, data = env_ITS)) #sig
 TukeyHSD(aov(sobs.s ~ Site_ID, data = env_ITS)) #BM > AM
 
@@ -6446,6 +7793,10 @@ ggsave('16S_rarecurve.svg', #save plot name and type - can be "eps", "pdf", "jpe
 
 ```{r 16S beta asv, warning=FALSE}
 
+#add coal
+env_16S <- env_16S %>%
+  merge(per_coal23, by="Plot_ID", all.x = TRUE) 
+
 #calculate distances
 
 #Euclidean distance
@@ -6470,136 +7821,105 @@ for (i in 1:100) {
 asv_16S.ml.bray <- Reduce("+", x16s_bray.list) / length(x16s_bray.list)
 
 
-#check beta dispersion by site for each distance metric
-mod <- betadisper(asv_16S.ml.euc, env_16S$Site_ID, type = "centroid")
-permutest(mod, permutations = 999) #P=0.73
+#PERMANOVA - site
+adonis2(asv_16S.ml.euc ~ Site_ID, method = "none", data = env_16S, permutations = 9999) #P=0.032
+adonis2(asv_16S.jaq ~ Site_ID, method = "none", data = env_16S, permutations = 9999) #P=0.22
+adonis2(asv_16S.ml.bray ~ Site_ID, method = "none", data = env_16S, permutations = 9999) #P=0.026
 
-mod <- betadisper(asv_16S.jaq, env_16S$Site_ID, type = "centroid")
-permutest(mod, permutations = 999) #P=0.15
+#PERMANOVA - pH
+adonis2(asv_16S.ml.euc ~ pH, method = "none", data = env_16S, permutations = 9999) #P=0.34
+adonis2(asv_16S.jaq ~ pH, method = "none", data = env_16S, permutations = 9999) #P=0.54
+adonis2(asv_16S.ml.bray ~ pH, method = "none", data = env_16S, permutations = 9999) #P=0.37
 
-mod <- betadisper(asv_16S.ml.bray, env_16S$Site_ID, type = "centroid")
-permutest(mod, permutations = 999) #P=0.65
+#PERMANOVA - plants
+adonis2(asv_16S.ml.euc ~ plant_r, method = "none", data = env_16S, permutations = 9999) #n
+adonis2(asv_16S.jaq ~ plant_r, method = "none", data = env_16S, permutations = 9999) #n
+adonis2(asv_16S.ml.bray ~ plant_r, method = "none", data = env_16S, permutations = 9999) #n
+adonis2(asv_16S.ml.euc ~ plant_shannon, method = "none", data = env_16S, permutations = 9999) #n
+adonis2(asv_16S.jaq ~ plant_shannon, method = "none", data = env_16S, permutations = 9999) #n
+adonis2(asv_16S.ml.bray ~ plant_shannon, method = "none", data = env_16S, permutations = 9999) #n
+adonis2(asv_16S.ml.euc ~ plant_simpson, method = "none", data = env_16S, permutations = 9999) #n
+adonis2(asv_16S.jaq ~ plant_simpson, method = "none", data = env_16S, permutations = 9999) #n
+adonis2(asv_16S.ml.bray ~ plant_simpson, method = "none", data = env_16S, permutations = 9999) #n
 
-#PERMANOVA
-adonis2(asv_16S.ml.euc ~ Site_ID, method = "none", data = env_16S, permutations = 9999) #P=0.095
-adonis2(asv_16S.jaq ~ Site_ID, method = "none", data = env_16S, permutations = 9999) #P=0.36
-adonis2(asv_16S.ml.bray ~ Site_ID, method = "none", data = env_16S, permutations = 9999) #P=0.1
+#PERMANOVA - AM assoc
+adonis2(asv_16S.ml.euc ~ AM_assoc, method = "none", data = env_16S, permutations = 9999) #n
+adonis2(asv_16S.jaq ~ AM_assoc, method = "none", data = env_16S, permutations = 9999) #n
+adonis2(asv_16S.ml.bray ~ AM_assoc, method = "none", data = env_16S, permutations = 9999) #n
 
+#PERMANOVA - nutrients
+adonis2(asv_16S.ml.euc ~ ppm_Ca, method = "none", data = env_16S, permutations = 9999) #P=0.040
+adonis2(asv_16S.jaq ~ ppm_Ca, method = "none", data = env_16S, permutations = 9999) #P=0.0044
+adonis2(asv_16S.ml.bray ~ ppm_Ca, method = "none", data = env_16S, permutations = 9999) #P=0.051
 
-#check beta dispersion by pH for each distance metric
-mod <- betadisper(asv_16S.ml.euc, env_16S$pH, type = "centroid")
-permutest(mod, permutations = 999) #P=0.001
+adonis2(asv_16S.ml.euc ~ ppm_Mg, method = "none", data = env_16S, permutations = 9999) #n
+adonis2(asv_16S.jaq ~ ppm_Mg, method = "none", data = env_16S, permutations = 9999) #n
+adonis2(asv_16S.ml.bray ~ ppm_Mg, method = "none", data = env_16S, permutations = 9999) #n
 
-mod <- betadisper(asv_16S.jaq, env_16S$pH, type = "centroid")
-permutest(mod, permutations = 999) #P=0.001
+adonis2(asv_16S.ml.euc ~ ppm_Fe, method = "none", data = env_16S, permutations = 9999) #n
+adonis2(asv_16S.jaq ~ ppm_Fe, method = "none", data = env_16S, permutations = 9999) #n
+adonis2(asv_16S.ml.bray ~ ppm_Fe, method = "none", data = env_16S, permutations = 9999) #n
 
-mod <- betadisper(asv_16S.ml.bray, env_16S$pH, type = "centroid")
-permutest(mod, permutations = 999) #P=0.001
+adonis2(asv_16S.ml.euc ~ ppm_Na, method = "none", data = env_16S, permutations = 9999) #P=0.13
+adonis2(asv_16S.jaq ~ ppm_Na, method = "none", data = env_16S, permutations = 9999) #P=0.035
+adonis2(asv_16S.ml.bray ~ ppm_Na, method = "none", data = env_16S, permutations = 9999) #P=0.13
 
-#PERMANOVA
-adonis2(asv_16S.ml.euc ~ pH, method = "none", data = env_16S, permutations = 9999) #P=0.023
-adonis2(asv_16S.jaq ~ pH, method = "none", data = env_16S, permutations = 9999) #P=0.3
-adonis2(asv_16S.ml.bray ~ pH, method = "none", data = env_16S, permutations = 9999) #P=0.022
+adonis2(asv_16S.ml.euc ~ ppm_K, method = "none", data = env_16S, permutations = 9999) #n
+adonis2(asv_16S.jaq ~ ppm_K, method = "none", data = env_16S, permutations = 9999) #n
+adonis2(asv_16S.ml.bray ~ ppm_K, method = "none", data = env_16S, permutations = 9999) #n
 
+adonis2(asv_16S.ml.euc ~ ppm_P, method = "none", data = env_16S, permutations = 9999) #n
+adonis2(asv_16S.jaq ~ ppm_P, method = "none", data = env_16S, permutations = 9999) #n
+adonis2(asv_16S.ml.bray ~ ppm_P, method = "none", data = env_16S, permutations = 9999) #n
 
-#check beta dispersion - plant richness
-mod <- betadisper(asv_16S.ml.euc, env_16S$plant_r, type = "centroid")
-permutest(mod, permutations = 999) #P=0.001
+adonis2(asv_16S.ml.euc ~ ppm_S, method = "none", data = env_16S, permutations = 9999) #n
+adonis2(asv_16S.jaq ~ ppm_S, method = "none", data = env_16S, permutations = 9999) #P=0.071
+adonis2(asv_16S.ml.bray ~ ppm_S, method = "none", data = env_16S, permutations = 9999) #n
 
-mod <- betadisper(asv_16S.jaq, env_16S$plant_r, type = "centroid")
-permutest(mod, permutations = 999) #P=0.001
+#PERMANOVA multivariate
+set.seed(42)
+pred_var <- c("plant_r", "plant_shannon", "plant_simpson", "AM_assoc", 
+              "pH", "ppm_Ca", "ppm_Fe", "ppm_Mg", "ppm_Na", "ppm_K", "ppm_P", "ppm_S")
+formula_euc <- paste("asv_16S.ml.euc ~", paste(pred_var, collapse="+")) %>% as.formula()
+formula_jaq <- paste("asv_16S.jaq ~", paste(pred_var, collapse="+")) %>% as.formula()
+formula_bray <- paste("asv_16S.ml.bray ~", paste(pred_var, collapse="+")) %>% as.formula()
 
-mod <- betadisper(asv_16S.ml.bray, env_16S$plant_r, type = "centroid")
-permutest(mod, permutations = 999) #P=0.001
+adonis2(formula_euc, method = "none", na.action=na.omit, data = env_16S, 
+        by = "margin", # each term analyzed individually
+        permutations = 9999) #none
 
-#PERMANOVA
-adonis2(asv_16S.ml.euc ~ plant_r, method = "none", data = env_16S, permutations = 9999) #P=0.15
-adonis2(asv_16S.jaq ~ plant_r, method = "none", data = env_16S, permutations = 9999) #P=0.64
-adonis2(asv_16S.ml.bray ~ plant_r, method = "none", data = env_16S, permutations = 9999) #P=0.17
+adonis2(formula_jaq, method = "none", na.action=na.omit, data = env_16S, 
+        by = "margin", # each term analyzed individually
+        permutations = 9999) #none
 
-#check beta dispersion - plant shannon and simpson
-mod <- betadisper(asv_16S.ml.euc, env_16S$plant_shannon, type = "centroid")
-permutest(mod, permutations = 999) #999
+adonis2(formula_bray, method = "none", na.action=na.omit, data = env_16S, 
+        by = "margin", # each term analyzed individually
+        permutations = 9999) #none
 
-mod <- betadisper(asv_16S.ml.euc, env_16S$plant_simpson, type = "centroid")
-permutest(mod, permutations = 999) #999
+#PERMANOVA multivariate - smaller set based on individual significance above
+set.seed(42)
+pred_var <- c("ppm_Ca", "ppm_Na", "ppm_S")
+formula_euc <- paste("asv_16S.ml.euc ~", paste(pred_var, collapse="+")) %>% as.formula()
+formula_jaq <- paste("asv_16S.jaq ~", paste(pred_var, collapse="+")) %>% as.formula()
+formula_bray <- paste("asv_16S.ml.bray ~", paste(pred_var, collapse="+")) %>% as.formula()
 
-#PERMANOVA
-adonis2(asv_16S.ml.euc ~ plant_shannon, method = "none", data = env_16S, permutations = 9999) #P=0.05
-adonis2(asv_16S.jaq ~ plant_shannon, method = "none", data = env_16S, permutations = 9999) #P=0.5
-adonis2(asv_16S.ml.bray ~ plant_shannon, method = "none", data = env_16S, permutations = 9999) #P=0.07
-adonis2(asv_16S.ml.euc ~ plant_simpson, method = "none", data = env_16S, permutations = 9999) #P=0.05
-adonis2(asv_16S.jaq ~ plant_simpson, method = "none", data = env_16S, permutations = 9999) #P=0.5
-adonis2(asv_16S.ml.bray ~ plant_simpson, method = "none", data = env_16S, permutations = 9999) #P=0.06
+adonis2(formula_euc, method = "none", na.action=na.omit, data = env_16S, 
+        by = "margin", # each term analyzed individually
+        permutations = 9999) #Ca 0.014
 
+adonis2(formula_jaq, method = "none", na.action=na.omit, data = env_16S, 
+        by = "margin", # each term analyzed individually
+        permutations = 9999) #Ca 0.050
 
-#check beta dispersion - AM association
-mod <- betadisper(asv_16S.ml.euc, env_16S$AM_assoc, type = "centroid")
-permutest(mod, permutations = 999) #P=0.8
+adonis2(formula_bray, method = "none", na.action=na.omit, data = env_16S, 
+        by = "margin", # each term analyzed individually
+        permutations = 9999) #Ca 0.016
 
-mod <- betadisper(asv_16S.jaq, env_16S$AM_assoc, type = "centroid")
-permutest(mod, permutations = 999) #P=0.7
-
-mod <- betadisper(asv_16S.ml.bray, env_16S$AM_assoc, type = "centroid")
-permutest(mod, permutations = 999) #P=0.03
-
-#PERMANOVA
-adonis2(asv_16S.ml.euc ~ AM_assoc, method = "none", data = env_16S, permutations = 9999) #P=0.12
-adonis2(asv_16S.jaq ~ AM_assoc, method = "none", data = env_16S, permutations = 9999) #P=0.45
-adonis2(asv_16S.ml.bray ~ AM_assoc, method = "none", data = env_16S, permutations = 9999) #P=0.14
-
-
-#check beta dispersion - biomass - probably not enough data, since only half the samples
-mod <- betadisper(asv_16S.ml.euc, env_16S$AM_biomass, type = "centroid")
-permutest(mod, permutations = 999) #999
-
-mod <- betadisper(asv_16S.ml.euc, env_16S$total_fun_biomass, type = "centroid")
-permutest(mod, permutations = 999) #999
-
-
-#check beta dispersion and PERMANOVA - nutrients
-mod <- betadisper(asv_16S.ml.euc, env_16S$ppm_Ca, type = "centroid")
-permutest(mod, permutations = 999) #999
-
-adonis2(asv_16S.ml.euc ~ ppm_Ca, method = "none", data = env_16S, permutations = 9999) #P=0.03
-adonis2(asv_16S.jaq ~ ppm_Ca, method = "none", data = env_16S, permutations = 9999) #P=0.2
-adonis2(asv_16S.ml.bray ~ ppm_Ca, method = "none", data = env_16S, permutations = 9999) #P=0.03
-
-mod <- betadisper(asv_16S.ml.euc, env_16S$ppm_Mg, type = "centroid")
-permutest(mod, permutations = 999) #999
-
-adonis2(asv_16S.ml.euc ~ ppm_Mg, method = "none", data = env_16S, permutations = 9999) #P=0.8
-adonis2(asv_16S.jaq ~ ppm_Mg, method = "none", data = env_16S, permutations = 9999) #P=0.6
-adonis2(asv_16S.ml.bray ~ ppm_Mg, method = "none", data = env_16S, permutations = 9999) #P=0.8
-
-mod <- betadisper(asv_16S.ml.euc, env_16S$ppm_Fe, type = "centroid")
-permutest(mod, permutations = 999) #999
-
-adonis2(asv_16S.ml.euc ~ ppm_Fe, method = "none", data = env_16S, permutations = 9999) #P=0.4
-
-mod <- betadisper(asv_16S.ml.euc, env_16S$ppm_Na, type = "centroid")
-permutest(mod, permutations = 999) #999
-
-adonis2(asv_16S.ml.euc ~ ppm_Na, method = "none", data = env_16S, permutations = 9999) #P=0.1
-
-mod <- betadisper(asv_16S.ml.euc, env_16S$ppm_K, type = "centroid")
-permutest(mod, permutations = 999) #999
-
-adonis2(asv_16S.ml.euc ~ ppm_K, method = "none", data = env_16S, permutations = 9999) #P=0.1
-adonis2(asv_16S.jaq ~ ppm_K, method = "none", data = env_16S, permutations = 9999) #P=0.6
-adonis2(asv_16S.ml.bray ~ ppm_K, method = "none", data = env_16S, permutations = 9999) #P=0.1
-
-mod <- betadisper(asv_16S.ml.euc, env_16S$ppm_P, type = "centroid")
-permutest(mod, permutations = 999) #999
-
-adonis2(asv_16S.ml.euc ~ ppm_P, method = "none", data = env_16S, permutations = 9999) #P=0.6
-
-mod <- betadisper(asv_16S.ml.euc, env_16S$ppm_S, type = "centroid")
-permutest(mod, permutations = 999) #999
-
-adonis2(asv_16S.ml.euc ~ ppm_S, method = "none", data = env_16S, permutations = 9999) #P=0.04
-adonis2(asv_16S.jaq ~ ppm_S, method = "none", data = env_16S, permutations = 9999) #P=0.5
-adonis2(asv_16S.ml.bray ~ ppm_S, method = "none", data = env_16S, permutations = 9999) #P=0.05
+#check beta dispersion - Ca and pH
+mod <- betadisper(asv_ITS.ml.bray, env_ITS$ppm_Ca)
+permutest(mod, permutations = 999) #homogenous
+mod <- betadisper(asv_ITS.ml.bray, env_ITS$pH)
+permutest(mod, permutations = 999) #heterogeneous P=0.001
 
 ```
 
@@ -6615,10 +7935,6 @@ asv_16S_h_std <- asv_16S %>%
 				 zap = FALSE, #make near zero values into zeros to avoid exaggeration
 				 na.rm = TRUE) %>% #remove NA values
   mutate(across(where(is.numeric), ~scale(., center = TRUE, scale = TRUE)))
-
-#standardize env variables
-env_16S_std <- env_16S[,-c(17:30)] %>% #env file minus microbial diversity and incomplete columns
-  mutate_if(is.numeric,scale) 
 
 x16s_nmds_df <- asv_16S_h_std
 
@@ -6638,14 +7954,14 @@ names(stress) <- paste0(1:6, "Dim")
 par(mar = c(3.5,3.5,1,1), mgp = c(2, 0.6, 0), cex = 0.8, las = 2)
 barplot(stress, ylab = "stress")
 
-#run NMDS with 5 axes to be reliably stress < 0.2
+#run NMDS with 3 axes to be reliably stress < 0.2
 set.seed(42) #set seed for reproducibility
 x16s_nmds <- metaMDS(x16s_nmds_df, 
                 distance = "bray", #data & distance measure
                 k = 3, #number of axes
                 model = "global", #calc stress on ranks of data
-                maxit = 400, #max iterations of configuration adjustments
-                try = 20, trymax = 200, #min and max runs
+                maxit = 500, #max iterations of configuration adjustments
+                try = 20, trymax = 50, #min and max runs
                 autotransform = FALSE, #don't transform data
                 weakties = TRUE, #set fitted distances as un-fixed
                 pc = TRUE, #rotate axes using PCA to orient first 2 axes as containing most of the variability
@@ -6656,17 +7972,25 @@ x16s_nmds #check "stress" value to see how well the data is represented by the o
 goodness(x16s_nmds) #check goodness of fit for each point
 stressplot(x16s_nmds, main = "Shepard plot") #diagnostic plot
 
-#make fit vectors with env variables and view
-x16s_nmdsfit <- envfit(x16s_nmds, env_16S_std[,-c(1:4)], #with standardization
+#make fit vectors with env variables minus microbial diversity and incomplete columns, view
+
+x16s_nmdsfit <- envfit(x16s_nmds, env_16S[,-c(1:5,17:30)],
                       permutations = 999, na.rm=TRUE)
 x16s_nmdsfit #check fit vectors
 
+#standardize env variables - should be same
+#env_16S_std <- env_16S[,-c(17:30)] %>% #env file 
+ # mutate_if(is.numeric,scale) 
+#x16s_nmdsfit <- envfit(x16s_nmds, env_16S_std[,-c(1:4)], #with standardization
+ #                     permutations = 999, na.rm=TRUE)
+#x16s_nmdsfit #check fit vectors
+
 #make df of scores, add sites
-x16s_nmds_scores <- as.data.frame(scores(x16s_nmds))
+x16s_nmds_scores <- as.data.frame(vegan::scores(x16s_nmds))
 x16s_nmds_scores$Site_ID = env_16S$Site_ID 
 
 #make df of vectors, only significant vectors
-x16s_nmds_vectors <- as.data.frame(scores(x16s_nmdsfit, display = "vectors")) #extracts relevant scores from envfit
+x16s_nmds_vectors <- as.data.frame(vegan::scores(x16s_nmdsfit, display = "vectors")) #extracts relevant scores from envfit
 x16s_nmds_vectors <- cbind(x16s_nmds_vectors, variable = rownames(x16s_nmds_vectors)) #and then gives them their names
 x16s_nmds_vectors <- cbind(x16s_nmds_vectors, pval = x16s_nmdsfit$vectors$pvals) # add pvalues to dataframe
 x16s_sig_vectors <- subset(x16s_nmds_vectors, pval<=0.05) #subset data to show variables significant at 0.05
@@ -6698,7 +8022,7 @@ ggplot(x16s_nmds_scores) +
   my_theme
 
 #save figure - name, type, folder, dimensions, resolution, background specs
-ggsave('16S_asv_NMDS_260726.svg', path = "Figures", width = 6, height = 4, units = "in", dpi = 300, bg=NULL)
+ggsave('16S_asv_NMDS_130826.svg', path = "Figures", width = 6, height = 4, units = "in", dpi = 300, bg=NULL)
 
 ```
 
@@ -6893,6 +8217,28 @@ ggsave('16S_sp_NMDS_210526.svg', path = "Figures", width = 6, height = 4, units 
 
 ### ITS 
 
+#### Rel abundance
+```{r plot phylum abundance}
+
+#stacked bar chart
+asv_ITS.p_long %>%
+ggplot(aes(x=Site_ID, y=count, fill=phylum)) + #use the fill part to set what you want to stack by
+  geom_bar(stat = "summary", add = "mean", width = 0.7, position="stack", colour="black") + #add mean bars with black outlines stacked by the fill variable
+  scale_fill_manual(values = colors14) + #define colors to use
+  my_theme + xlab("") + ylab("Fungal phylum reads") +
+  theme(legend.position="right") #+
+  
+
+ggsave('fungal_phylum.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+
+```
+
+
 #### ASVs
 
 ```{r ITS rarefaction curve asv, warning=FALSE}
@@ -6930,6 +8276,10 @@ ggsave('ITS_rarecurve.svg', #save plot name and type - can be "eps", "pdf", "jpe
 
 ```{r ITS beta asv, warning=FALSE}
 
+#add coal
+env_ITS <- env_ITS %>%
+  merge(per_coal23, by="Plot_ID", all.x = TRUE) 
+
 #calculate distances
 
 #Euclidean distance
@@ -6953,137 +8303,132 @@ for (i in 1:100) {
 }
 asv_ITS.ml.bray <- Reduce("+", its_bray.list) / length(its_bray.list)
 
+#PERMANOVA - site
+adonis2(asv_ITS.ml.euc ~ Site_ID, method = "none", data = env_ITS, permutations = 9999) #not sig
+adonis2(asv_ITS.jaq ~ Site_ID, method = "none", data = env_ITS, permutations = 9999) #not sig
+adonis2(asv_ITS.ml.bray ~ Site_ID, method = "none", data = env_ITS, permutations = 9999) #not sig
 
-#check beta dispersion by site for each distance metric
-mod <- betadisper(asv_ITS.ml.euc, env_ITS$Site_ID, type = "centroid")
-permutest(mod, permutations = 999) #P=0.002
-
-mod <- betadisper(asv_ITS.jaq, env_ITS$Site_ID, type = "centroid")
-permutest(mod, permutations = 999) #P=0.001
-
-mod <- betadisper(asv_ITS.ml.bray, env_ITS$Site_ID, type = "centroid")
-permutest(mod, permutations = 999) #P=0.001
 
 #PERMANOVA
-adonis2(asv_ITS.ml.euc ~ Site_ID, method = "none", data = env_ITS, permutations = 9999) #P=1e-4
-adonis2(asv_ITS.jaq ~ Site_ID, method = "none", data = env_ITS, permutations = 9999) #P=1e-4
-adonis2(asv_ITS.ml.bray ~ Site_ID, method = "none", data = env_ITS, permutations = 9999) #P=1e-4
+adonis2(asv_ITS.ml.euc ~ pH, method = "none", data = env_ITS, permutations = 9999) #not sig
+adonis2(asv_ITS.jaq ~ pH, method = "none", data = env_ITS, permutations = 9999) #not sig
+adonis2(asv_ITS.ml.bray ~ pH, method = "none", data = env_ITS, permutations = 9999) #not sig
 
 
-#check beta dispersion by pH for each distance metric
-mod <- betadisper(asv_ITS.ml.euc, env_ITS$pH, type = "centroid")
-permutest(mod, permutations = 999) #P=0.001
-
-mod <- betadisper(asv_ITS.jaq, env_ITS$pH, type = "centroid")
-permutest(mod, permutations = 999) #P=0.001
-
-mod <- betadisper(asv_ITS.ml.bray, env_ITS$pH, type = "centroid")
-permutest(mod, permutations = 999) #P=0.001
-
-#PERMANOVA
-adonis2(asv_ITS.ml.euc ~ pH, method = "none", data = env_ITS, permutations = 9999) #P=1e-4
-adonis2(asv_ITS.jaq ~ pH, method = "none", data = env_ITS, permutations = 9999) #P=1e-4
-adonis2(asv_ITS.ml.bray ~ pH, method = "none", data = env_ITS, permutations = 9999) #P=1e-4
+#PERMANOVA - coal
+adonis2(asv_ITS.ml.euc ~ per_coal2, method = "none", na.action = na.omit, data = env_ITS, permutations = 9999) #not sig
+adonis2(asv_ITS.jaq ~ pH, method = "none", na.action = na.omit, data = env_ITS, permutations = 9999) #not sig
+adonis2(asv_ITS.ml.bray ~ pH, method = "none", na.action = na.omit, data = env_ITS, permutations = 9999) #not sig
 
 
-#check beta dispersion - plant richness
-mod <- betadisper(asv_ITS.ml.euc, env_ITS$plant_r, type = "centroid")
-permutest(mod, permutations = 999) #P=0.001
-
-mod <- betadisper(asv_ITS.jaq, env_ITS$plant_r, type = "centroid")
-permutest(mod, permutations = 999) #P=0.001
-
-mod <- betadisper(asv_ITS.ml.bray, env_ITS$plant_r, type = "centroid")
-permutest(mod, permutations = 999) #P=0.001
-
-#PERMANOVA
-adonis2(asv_ITS.ml.euc ~ plant_r, method = "none", data = env_ITS, permutations = 9999) #P=0.035
-adonis2(asv_ITS.jaq ~ plant_r, method = "none", data = env_ITS, permutations = 9999) #P=0.022
-adonis2(asv_ITS.ml.bray ~ plant_r, method = "none", data = env_ITS, permutations = 9999) #P=0.021
-
-#check beta dispersion - plant shannon and simpson
-mod <- betadisper(asv_ITS.ml.euc, env_ITS$plant_shannon, type = "centroid")
-permutest(mod, permutations = 999) #999
-
-mod <- betadisper(asv_ITS.ml.euc, env_ITS$plant_simpson, type = "centroid")
-permutest(mod, permutations = 999) #999
-
-#PERMANOVA
-adonis2(asv_ITS.ml.euc ~ plant_shannon, method = "none", data = env_ITS, permutations = 9999) #P=0.1
-adonis2(asv_ITS.jaq ~ plant_shannon, method = "none", data = env_ITS, permutations = 9999) #P=0.4
-adonis2(asv_ITS.ml.bray ~ plant_shannon, method = "none", data = env_ITS, permutations = 9999) #P=0.1
-adonis2(asv_ITS.ml.euc ~ plant_simpson, method = "none", data = env_ITS, permutations = 9999) #P=0.1
-adonis2(asv_ITS.jaq ~ plant_simpson, method = "none", data = env_ITS, permutations = 9999) #P=0.4
-adonis2(asv_ITS.ml.bray ~ plant_simpson, method = "none", data = env_ITS, permutations = 9999) #P=0.1
+#PERMANOVA - plant biodiversity
+adonis2(asv_ITS.ml.euc ~ plant_r, method = "none", data = env_ITS, permutations = 9999) #not sig
+adonis2(asv_ITS.jaq ~ plant_r, method = "none", data = env_ITS, permutations = 9999) #not
+adonis2(asv_ITS.ml.bray ~ plant_r, method = "none", data = env_ITS, permutations = 9999) #not
+adonis2(asv_ITS.ml.euc ~ plant_shannon, method = "none", data = env_ITS, permutations = 9999) #P=0.075
+adonis2(asv_ITS.jaq ~ plant_shannon, method = "none", data = env_ITS, permutations = 9999) #not
+adonis2(asv_ITS.ml.bray ~ plant_shannon, method = "none", data = env_ITS, permutations = 9999) #P=0.077
+adonis2(asv_ITS.ml.euc ~ plant_simpson, method = "none", data = env_ITS, permutations = 9999) #not
+adonis2(asv_ITS.jaq ~ plant_simpson, method = "none", data = env_ITS, permutations = 9999) #not
+adonis2(asv_ITS.ml.bray ~ plant_simpson, method = "none", data = env_ITS, permutations = 9999) #P=0.092
 
 
-#check beta dispersion - AM association
-mod <- betadisper(asv_ITS.ml.euc, env_ITS$AM_assoc, type = "centroid")
-permutest(mod, permutations = 999) #P=0.012
-
-mod <- betadisper(asv_ITS.jaq, env_ITS$AM_assoc, type = "centroid")
-permutest(mod, permutations = 999) #P=0.004
-
-mod <- betadisper(asv_ITS.ml.bray, env_ITS$AM_assoc, type = "centroid")
-permutest(mod, permutations = 999) #P=0.6
-
-#PERMANOVA
-adonis2(asv_ITS.ml.euc ~ AM_assoc, method = "none", data = env_ITS, permutations = 9999) #P=8e-4
-adonis2(asv_ITS.jaq ~ AM_assoc, method = "none", data = env_ITS, permutations = 9999) #P=2e-4
-adonis2(asv_ITS.ml.bray ~ AM_assoc, method = "none", data = env_ITS, permutations = 9999) #P=4e-4
+#PERMANOVA - AM association
+adonis2(asv_ITS.ml.euc ~ AM_assoc, method = "none", data = env_ITS, permutations = 9999) #not sig
+adonis2(asv_ITS.jaq ~ AM_assoc, method = "none", data = env_ITS, permutations = 9999) #not
+adonis2(asv_ITS.ml.bray ~ AM_assoc, method = "none", data = env_ITS, permutations = 9999) #not
 
 
-#check beta dispersion - biomass - probably not enough data, since only half the samples
-mod <- betadisper(asv_ITS.ml.euc, env_ITS$AM_biomass, type = "centroid")
-permutest(mod, permutations = 999) #999
+#PERMANOVA - fungal biomass - probably not enough data, since only half the samples
+adonis2(asv_ITS.ml.euc ~ AM_biomass, method = "none", na.action = na.omit, data = env_ITS, permutations = 9999) #not sig
+adonis2(asv_ITS.jaq ~ AM_biomass, method = "none", na.action = na.omit, data = env_ITS, permutations = 9999) #not
+adonis2(asv_ITS.ml.bray ~ AM_biomass, method = "none", na.action = na.omit, data = env_ITS, permutations = 9999) #not
 
-mod <- betadisper(asv_ITS.ml.euc, env_ITS$total_fun_biomass, type = "centroid")
-permutest(mod, permutations = 999) #999
+adonis2(asv_ITS.ml.euc ~ total_fun_biomass, method = "none", na.action = na.omit, data = env_ITS, permutations = 9999) #P=0.017
+adonis2(asv_ITS.jaq ~ total_fun_biomass, method = "none", na.action = na.omit, data = env_ITS, permutations = 9999) #P=0.064
+adonis2(asv_ITS.ml.bray ~ total_fun_biomass, method = "none", na.action = na.omit, data = env_ITS, permutations = 9999) #P=0.017
 
 
-#check beta dispersion and PERMANOVA - nutrients
-mod <- betadisper(asv_ITS.ml.euc, env_ITS$ppm_Ca, type = "centroid")
-permutest(mod, permutations = 999) #999
+#PERMANOVA - nutrients
+adonis2(asv_ITS.ml.euc ~ ppm_Ca, method = "none", data = env_ITS, permutations = 9999) #not sig
+adonis2(asv_ITS.jaq ~ ppm_Ca, method = "none", data = env_ITS, permutations = 9999) #not
+adonis2(asv_ITS.ml.bray ~ ppm_Ca, method = "none", data = env_ITS, permutations = 9999) #not
 
-adonis2(asv_ITS.ml.euc ~ ppm_Ca, method = "none", data = env_ITS, permutations = 9999) #P=1e-4
-adonis2(asv_ITS.jaq ~ ppm_Ca, method = "none", data = env_ITS, permutations = 9999) #P=1e-4
-adonis2(asv_ITS.ml.bray ~ ppm_Ca, method = "none", data = env_ITS, permutations = 9999) #P=1e-4
+adonis2(asv_ITS.ml.euc ~ ppm_Mg, method = "none", data = env_ITS, permutations = 9999) #not
+adonis2(asv_ITS.jaq ~ ppm_Mg, method = "none", data = env_ITS, permutations = 9999) #not
+adonis2(asv_ITS.ml.bray ~ ppm_Mg, method = "none", data = env_ITS, permutations = 9999) #not
 
-mod <- betadisper(asv_ITS.ml.euc, env_ITS$ppm_Mg, type = "centroid")
-permutest(mod, permutations = 999) #999
+adonis2(asv_ITS.ml.euc ~ ppm_Fe, method = "none", data = env_ITS, permutations = 9999) #P=0.036
+adonis2(asv_ITS.jaq ~ ppm_Fe, method = "none", data = env_ITS, permutations = 9999) #P=0.050
+adonis2(asv_ITS.ml.bray ~ ppm_Fe, method = "none", data = env_ITS, permutations = 9999) #P=0.066
 
-adonis2(asv_ITS.ml.euc ~ ppm_Mg, method = "none", data = env_ITS, permutations = 9999) #P=3e-4
-adonis2(asv_ITS.jaq ~ ppm_Mg, method = "none", data = env_ITS, permutations = 9999) #P=4e-4
-adonis2(asv_ITS.ml.bray ~ ppm_Mg, method = "none", data = env_ITS, permutations = 9999) #P=3e-4
+adonis2(asv_ITS.ml.euc ~ ppm_Na, method = "none", data = env_ITS, permutations = 9999) #P=0.066
+adonis2(asv_ITS.jaq ~ ppm_Na, method = "none", data = env_ITS, permutations = 9999) #not
+adonis2(asv_ITS.ml.bray ~ ppm_Na, method = "none", data = env_ITS, permutations = 9999) #not
 
-mod <- betadisper(asv_ITS.ml.euc, env_ITS$ppm_Fe, type = "centroid")
-permutest(mod, permutations = 999) #999
+adonis2(asv_ITS.ml.euc ~ ppm_K, method = "none", data = env_ITS, permutations = 9999) #P=0.044
+adonis2(asv_ITS.jaq ~ ppm_K, method = "none", data = env_ITS, permutations = 9999) #not
+adonis2(asv_ITS.ml.bray ~ ppm_K, method = "none", data = env_ITS, permutations = 9999) #P=0.068
 
-adonis2(asv_ITS.ml.euc ~ ppm_Fe, method = "none", data = env_ITS, permutations = 9999) #P=0.6
+adonis2(asv_ITS.ml.euc ~ ppm_P, method = "none", data = env_ITS, permutations = 9999) #not
+adonis2(asv_ITS.jaq ~ ppm_P, method = "none", data = env_ITS, permutations = 9999) #not
+adonis2(asv_ITS.ml.bray ~ ppm_P, method = "none", data = env_ITS, permutations = 9999) #not
 
-mod <- betadisper(asv_ITS.ml.euc, env_ITS$ppm_Na, type = "centroid")
-permutest(mod, permutations = 999) #999
+adonis2(asv_ITS.ml.euc ~ ppm_S, method = "none", data = env_ITS, permutations = 9999) #P=0.037
+adonis2(asv_ITS.jaq ~ ppm_S, method = "none", data = env_ITS, permutations = 9999) #P=0.026
+adonis2(asv_ITS.ml.bray ~ ppm_S, method = "none", data = env_ITS, permutations = 9999) #P=0.086
 
-adonis2(asv_ITS.ml.euc ~ ppm_Na, method = "none", data = env_ITS, permutations = 9999) #P=0.9
 
-mod <- betadisper(asv_ITS.ml.euc, env_ITS$ppm_K, type = "centroid")
-permutest(mod, permutations = 999) #999
+#PERMANOVA multivariate - incl fungal biomass
+set.seed(42)
+pred_var <- c("plant_r", "plant_shannon", "plant_simpson", "AM_assoc", "total_fun_biomass", 
+              "pH", "ppm_Ca", "ppm_Fe", "ppm_Mg", "ppm_Na", "ppm_K", "ppm_P", "ppm_S")
+formula_euc <- paste("asv_ITS.ml.euc ~", paste(pred_var, collapse="+")) %>% as.formula()
+formula_jaq <- paste("asv_ITS.jaq ~", paste(pred_var, collapse="+")) %>% as.formula()
+formula_bray <- paste("asv_ITS.ml.bray ~", paste(pred_var, collapse="+")) %>% as.formula()
 
-adonis2(asv_ITS.ml.euc ~ ppm_K, method = "none", data = env_ITS, permutations = 9999) #P=0.1
-adonis2(asv_ITS.jaq ~ ppm_K, method = "none", data = env_ITS, permutations = 9999) #P=0.2
-adonis2(asv_ITS.ml.bray ~ ppm_K, method = "none", data = env_ITS, permutations = 9999) #P=0.2
+adonis2(formula_euc, method = "none", na.action=na.omit, data = env_ITS, 
+        by = "margin", # each term analyzed individually
+        permutations = 9999) #K 0.040
 
-mod <- betadisper(asv_ITS.ml.euc, env_ITS$ppm_P, type = "centroid")
-permutest(mod, permutations = 999) #999
+adonis2(formula_jaq, method = "none", na.action=na.omit, data = env_ITS, 
+        by = "margin", # each term analyzed individually
+        permutations = 9999) #none
 
-adonis2(asv_ITS.ml.euc ~ ppm_P, method = "none", data = env_ITS, permutations = 9999) #P=0.7
+adonis2(formula_bray, method = "none", na.action=na.omit, data = env_ITS, 
+        by = "margin", # each term analyzed individually
+        permutations = 9999) #K 0.039
 
-mod <- betadisper(asv_ITS.ml.euc, env_ITS$ppm_S, type = "centroid")
-permutest(mod, permutations = 999) #999
+#PERMANOVA multivariate - remove some non-sig above or not complete
+pred_var <- c("plant_shannon", "plant_simpson", 
+              "ppm_Ca", "ppm_Fe", "ppm_Mg", "ppm_Na", "ppm_K", "ppm_P", "ppm_S")
+formula_euc <- paste("asv_ITS.ml.euc ~", paste(pred_var, collapse="+")) %>% as.formula()
+formula_jaq <- paste("asv_ITS.jaq ~", paste(pred_var, collapse="+")) %>% as.formula()
+formula_bray <- paste("asv_ITS.ml.bray ~", paste(pred_var, collapse="+")) %>% as.formula()
 
-adonis2(asv_ITS.ml.euc ~ ppm_S, method = "none", data = env_ITS, permutations = 9999) #P=0.0015
-adonis2(asv_ITS.jaq ~ ppm_S, method = "none", data = env_ITS, permutations = 9999) #P=0.0054
-adonis2(asv_ITS.ml.bray ~ ppm_S, method = "none", data = env_ITS, permutations = 9999) #P=0.0026
+adonis2(formula_euc, method = "none", na.action=na.omit, data = env_ITS, 
+        by = "margin", # each term analyzed individually
+        permutations = 9999) #K 0.034, S 0.019
+
+adonis2(formula_jaq, method = "none", na.action=na.omit, data = env_ITS, 
+        by = "margin", # each term analyzed individually
+        permutations = 9999) #Fe 0.048, K 0.034, S 0.045
+
+adonis2(formula_bray, method = "none", na.action=na.omit, data = env_ITS, 
+        by = "margin", # each term analyzed individually
+        permutations = 9999) #K 0.034, S 0.049
+
+#check beta dispersion - soil K and S
+mod <- betadisper(asv_ITS.ml.bray, env_ITS$ppm_K)
+permutest(mod, permutations = 999) #homogenous
+mod <- betadisper(asv_ITS.ml.bray, env_ITS$ppm_S)
+permutest(mod, permutations = 999) ##homogenous
+
+#check beta dispersion - soil Na and P (from envfit)
+mod <- betadisper(asv_ITS.ml.bray, env_ITS$ppm_Na)
+permutest(mod, permutations = 999) #homogenous
+mod <- betadisper(asv_ITS.ml.bray, env_ITS$ppm_P)
+permutest(mod, permutations = 999) #homogenous
 
 ```
 
@@ -7099,10 +8444,6 @@ asv_ITS_h_std <- asv_ITS %>%
 				 zap = FALSE, #make near zero values into zeros to avoid exaggeration
 				 na.rm = TRUE) %>% #remove NA values
   mutate(across(where(is.numeric), ~scale(., center = TRUE, scale = TRUE)))
-
-#standardize env variables
-env_ITS_std <- env_ITS[,-c(17:30)] %>% #env file minus microbial diversity and incomplete columns
-  mutate_if(is.numeric,scale) 
 
 its_nmds_df <- asv_ITS_h_std
 
@@ -7122,7 +8463,7 @@ names(stress) <- paste0(1:6, "Dim")
 par(mar = c(3.5,3.5,1,1), mgp = c(2, 0.6, 0), cex = 0.8, las = 2)
 barplot(stress, ylab = "stress")
 
-#run NMDS with 5 axes to be reliably stress < 0.2
+#run NMDS with 3 axes to be reliably stress < 0.2
 set.seed(42) #set seed for reproducibility
 its_nmds <- metaMDS(its_nmds_df, 
                 distance = "bray", #data & distance measure
@@ -7140,19 +8481,25 @@ its_nmds #check "stress" value to see how well the data is represented by the or
 goodness(its_nmds) #check goodness of fit for each point
 stressplot(its_nmds, main = "Shepard plot") #diagnostic plot
 
-#make fit vectors with env variables and view
-#its_nmdsfit <- envfit(its_nmds, env_ITS[,-c(1:4,17:30)], #without standardization
- #                     permutations = 999, na.rm=TRUE)
-its_nmdsfit <- envfit(its_nmds, env_ITS_std[,-c(1:4)], #with standardization
-                      permutations = 999, na.rm=TRUE)
+#make fit vectors with env variables minus fungal biomass and diversity and coal columns, view 
+its_nmdsfit <- envfit(its_nmds, env_ITS[,-c(1:4,17:32)], #without standardization
+                      permutations = 9999, na.rm=TRUE)
+its_nmdsfit #check fit vectors
+
+#standardize env variables - should be same
+env_ITS_std <- env_ITS[,-c(17:32)] %>% #env file 
+  #na.omit() %>% #only complete cases
+  mutate_if(is.numeric,scale) 
+its_nmdsfit <- envfit(its_nmds, env_ITS_std[,-c(1:4)], #with standardization - should be same
+                      permutations = 9999, na.rm=TRUE)
 its_nmdsfit #check fit vectors
 
 #make df of scores, add sites
-its_nmds_scores <- as.data.frame(scores(its_nmds))
+its_nmds_scores <- as.data.frame(vegan::scores(its_nmds))
 its_nmds_scores$Site_ID = env_ITS$Site_ID 
 
 #make df of vectors, only significant vectors
-its_nmds_vectors <- as.data.frame(scores(its_nmdsfit, display = "vectors")) #extracts relevant scores from envfit
+its_nmds_vectors <- as.data.frame(vegan::scores(its_nmdsfit, display = "vectors")) #extracts relevant scores from envfit
 its_nmds_vectors <- cbind(its_nmds_vectors, variable = rownames(its_nmds_vectors)) #and then gives them their names
 its_nmds_vectors <- cbind(its_nmds_vectors, pval = its_nmdsfit$vectors$pvals) # add pvalues to dataframe
 its_sig_vectors <- subset(its_nmds_vectors, pval<=0.05) #subset data to show variables significant at 0.05
@@ -7184,7 +8531,7 @@ ggplot(its_nmds_scores) +
   my_theme
 
 #save figure - name, type, folder, dimensions, resolution, background specs
-ggsave('ITS_asv_NMDS_210726.svg', path = "Figures", width = 6, height = 4, units = "in", dpi = 300, bg=NULL)
+ggsave('ITS_asv_NMDS_050826.svg', path = "Figures", width = 6, height = 4, units = "in", dpi = 300, bg=NULL)
 
 ```
 
@@ -7335,11 +8682,11 @@ its_nmdsfit <- envfit(its_nmds, env_ITS_std[,-c(1:4)], #with standardization
 its_nmdsfit #check fit vectors
 
 #make df of scores, add sites
-its_nmds_scores <- as.data.frame(scores(its_nmds))
+its_nmds_scores <- as.data.frame(vegan::scores(its_nmds))
 its_nmds_scores$Site_ID = env_ITS$Site_ID 
 
 #make df of vectors, only significant vectors
-its_nmds_vectors <- as.data.frame(scores(its_nmdsfit, display = "vectors")) #extracts relevant scores from envfit
+its_nmds_vectors <- as.data.frame(vegan::scores(its_nmdsfit, display = "vectors")) #extracts relevant scores from envfit
 its_nmds_vectors <- cbind(its_nmds_vectors, variable = rownames(its_nmds_vectors)) #and then gives them their names
 its_nmds_vectors <- cbind(its_nmds_vectors, pval = its_nmdsfit$vectors$pvals) # add pvalues to dataframe
 its_sig_vectors <- subset(its_nmds_vectors, pval<=0.1) #subset data to show variables somewhat significant at rounded 0.1
@@ -7371,7 +8718,7 @@ ggplot(its_nmds_scores) +
   my_theme
 
 #save figure - name, type, folder, dimensions, resolution, background specs
-ggsave('ITS_sp_NMDS_210526.svg', path = "Figures", width = 6, height = 4, units = "in", dpi = 300, bg=NULL)
+ggsave('ITS_sp_NMDS_050826.svg', path = "Figures", width = 6, height = 4, units = "in", dpi = 300, bg=NULL)
 
 ```
 
@@ -7524,11 +8871,11 @@ its_nmdsfit <- envfit(its_nmds, env_ITS_std[,-c(1:4)], #with standardization
 its_nmdsfit #check fit vectors
 
 #make df of scores, add sites
-its_nmds_scores <- as.data.frame(scores(its_nmds))
+its_nmds_scores <- as.data.frame(vegan::scores(its_nmds))
 its_nmds_scores$Site_ID = env_ITS$Site_ID 
 
 #make df of vectors, only significant vectors
-its_nmds_vectors <- as.data.frame(scores(its_nmdsfit, display = "vectors")) #extracts relevant scores from envfit
+its_nmds_vectors <- as.data.frame(vegan::scores(its_nmdsfit, display = "vectors")) #extracts relevant scores from envfit
 its_nmds_vectors <- cbind(its_nmds_vectors, variable = rownames(its_nmds_vectors)) #and then gives them their names
 its_nmds_vectors <- cbind(its_nmds_vectors, pval = its_nmdsfit$vectors$pvals) # add pvalues to dataframe
 its_sig_vectors <- subset(its_nmds_vectors, pval<=0.1) #subset data to show variables somewhat significant at rounded 0.1
@@ -7560,7 +8907,7 @@ ggplot(its_nmds_scores) +
   my_theme
 
 #save figure - name, type, folder, dimensions, resolution, background specs
-ggsave('ITS_g_NMDS_210526.svg', path = "Figures", width = 6, height = 4, units = "in", dpi = 300, bg=NULL)
+ggsave('ITS_g_NMDS_050826.svg', path = "Figures", width = 6, height = 4, units = "in", dpi = 300, bg=NULL)
 
 ```
 
