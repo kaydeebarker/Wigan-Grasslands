@@ -3,9 +3,9 @@ title: "Wigan Grassland Restoration"
 author: "Kaydee S. Barker"
 date: "`r Sys.Date()`"
 output:
-  word_document: default
-  html_document: default
   pdf_document: default
+  html_document: default
+  word_document: default
 ---
 
 # Set up
@@ -87,11 +87,11 @@ colors10 <- c("#7b887f", "#c25205", "#8d5744", "#00666a",  #for 4 UK survey site
 
 colors14 <- c("#7b887f", "#8ebf9f", "#c3d0c7", "#c25205", "#f28749", "#ffbc85", "#00666a", "#44a6a6", "#afeeeb", "#8d5744", "#bf846f", "#bda59c", "#fffdf9", "antiquewhite2")
 
-swatch(colors13) #view as swatch
+swatch(colors14) #view as swatch
 
 #check values for colorblindness (colorBlindness library)
-colorBlindness::displayAllColors(colors13)
-getLUV(colors13) #can also get CIE LUV values with Polychrome
+colorBlindness::displayAllColors(colors14)
+getLUV(colors14) #can also get CIE LUV values with Polychrome
 
 #color palette with gradient with 25 steps green to neutral to brown
 colors_ramp <- colorRampPalette(c("#84B699", "azure","#BF876E"))(25)
@@ -103,7 +103,7 @@ swatch(colors_ramp2) #view palette
 
 #color palette based on "seed colors" from previous palette, Polychrome - 40
 colors_seed <- createPalette(40, #number of colors in palette 
-							seedcolors=colors13, #define seed colors
+							seedcolors=colors10, #define seed colors
 							prefix = "", #get rid of row prefix
 							range = c(40, 100), #range of allowed luminance values
               target = c("normal", "protanope", "deuteranope", "tritanope")) #colorblindness
@@ -1821,7 +1821,7 @@ taxa_ITS[is.na(taxa_ITS)] <- "unknown" #replace NA values with text
 
 #clean and amalgamate the data with species & genus
 taxa_ITS <- taxa_ITS %>%
-  filter(Genus != "unknown") %>%
+  filter(Phylum != "unknown") %>%
   mutate(asv = gsub(" ", "", asv)) %>% #remove spaces from taxa_ITS$asv to match the column naming format
   mutate(Phylum = str_remove(Phylum, ".\\w.")) %>% #make column without first part of column
   mutate(Class = str_remove(Class, ".\\w.")) %>%
@@ -1829,9 +1829,11 @@ taxa_ITS <- taxa_ITS %>%
   mutate(Family = str_remove(Family, ".\\w.")) %>%
   mutate(Genus = str_remove(Genus, ".\\w.")) %>%
   mutate(Species = str_remove(Species, ".\\w.")) %>%
+  mutate(Family = case_when(Family == "nown" ~ "unknown", TRUE ~ Family)) %>% #fix unknowns
+  mutate(Genus = case_when(Genus == "nown" ~ "unknown", TRUE ~ Genus)) %>%
   mutate(Species = case_when(Species == "nown" ~ "unknown", TRUE ~ Species)) %>%
   mutate(genus.species = paste(Genus, Species, sep = "."))
-  
+
 unique(taxa_ITS$genus.species) 
 
 #check asvs allocated just to genus have same reference sequence
@@ -1849,6 +1851,10 @@ for (i in 1:length(unique(taxa_ITS.sp$genus.species))) {
   }
 sp.tf #
 
+```
+
+```{r combine ITS}
+
 #combine at species level
 asv_ITS.s <- matrix(0, nrow=nrow(asv_ITS), ncol=length(unique(taxa_ITS$genus.species)))
 rownames(asv_ITS.s) <- rownames(asv_ITS)
@@ -1858,7 +1864,9 @@ for (i in 1:length(unique(taxa_ITS$genus.species))) {
   temp2 <- asv_ITS[, which(colnames(asv_ITS) %in% temp$asv), drop=FALSE]
   asv_ITS.s[,i] <- rowSums(temp2)
 }
-asv_ITS.s <- as.data.frame(asv_ITS.s) #make df
+asv_ITS.s <- as.data.frame(asv_ITS.s) %>% #make df
+  mutate(Plot_ID = env_ITS$Plot_ID) %>% #add plot ID to samples
+  mutate(Site_ID = env_ITS$Site_ID) #add site ID to samples
 
 
 
@@ -1892,6 +1900,7 @@ for (i in 1:100) {
 env_ITS$gini.s <- Reduce("+", its_gini.list.s) / length(its_gini.list.s)
 
 
+
 #combine at genus level
 asv_ITS.g <- matrix(0, nrow=nrow(asv_ITS), ncol=length(unique(taxa_ITS$Genus)))
 rownames(asv_ITS.g) <- rownames(asv_ITS)
@@ -1901,7 +1910,9 @@ for (i in 1:length(unique(taxa_ITS$Genus))) {
   temp2 <- asv_ITS[, which(colnames(asv_ITS) %in% temp$asv), drop=FALSE]
   asv_ITS.g[,i] <- rowSums(temp2)
 }
-asv_ITS.g <- as.data.frame(asv_ITS.g)
+asv_ITS.g <- as.data.frame(asv_ITS.g) %>% #make df
+  mutate(Plot_ID = env_ITS$Plot_ID) %>% #add plot ID to samples
+  mutate(Site_ID = env_ITS$Site_ID) #add site ID to samples
 
 #alpha - genus
 #observed richness
@@ -1932,6 +1943,8 @@ for (i in 1:1000) {
 }
 env_ITS$gini.g <- Reduce("+", its_gini.list.g) / length(its_gini.list.g)
 
+
+
 #combine at order level
 asv_ITS.o <- matrix(0, nrow=nrow(asv_ITS), ncol=length(unique(taxa_ITS$Order)))
 rownames(asv_ITS.o) <- rownames(asv_ITS)
@@ -1941,7 +1954,9 @@ for (i in 1:length(unique(taxa_ITS$Order))) {
   temp2 <- asv_ITS[, which(colnames(asv_ITS) %in% temp$asv), drop=FALSE]
   asv_ITS.o[,i] <- rowSums(temp2)
 }
-asv_ITS.o <- as.data.frame(asv_ITS.o)
+asv_ITS.o <- as.data.frame(asv_ITS.o) %>% #make df
+  mutate(Plot_ID = env_ITS$Plot_ID) %>% #add plot ID to samples
+  mutate(Site_ID = env_ITS$Site_ID) #add site ID to samples
 
 
 #combine at phylum level
@@ -1953,13 +1968,14 @@ for (i in 1:length(unique(taxa_ITS$Phylum))) {
   temp2 <- asv_ITS[, which(colnames(asv_ITS) %in% temp$asv), drop=FALSE]
   asv_ITS.p[,i] <- rowSums(temp2)
 }
-asv_ITS.p <- as.data.frame(asv_ITS.p)
+asv_ITS.p <- as.data.frame(asv_ITS.p) %>% #make df
+  mutate(Plot_ID = env_ITS$Plot_ID) %>% #add plot ID to samples
+  mutate(Site_ID = env_ITS$Site_ID) #add site ID to samples
 
 #pivot for graphs, add site
 
 #species
 asv_ITS.s_long <- asv_ITS.s %>%
-  mutate(Site_ID = env_ITS$Site_ID) %>% #add site ID to samples
 pivot_longer(
     cols = c(1:712), #pick columns to pivot
     names_to = "species", #name column to put original column names in
@@ -1967,7 +1983,6 @@ pivot_longer(
 
 #genus
 asv_ITS.g_long <- asv_ITS.g %>%
-  mutate(Site_ID = env_ITS$Site_ID) %>% #add site ID to samples
 pivot_longer(
     cols = c(1:447), #pick columns to pivot
     names_to = "genus", #name column to put original column names in
@@ -1975,7 +1990,6 @@ pivot_longer(
 
 #order
 asv_ITS.o_long <- asv_ITS.o %>%
-  mutate(Site_ID = env_ITS$Site_ID) %>% #add site ID to samples
 pivot_longer(
     cols = c(1:115), #pick columns to pivot
     names_to = "order", #name column to put original column names in
@@ -1983,7 +1997,6 @@ pivot_longer(
 
 #phylum
 asv_ITS.p_long <- asv_ITS.p %>%
-  mutate(Site_ID = env_ITS$Site_ID) %>% #add site ID to samples
 pivot_longer(
     cols = c(1:14), #pick columns to pivot
     names_to = "phylum", #name column to put original column names in
@@ -1991,7 +2004,64 @@ pivot_longer(
 
 ```
 
+```{r env groups of interest}
 
+#select reads for specific groups
+
+#Glomeromycota (AMF)
+glom_reads <- asv_ITS.p_long %>%
+  filter(phylum == "Glomeromycota")
+
+AMF_sp <- asv_ITS.s_long %>%
+  filter(grepl("glom", ignore.case = TRUE, species) | 
+           grepl("acaulospora", ignore.case = TRUE, species) |
+           grepl("archaeospora", ignore.case = TRUE, species) |
+           grepl("diversispora", ignore.case = TRUE, species) |
+           grepl("funneliformis", ignore.case = TRUE, species) |
+           grepl("rhizophagus", ignore.case = TRUE, species)
+         )
+
+#Hygrocybe (waxcap) - conservation interest
+waxcap_reads <- asv_ITS.g_long %>%
+  filter(genus == "Hygrocybe")
+
+waxcap_sp <- asv_ITS.s_long %>%
+  filter(grepl("Hygrocybe", ignore.case = TRUE, species))
+
+
+#select for most common
+top_ITSorders <- asv_ITS.o_long %>%
+  filter(order == "Agaricales" |
+           order == "Archaeorhizomycetales" |
+           order == "Chaetothyriales" |
+           order == "Geoglossales" |
+           order == "Helotiales" |
+           order == "Hypocreales" |
+           order == "Mortierellales" |
+           order == "Pleosporales" |
+           order == "Sordariales" |
+           order == "Tremellales")
+
+top_ITSgenuses <- asv_ITS.g_long %>%
+  filter(genus == "Archaeorhizomyces" |
+           genus == "Cladosporium" |
+           genus == "Clavaria" |
+           genus == "Clavulinopsis" |
+           genus == "Dermoloma" |
+           genus == "Hygrocybe" |
+           genus == "Linnemannia" |
+           genus == "Mortierella" |
+           genus == "Podila" |
+           genus == "Saitozyma")
+
+#add together with env
+env_ITS <- env_ITS %>%
+  mutate(Glomeromycota = glom_reads$count[match(env_ITS$Plot_ID, glom_reads$Plot_ID)]) %>%
+  mutate(Hygrocybes = waxcap_reads$count[match(env_ITS$Plot_ID, waxcap_reads$Plot_ID)])
+
+
+
+```
 
 
 #### Bacteria
@@ -4142,7 +4212,7 @@ soil_metals %>%
 ggplot(aes(x=nutrient, y=ppm_adj, fill=nutrient)) + 
   geom_boxplot() +
   facet_wrap(~Site_ID, scales = "free_y", nrow=1) + #create a separate plot for each site
-  scale_fill_manual(values=colors13) + #define colors to use
+  scale_fill_manual(values=colors14) + #define colors to use
   #ggtitle("Soil Metals per site") + #add a graph title
   xlab("") + ylab("Concentration (mg/kg soil)") + #define/change X and Y labels
   theme(axis.text.x = element_text(angle=90), #set angle of variable labels
@@ -7251,6 +7321,141 @@ ggsave('fungal_C_stacked.svg', #save plot name and type - can be "eps", "pdf", "
 
 ```
 
+## Fungal groups DNA
+
+### Rel abundance
+```{r plot phylum abundance}
+
+#bar chart
+asv_ITS.p_long %>%
+ggplot(aes(x=Site_ID, y=count, fill=phylum)) + #use the fill part to set what you want to stack by
+  geom_bar(stat = "summary", add = "mean", width = 0.7, position="stack", colour="black") + #add mean bars with black outlines stacked by the fill variable
+  scale_fill_manual(values = colors14) + #define colors to use
+  my_theme + xlab("") + ylab("Fungal phylum reads") +
+  theme(legend.position="right") #+
+  
+
+ggsave('fungal_phylum.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+
+```
+
+```{r plot order abundance}
+
+#bar chart - select only most abundant
+asv_ITS.o_long %>%
+  #filter(count >= 500) %>%
+  filter(order == "Agaricales" |
+           order == "Archaeorhizomycetales" |
+           order == "Chaetothyriales" |
+           order == "Geoglossales" |
+           order == "Helotiales" |
+           order == "Hypocreales" |
+           order == "Mortierellales" |
+           order == "Pleosporales" |
+           order == "Sordariales" |
+           order == "Tremellales"
+           ) %>%
+ggplot(aes(x=reorder(order, -count), y=count, fill=order)) + 
+  geom_bar(stat = "summary", add = "mean", width = 0.7, position="stack", colour="black") + #add mean bars
+  facet_wrap(~Site_ID, nrow=4) +
+  scale_fill_manual(values = colors10) + #define colors to use
+  my_theme + xlab("") + ylab("Most abundant fungal order reads") +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.position="none") #+
+  
+
+ggsave('fungal_order.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+
+```
+
+```{r plot genus abundance}
+
+#bar chart - select only most abundant
+asv_ITS.g_long %>%
+  #filter(count >= 500) %>%
+  filter(genus == "Archaeorhizomyces" |
+           genus == "Cladosporium" |
+           genus == "Clavaria" |
+           genus == "Clavulinopsis" |
+           genus == "Dermoloma" |
+           genus == "Hygrocybe" |
+           genus == "Linnemannia" |
+           genus == "Mortierella" |
+           genus == "Podila" |
+           genus == "Saitozyma") %>%
+ggplot(aes(x=reorder(genus, -count), y=count, fill=genus)) + 
+  geom_bar(stat = "summary", add = "mean", width = 0.7, position="stack", colour="black") + #add mean bars
+  facet_wrap(~Site_ID, nrow=4) +
+  scale_fill_manual(values = colors10) + #define colors to use
+  my_theme + xlab("") + ylab("Most abundant fungal genus reads") +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  theme(legend.position="none") #+
+  
+
+ggsave('fungal_genus.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+
+```
+
+### AMF species
+```{r AM sp}
+
+#bar chart
+AMF_sp %>%
+  filter(count > 0) %>%
+ggplot(aes(x=Site_ID, y=count, fill=species)) + #use the fill part to set what you want to stack by
+  geom_bar(stat = "summary", add = "mean", width = 0.7, position="stack", colour="black") + #add mean bars with black outlines stacked by the fill variable
+  scale_fill_manual(values = colors_ramp) + #define colors to use
+  my_theme + xlab("") + ylab("AMF species reads") +
+  theme(legend.position="right") #+
+  
+
+ggsave('AMF_reads.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 10, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+```
+
+### Waxcap species
+```{r waxcap sp}
+
+#bar chart
+waxcap_sp %>%
+  filter(count > 0) %>%
+ggplot(aes(x=Site_ID, y=count, fill=species)) + #use the fill part to set what you want to stack by
+  geom_bar(stat = "summary", add = "mean", width = 0.7, position="stack", colour="black") + #add mean bars with black outlines stacked by the fill variable
+  scale_fill_manual(values = colors5) + #define colors to use
+  my_theme + xlab("") + ylab("Waxcap species reads") +
+  theme(legend.position="right") #+
+  
+
+ggsave('waxcap_reads.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+```
+
+
+
+
 # Plant Communities
 
 ```{r plant groups}
@@ -7280,8 +7485,13 @@ ggsave('plant_groups.svg', #save plot name and type - can be "eps", "pdf", "jpeg
        dpi = 300, #set resolution
        bg=NULL) #background from plot specifications
 
-shapiro.test(resid(lm(shoot ~ functional_group * site_id, data = plant_harvest[ #check normality of residuals - not normal
+shapiro.test(resid(lm(shoot ~ functional_group * site_id, data = plant_harvest[ #not normal
                           !is.na(plant_harvest$shoot), c(2,6,7)]))) #subset only columns of interest, remove na
+leveneTest(lm(shoot ~ functional_group * site_id, data = plant_harvest[ 
+                          !is.na(plant_harvest$shoot), c(2,6,7)])) #heterogeneous
+
+summary(art(shoot ~ factor(functional_group) * factor(site_id), data = plant_harvest[!is.na(plant_harvest$shoot),])) #run ART ANOVA
+
 shapiro.test(resid(lm(log(shoot) ~ functional_group * site_id, data = plant_harvest[ #normal
                           !is.na(plant_harvest$shoot), c(2,6,7)]))) #subset only columns of interest, remove na
 summary(aov(log(shoot) ~ functional_group * site_id, data = plant_harvest[ 
@@ -7423,7 +7633,7 @@ ggsave('NBN_arthropods.svg', #save plot name and type - can be "eps", "pdf", "jp
 ```
 
 
-# Microbial Communities
+# Microbial communities diversity
 
 ## Alpha diversity
 Diversity of species within sites
@@ -8216,28 +8426,6 @@ ggsave('16S_sp_NMDS_210526.svg', path = "Figures", width = 6, height = 4, units 
 
 
 ### ITS 
-
-#### Rel abundance
-```{r plot phylum abundance}
-
-#stacked bar chart
-asv_ITS.p_long %>%
-ggplot(aes(x=Site_ID, y=count, fill=phylum)) + #use the fill part to set what you want to stack by
-  geom_bar(stat = "summary", add = "mean", width = 0.7, position="stack", colour="black") + #add mean bars with black outlines stacked by the fill variable
-  scale_fill_manual(values = colors14) + #define colors to use
-  my_theme + xlab("") + ylab("Fungal phylum reads") +
-  theme(legend.position="right") #+
-  
-
-ggsave('fungal_phylum.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
-       path = "Figures", #save to folder
-       width = 6, height = 4, units = "in", #set dimensions
-       dpi = 300, #set resolution
-       bg=NULL) #background from plot specifications
-
-
-```
-
 
 #### ASVs
 
@@ -10323,7 +10511,7 @@ ggplot(data = endbiomass, aes(x=Management, y=worms, fill=Management)) +
 
 ```
 
-## Coal in Samples
+## Coal in mesocosms
 
 ### Rocks and debris in pots
 
