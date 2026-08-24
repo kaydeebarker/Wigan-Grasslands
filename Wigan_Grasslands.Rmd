@@ -1616,9 +1616,9 @@ total_pots <- plant_harvest_est %>%
 
 #order variables
 plant_harvest$site <- factor(plant_harvest$site, levels = order_sites)
-plant_harvest$site_id <- factor(plant_harvest$site_id, levels = order_IDs)
+plant_harvest$site_id <- factor(plant_harvest$site_id, levels = order_IDs_4)
 plant_harvest_est$site <- factor(plant_harvest_est$site, levels = order_sites)
-plant_harvest_est$site_id <- factor(plant_harvest_est$site_id, levels = order_IDs)
+plant_harvest_est$site_id <- factor(plant_harvest_est$site_id, levels = order_IDs_4)
 plant13C$site <- factor(plant13C$site, levels = order_sites)
 plant13C$site_id <- factor(plant13C$site_id, levels = order_IDs)
 summary_plant13C$site <- factor(summary_plant13C$site, levels = order_sites)
@@ -1760,13 +1760,16 @@ fungal_chg <- fungal_mass %>%
 
 #load ITS data
 asv_ITS <- read.table('DNA/ITS/asv.csv',header=TRUE,sep=',',row.names=1)
+asv_ITS[is.na(asv_ITS)] <- 0 #replace NA values with 0
+
 dna_ITS <- read.FASTA('DNA/ITS/rep-set.fasta')
+
 env_ITS <- read.table('DNA/ITS/env.csv',header=TRUE,sep=',',row.names=1)
 env_ITS$Site_ID <- factor(env_ITS$Site_ID, levels = order_IDs) #order sites
 
 #add some site, plant, other fungal data to env df
 env_ITS <- env_ITS %>%
-  mutate(pH = env_ITS$pH <- site_data$pH[match(env_ITS$Plot_ID, site_data$Plot_ID)]) %>%
+  mutate(pH = site_data$pH[match(env_ITS$Plot_ID, site_data$Plot_ID)]) %>%
   mutate(ppm_Ca = soil_metals_wide$ppm_Ca1[match(env_ITS$Plot_ID, soil_metals_wide$Plot_ID)]) %>%
   mutate(ppm_Mg = soil_metals_wide$ppm_Mg[match(env_ITS$Plot_ID, soil_metals_wide$Plot_ID)]) %>%
   mutate(ppm_Fe = soil_metals_wide$ppm_Fe[match(env_ITS$Plot_ID, soil_metals_wide$Plot_ID)]) %>%
@@ -1832,7 +1835,7 @@ taxa_ITS <- taxa_ITS %>%
   mutate(Family = case_when(Family == "nown" ~ "unknown", TRUE ~ Family)) %>% #fix unknowns
   mutate(Genus = case_when(Genus == "nown" ~ "unknown", TRUE ~ Genus)) %>%
   mutate(Species = case_when(Species == "nown" ~ "unknown", TRUE ~ Species)) %>%
-  mutate(genus.species = paste(Genus, Species, sep = "."))
+  mutate(genus.species = paste(Genus, Species, sep = "_"))
 
 unique(taxa_ITS$genus.species) 
 
@@ -1851,9 +1854,36 @@ for (i in 1:length(unique(taxa_ITS.sp$genus.species))) {
   }
 sp.tf #
 
+
+#pivot asv table and assign seq
+asv_ITS_pivot <- asv_ITS %>%
+  rownames_to_column(var = "sample") %>%
+  group_by(sample) %>%
+  pivot_longer(
+    cols = ASV1:ASV2670, #pick columns to transform
+		names_to = "ASV", #name column to put original column names in
+		values_to = "count")
+
+asv_ITS_pivot <- asv_ITS_pivot %>%
+  group_by(ASV) %>%
+  pivot_wider(names_from = "sample", 
+		values_from = "count") 
+
+taxa_ITS_unique <- taxa_ITS %>%
+  dplyr::select(seq, asv)
+
+taxa_ITS_unique <- unique(taxa_ITS_unique)
+
+taxa_ITS_unique <- taxa_ITS_unique %>%
+  rename("asv" = "ASV") %>%
+  merge(asv_ITS_pivot, all = TRUE) 
+
+#write.csv(taxa_ITS_unique, "asv_tbl.csv")
+
+
 ```
 
-```{r combine ITS}
+```{r combine ITS, warning=FALSE}
 
 #combine at species level
 asv_ITS.s <- matrix(0, nrow=nrow(asv_ITS), ncol=length(unique(taxa_ITS$genus.species)))
@@ -1864,10 +1894,7 @@ for (i in 1:length(unique(taxa_ITS$genus.species))) {
   temp2 <- asv_ITS[, which(colnames(asv_ITS) %in% temp$asv), drop=FALSE]
   asv_ITS.s[,i] <- rowSums(temp2)
 }
-asv_ITS.s <- as.data.frame(asv_ITS.s) %>% #make df
-  mutate(Plot_ID = env_ITS$Plot_ID) %>% #add plot ID to samples
-  mutate(Site_ID = env_ITS$Site_ID) #add site ID to samples
-
+asv_ITS.s <- as.data.frame(asv_ITS.s) #make df
 
 
 #alpha - species
@@ -1899,6 +1926,10 @@ for (i in 1:100) {
 }
 env_ITS$gini.s <- Reduce("+", its_gini.list.s) / length(its_gini.list.s)
 
+asv_ITS.s <- asv_ITS.s %>%
+  mutate(Plot_ID = env_ITS$Plot_ID) %>% #add plot ID to samples
+  mutate(Site_ID = env_ITS$Site_ID) #add site ID to samples
+
 
 
 #combine at genus level
@@ -1910,9 +1941,8 @@ for (i in 1:length(unique(taxa_ITS$Genus))) {
   temp2 <- asv_ITS[, which(colnames(asv_ITS) %in% temp$asv), drop=FALSE]
   asv_ITS.g[,i] <- rowSums(temp2)
 }
-asv_ITS.g <- as.data.frame(asv_ITS.g) %>% #make df
-  mutate(Plot_ID = env_ITS$Plot_ID) %>% #add plot ID to samples
-  mutate(Site_ID = env_ITS$Site_ID) #add site ID to samples
+asv_ITS.g <- as.data.frame(asv_ITS.g) #make df
+  
 
 #alpha - genus
 #observed richness
@@ -1943,6 +1973,10 @@ for (i in 1:1000) {
 }
 env_ITS$gini.g <- Reduce("+", its_gini.list.g) / length(its_gini.list.g)
 
+
+asv_ITS.g <- asv_ITS.g %>%
+  mutate(Plot_ID = env_ITS$Plot_ID) %>% #add plot ID to samples
+  mutate(Site_ID = env_ITS$Site_ID) #add site ID to samples
 
 
 #combine at order level
@@ -1977,7 +2011,7 @@ asv_ITS.p <- as.data.frame(asv_ITS.p) %>% #make df
 #species
 asv_ITS.s_long <- asv_ITS.s %>%
 pivot_longer(
-    cols = c(1:712), #pick columns to pivot
+    cols = c(1:713), #pick columns to pivot
     names_to = "species", #name column to put original column names in
     values_to = "count") #name column to put values in
 
@@ -2004,6 +2038,45 @@ pivot_longer(
 
 ```
 
+```{r match traits ITS}
+
+#install.packages("devtools")
+#devtools::install_github("ropenscilabs/datastorr")
+#devtools::install_github("traitecoevo/fungaltraits")
+#install.packages("stringi")
+library(fungaltraits)
+
+fungal_traits()
+names(fungal_traits())
+
+fun_traits <- as.data.frame(fungal_traits()) %>%
+  dplyr::select(species, Genus, guild_fg, growth_form_fg, higher_clade, notes_fg, spore_size, 
+         tissue_c, tissue_n, tissue_cn, tissue_p, tissue_cp, tissue_np, trait_fg, total_genes, trophic_mode_fg)
+
+
+asv_ITS.s_long <- asv_ITS.s_long %>%
+  mutate(guild_troph = fun_traits$trophic_mode_fg[match(asv_ITS.s_long$species, fun_traits$species)]) %>%
+  mutate(guild = fun_traits$guild_fg[match(asv_ITS.s_long$species, fun_traits$species)]) %>%
+  mutate(guild = case_when(grepl("glom", species, ignore.case = TRUE) ~ "Arbuscular Mycorrhizal",
+                           grepl("acaulospora", species, ignore.case = TRUE) ~ "Arbuscular Mycorrhizal",
+                           grepl("archaeospora", species, ignore.case = TRUE) ~ "Arbuscular Mycorrhizal",
+                           grepl("diversispora", species, ignore.case = TRUE) ~ "Arbuscular Mycorrhizal",
+                           grepl("funneliformis", species, ignore.case = TRUE) ~ "Arbuscular Mycorrhizal",
+                           grepl("rhizophagus", species, ignore.case = TRUE) ~ "Arbuscular Mycorrhizal",
+                           .default = guild)) %>%
+  mutate(guild_troph = case_when(grepl("glom", species, ignore.case = TRUE) ~ "Symbiotroph",
+                           grepl("acaulospora", species, ignore.case = TRUE) ~ "Symbiotroph",
+                           grepl("archaeospora", species, ignore.case = TRUE) ~ "Symbiotroph",
+                           grepl("diversispora", species, ignore.case = TRUE) ~ "Symbiotroph",
+                           grepl("funneliformis", species, ignore.case = TRUE) ~ "Symbiotroph",
+                           grepl("rhizophagus", species, ignore.case = TRUE) ~ "Symbiotroph",
+                           .default = guild_troph))
+
+length(asv_ITS.s_long$species) #how many spec.
+colSums(is.na(asv_ITS.s_long)) #how many NA
+
+```
+
 ```{r env groups of interest}
 
 #select reads for specific groups
@@ -2019,7 +2092,34 @@ AMF_sp <- asv_ITS.s_long %>%
            grepl("diversispora", ignore.case = TRUE, species) |
            grepl("funneliformis", ignore.case = TRUE, species) |
            grepl("rhizophagus", ignore.case = TRUE, species)
-         )
+         ) %>%
+  mutate(AM_guild = case_when(grepl("glom", species, ignore.case = TRUE) ~ "Rhizophilic",
+                           grepl("acaulospora", species, ignore.case = TRUE) ~ "Ancient",
+                           grepl("archaeospora", species, ignore.case = TRUE) ~ "Ancient",
+                           grepl("diversispora", species, ignore.case = TRUE) ~ "Edaphophilic",
+                           grepl("funneliformis", species, ignore.case = TRUE) ~ "Rhizophilic",
+                           grepl("rhizophagus", species, ignore.case = TRUE) ~ "Rhizophilic",
+                           .default = NA)) 
+
+anc_reads <- AMF_sp %>%
+  filter(AM_guild == "Ancient")
+
+eda_reads <- AMF_sp %>%
+  filter(AM_guild == "Edaphophilic")
+
+rhizo_reads <- AMF_sp %>%
+  filter(AM_guild == "Rhizophilic")
+
+AMF_ITS.s <- asv_ITS.s %>%
+  select_at(vars(contains("Glom") |
+           contains("Acaulospora") |
+           contains("Archaeospora") |
+           contains("Diversispora") |
+           contains("Funneliformis") |
+           contains("Rhizophagus")
+                 ))
+
+AMF_specN <- specnumber(AMF_ITS.s)
 
 #Hygrocybe (waxcap) - conservation interest
 waxcap_reads <- asv_ITS.g_long %>%
@@ -2027,6 +2127,9 @@ waxcap_reads <- asv_ITS.g_long %>%
 
 waxcap_sp <- asv_ITS.s_long %>%
   filter(grepl("Hygrocybe", ignore.case = TRUE, species))
+
+waxcap_ITS.s <- asv_ITS.s %>%
+  select_at(vars(contains("Hygrocybe")))
 
 
 #select for most common
@@ -2057,9 +2160,27 @@ top_ITSgenuses <- asv_ITS.g_long %>%
 #add together with env
 env_ITS <- env_ITS %>%
   mutate(Glomeromycota = glom_reads$count[match(env_ITS$Plot_ID, glom_reads$Plot_ID)]) %>%
+  mutate(Glom_sr = AMF_specN) %>%
+  mutate(anc_AMF = anc_reads$count[match(env_ITS$Plot_ID, anc_reads$Plot_ID)]) %>%
+  mutate(edaph_AMF = eda_reads$count[match(env_ITS$Plot_ID, eda_reads$Plot_ID)]) %>%
+  mutate(rhizo_AMF = rhizo_reads$count[match(env_ITS$Plot_ID, rhizo_reads$Plot_ID)]) %>%
   mutate(Hygrocybes = waxcap_reads$count[match(env_ITS$Plot_ID, waxcap_reads$Plot_ID)])
 
 
+
+```
+
+```{r ITS OTU conversion, eval=FALSE}
+
+#cluster sequences at 97% similarity using DECIPHER
+library(DECIPHER)  #for sequence alignment and clustering
+library(Biostrings)
+
+dna_ITS_seq <- DNAStringSet(taxa_ITS$seq)  #convert sequences to DNAStringSet
+names(dna_ITS_seq) <- taxa_ITS$asv  #assign ASV names to sequences
+
+dna_ITS_seq <- as.data.frame(dna_ITS_seq) %>%
+  mutate(asv = taxa_ITS$asv)
 
 ```
 
@@ -2263,7 +2384,7 @@ SOM_13C <- read_csv("SOM_13C.csv")
 SOM_T0 <- SOM_13C %>%
   filter(Fraction == "SOM") %>%
   filter(Incubation_T == 0) %>%
-  dplyr::select(Sample_year, Site_ID, Site, Mgmt_year, Mgmt_fct, Plot_ID, Incubation_T, per_C, per_N, C_gkg, N_gkg, C_N, d13C, `13C_excess_per`, `15N`, per_POM, per_MAOM, C_kgm2_7cm, pot_C_g, pot_13C_mg, g_debris) %>% #select columns to keep
+  dplyr::select(Sample_year, Site_ID, Site, Mgmt_year, Mgmt_fct, Plot_ID, Incubation_T, per_C, per_N, C_gkg, N_gkg, C_N, d13C, `13C_excess_per`, `15N`, per_POM, per_MAOM, C_kgm2_7cm, pot_C_g, pot_13C_mg, g_debris, g_soil) %>% #select columns to keep
   rename("SOM_perC" = "per_C") %>%
   rename("SOM_perN" = "per_N") %>%
   rename("SOM_potC_g" = "pot_C_g") %>%
@@ -2667,7 +2788,7 @@ FM2_sp_yr <- occ_count(facet="year", geometry="POLYGON((-2.6229 53.525048, -2.62
 
 ```
 
-```{r NBN}
+```{r NBN, eval=FALSE}
 
 #read in downloaded csv from National Biodiversity Network Atlas
 NBN <- read_csv("NBNatlas_Wigan.csv") %>% 
@@ -3184,21 +3305,31 @@ ggsave('per_coal_CN.svg', #save plot name and type - can be "eps", "pdf", "jpeg"
 #pre-define variables
 target <- "coal_per"   # change if different
 feature_base <- c("l", "a", "b")
-spectral_cols <- names(color_cal) %>% purrr::keep(~ grepl("^\\d+nm$", .x)) #selects columns with nm
+spectral_cols <- names(color_cal_g2) %>% purrr::keep(~ grepl("^\\d+nm$", .x)) #selects columns with nm
 predictors <- c(feature_base, spectral_cols, "chroma", "hue") 
 group_col    <- "sample_grp" #group by coal_per to keep technical replicates together
 cv_type      <- "grouped" #"grouped" (groupKFold) or "logo" (leave-one-group-out by coal_per)
 
 
 
-#train control: grouped, but repeated CV as backup if no group
-if ("sample_grp" %in% names(color_cal_g1)) {
-  idx <- caret::groupKFold(factor(color_cal_g1$sample_grp), k = min(5, length(unique(color_cal_g1$sample_grp))))
-  tr_ctrl <- trainControl(method="cv", index = idx, savePredictions="final", summaryFunction = defaultSummary, allowParallel=TRUE)
+#train control: grouped, but repeated CV as backup if no group - ground
+if ("sample_grp" %in% names(color_cal_g2)) {
+  idx_g <- caret::groupKFold(factor(color_cal_g2$sample_grp), k = min(5, length(unique(color_cal_g2$sample_grp))))
+  tr_ctrl_g <- trainControl(method="cv", index = idx_g, savePredictions="final", summaryFunction = defaultSummary, allowParallel=TRUE)
 } else {
-  tr_ctrl <- trainControl(method="repeatedcv", number=5, repeats=5, savePredictions="final", summaryFunction = defaultSummary, allowParallel=TRUE)
+  tr_ctrl_g <- trainControl(method="repeatedcv", number=5, repeats=5, savePredictions="final", summaryFunction = defaultSummary, allowParallel=TRUE)
   message("sample_grp not found; using repeated CV")
 }
+
+#sieved
+if ("sample_grp" %in% names(color_cal_s)) {
+  idx_s <- caret::groupKFold(factor(color_cal_s$sample_grp), k = min(5, length(unique(color_cal_s$sample_grp))))
+  tr_ctrl_s <- trainControl(method="cv", index = idx_s, savePredictions="final", summaryFunction = defaultSummary, allowParallel=TRUE)
+} else {
+  tr_ctrl_s <- trainControl(method="repeatedcv", number=5, repeats=5, savePredictions="final", summaryFunction = defaultSummary, allowParallel=TRUE)
+  message("sample_grp not found; using repeated CV")
+}
+
 
 #set up parallel backend
 cl <- makePSOCKcluster(parallel::detectCores() - 1); registerDoParallel(cl); on.exit({ stopCluster(cl); registerDoSEQ() })
@@ -3217,11 +3348,11 @@ tic("tuning pls")
 pls_fit_g <- train(x = color_cal_g2 %>% #
                    dplyr::select(all_of(predictors)), y = color_cal_g2[[target]],
                  method="pls", preProc=c("center","scale"),
-                 tuneLength = min(10, length(predictors)), trControl = tr_ctrl, metric="RMSE")
+                 tuneLength = min(10, length(predictors)), trControl = tr_ctrl_g, metric="RMSE")
 toc(); print(pls_fit_g)
 
 #PLS final using pls::plsr with the selected ncomp
-ncomp_g <- pls_fit_g$bestTune$ncomp #4      RMSE R2 MAE 2.831338  0.9398291  2.669456
+ncomp_g <- pls_fit_g$bestTune$ncomp #4      RMSE R2 MAE 1.880404  0.9295714  1.591516
 pls_formula_g <- as.formula(paste(target, "~", paste(predictors, collapse = " + ")))
 pls_final_g <- plsr(pls_formula_g, data = color_cal_g2, ncomp = ncomp_g, scale = TRUE, validation = "none")
 summary(pls_final_g)
@@ -3247,11 +3378,11 @@ tic("tuning pls")
 pls_fit_s <- train(x = color_cal_s %>% #
                    dplyr::select(all_of(predictors)), y = color_cal_s[[target]],
                  method="pls", preProc=c("center","scale"),
-                 tuneLength = min(10, length(predictors)), trControl = tr_ctrl, metric="RMSE")
+                 tuneLength = min(10, length(predictors)), trControl = tr_ctrl_s, metric="RMSE")
 toc(); print(pls_fit_s)
 
 #PLS final using pls::plsr with the selected ncomp
-ncomp_s <- pls_fit_s$bestTune$ncomp #3      RMSE R2 MAE 1.065895  0.9893903  0.8936231
+ncomp_s <- pls_fit_s$bestTune$ncomp #3      RMSE R2 MAE 1.125281  0.9692306  0.9212026
 pls_formula_s <- as.formula(paste(target, "~", paste(predictors, collapse = " + ")))
 pls_final_s <- plsr(pls_formula_s, data = color_cal_s, ncomp = ncomp_s, scale = TRUE, validation = "none")
 summary(pls_final_s)
@@ -3278,11 +3409,12 @@ tic("tuning rf")
 ranger_fit_g <- train(x = color_cal_g2 %>% 
                       dplyr::select(all_of(predictors)), y = color_cal_g2[[target]],
                     method="ranger", preProc=c("center","scale"),
-                    tuneLength = 5, trControl = tr_ctrl, metric="RMSE",
+                    tuneLength = 5, trControl = tr_ctrl_g, metric="RMSE",
                     num.trees = 1000, importance="permutation", num.threads = 1)
 toc()
 print(ranger_fit_g)
-best_g <- ranger_fit_g$bestTune # mtry 2 extratrees  RMSE R2 MAE 1.361917  0.9779578  1.199282
+best_g <- ranger_fit_g$bestTune # mtry 2 extratrees  RMSE R2 MAE 1.661655  0.9644918  1.403389
+
 
 #prepare scaled data and fit final quantile forest with more trees
 scaler_g <- preProcess(color_cal_g2 %>% dplyr::select(all_of(predictors)), method = c("center","scale"))
@@ -3297,7 +3429,7 @@ r_qrf_g <- ranger::ranger(dependent.variable.name = target, data = color_cal_pro
 
 ```
 
-```{r rf coal g}
+```{r rf coal s}
 
 #Random Forest via caret/ranger package
 set.seed(42)
@@ -3305,11 +3437,11 @@ tic("tuning rf")
 ranger_fit <- train(x = color_cal_s %>% 
                       dplyr::select(all_of(predictors)), y = color_cal_s[[target]],
                     method="ranger", preProc=c("center","scale"),
-                    tuneLength = 5, trControl = tr_ctrl, metric="RMSE",
+                    tuneLength = 5, trControl = tr_ctrl_s, metric="RMSE",
                     num.trees = 1000, importance="permutation", num.threads = 1)
 toc()
 print(ranger_fit)
-best <- ranger_fit$bestTune # mtry 5 extratrees  RMSE R2 MAE 1.691322  0.9770945  1.344681
+best <- ranger_fit$bestTune # mtry 5 extratrees  RMSE R2 MAE 1.295281  0.9734260  0.9972744
 
 #prepare scaled data and fit final quantile forest with more trees
 scaler <- preProcess(color_cal_s %>% dplyr::select(all_of(predictors)), method = c("center","scale"))
@@ -3351,8 +3483,8 @@ pls_val_g <- pls_val %>%
 rmse_vec <- function(true, pred) sqrt(mean((true - pred)^2, na.rm = TRUE))
 rmse_pls <- rmse_vec(pls_val_g$coal_per, pls_val_g$pred_pls_g)
 rmse_pls #1.7
-performance::r2(lm(coal_per ~ pred_pls_g, data=pls_val_g)) #adj R2 0.92
-performance::rmse(lm(coal_per ~ pred_pls_g, data=pls_val_g)) #1.59
+performance::r2(lm(coal_per ~ pred_pls_g, data=pls_val_g)) #adj R2 0.93
+performance::rmse(lm(coal_per ~ pred_pls_g, data=pls_val_g)) #1.69
 
 
 
@@ -3379,9 +3511,9 @@ pls_val_s <- pls_val %>%
 
 #compute rmse on prediction vs true coal_per
 rmse_pls <- rmse_vec(pls_val_s$coal_per, pls_val_s$pred_pls_s)
-rmse_pls #0.77
-performance::r2(lm(coal_per ~ pred_pls_s, data=pls_val_s)) #adj R2 0.986
-performance::rmse(lm(coal_per ~ pred_pls_s, data=pls_val_s)) #0.77
+rmse_pls #0.991
+performance::r2(lm(coal_per ~ pred_pls_s, data=pls_val_s)) #adj R2 0.98
+performance::rmse(lm(coal_per ~ pred_pls_s, data=pls_val_s)) #0.98
 
 
 ```
@@ -3414,9 +3546,9 @@ if (exists("r_qrf_g")) {
 
 #compute rmse on prediction vs true coal_per
 rmse_rf <- rmse_vec(rf_val_g$coal_per, rf_val_g$pred_rf_g)
-rmse_rf #0.53
+rmse_rf #0.58
 performance::r2(lm(coal_per ~ pred_rf_g, data=rf_val_g)) #0.991
-performance::rmse(lm(coal_per ~ pred_rf_g, data=rf_val_g)) #0.53
+performance::rmse(lm(coal_per ~ pred_rf_g, data=rf_val_g)) #0.58
 
 
 #create df with randomly selected values from calibration data
@@ -3446,9 +3578,9 @@ if (exists("r_qrf")) {
 
 #compute rmse on prediction vs true coal_per
 rmse_rf <- rmse_vec(rf_val$coal_per, rf_val$pred_rf)
-rmse_rf #0.24
-performance::r2(lm(coal_per ~ pred_rf, data=rf_val)) #0.999
-performance::rmse(lm(coal_per ~ pred_rf, data=rf_val)) #0.23
+rmse_rf #0.34
+performance::r2(lm(coal_per ~ pred_rf, data=rf_val)) #0.998
+performance::rmse(lm(coal_per ~ pred_rf, data=rf_val)) #0.31
 
 ```
 
@@ -3465,7 +3597,7 @@ ggplot(pls_val_g, aes(x=pred_pls_g, y=coal_per, color = factor(coal_per))) + #
   my_theme
 
 #save figure
-ggsave('pls_model_validation_g.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+ggsave('pls_model_validation_g_200826.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
        path = "Figures", #save to folder within working directory
        width = 8, height = 6, units = "in", #set dimensions for figure
        dpi = 300, #set resolution
@@ -3482,7 +3614,7 @@ ggplot(pls_val_s, aes(x=pred_pls_s, y=coal_per, color = factor(coal_per))) + #
   my_theme
 
 #save figure
-ggsave('pls_model_validation_s.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+ggsave('pls_model_validation_s_200826.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
        path = "Figures", #save to folder within working directory
        width = 8, height = 6, units = "in", #set dimensions for figure
        dpi = 300, #set resolution
@@ -3503,7 +3635,7 @@ ggplot(rf_val_g, aes(x=pred_rf_g, y=coal_per, color = factor(coal_per))) + #
   my_theme
 
 #save figure
-ggsave('rf_model_validation_g.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+ggsave('rf_model_validation_g_200826.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
        path = "Figures", #save to folder within working directory
        width = 8, height = 6, units = "in", #set dimensions for figure
        dpi = 300, #set resolution
@@ -3520,7 +3652,7 @@ ggplot(rf_val, aes(x=pred_rf, y=coal_per, color = factor(coal_per))) + #
   my_theme
 
 #save figure
-ggsave('rf_model_validation_s.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+ggsave('rf_model_validation_s_200826.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
        path = "Figures", #save to folder within working directory
        width = 8, height = 6, units = "in", #set dimensions for figure
        dpi = 300, #set resolution
@@ -3563,12 +3695,19 @@ coal_soil23_means <- color_soil23 %>%
   group_by(sample_grp, site_id) %>%
   summarise(across(where(is.numeric), mean)) #mean
 
+#save csv of coal concentration predictions
+#write.csv(coal_soil23_means, "coal_soil23_models.csv") #saves as csv in current workspace
 
 #calculate percent carbon potentially attributable to coal - use low values for conservative est
 per_coal23 <- coal_soil23_means %>%
   dplyr::select(sample_grp, pred_rf) %>%
   rename("Plot_ID" = "sample_grp") %>%
   rename("per_coal" = "pred_rf")
+
+#save csv of coal concentration to use
+#write.csv(per_coal23, "per_coal23.csv") #saves as csv in current workspace
+
+#per_coal23 <- read_csv("per_coal23.csv") #load from csv to save time
 
 SOM_13C_T0 <- SOM_13C_T0 %>%
   merge(per_coal23, by="Plot_ID", all.x = TRUE) 
@@ -3577,6 +3716,14 @@ SOM_13C_T0 <- SOM_13C_T0 %>%
   mutate(coal_C = (per_coal/100)*65) %>% #percent C coal
   mutate(new_C = SOM_perC - coal_C) #percent C non-coal (assumed new SOC)
 
+#add coal to microbial env data
+env_ITS <- env_ITS %>%
+  mutate(g_debris = SOM_13C_T0$g_debris[match(env_ITS$Plot_ID, SOM_13C_T0$Plot_ID)]) %>%
+  mutate(per_coal = SOM_13C_T0$per_coal[match(env_ITS$Plot_ID, SOM_13C_T0$Plot_ID)])
+
+env_16S <- env_16S %>%
+  mutate(g_debris = SOM_13C_T0$g_debris[match(env_16S$Plot_ID, SOM_13C_T0$Plot_ID)]) %>%
+  mutate(per_coal = SOM_13C_T0$per_coal[match(env_16S$Plot_ID, SOM_13C_T0$Plot_ID)])
 
 ```
 
@@ -3604,7 +3751,7 @@ ggplot(aes(x=site_id, y=coal_per, fill=factor(site_id))) +
   theme(legend.position='none') 
 
 #save figure
-ggsave('est_coal_models_2023_g.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+ggsave('est_coal_models_2023_g_200826.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
        path = "Figures", #save to folder within working directory
        width = 8, height = 6, units = "in", #set dimensions for figure
        dpi = 300, #set resolution
@@ -3622,7 +3769,7 @@ ggplot(aes(x=site_id, y=pred_rf, fill=factor(site_id))) +
   theme(legend.position='none') 
 
 #save figure
-ggsave('est_coal_2023_g.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+ggsave('est_coal_2023_g_200826.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
        path = "Figures", #save to folder within working directory
        width = 8, height = 6, units = "in", #set dimensions for figure
        dpi = 300, #set resolution
@@ -3659,7 +3806,7 @@ ggplot(aes(x=Site_ID, y=perC, fill=source)) + #use the fill part to set what you
   scale_y_continuous(name = expression("Organic C (%)"))  #change y axis, label
 
 #save figure
-ggsave('Cper_2023_src_stacked.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+ggsave('Cper_2023_src_stacked_200826.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
        path = "Figures", #save to folder
        width = 6, height = 4, units = "in", #set dimensions
        dpi = 300, #set resolution
@@ -3675,7 +3822,7 @@ ggplot(aes(x=Site_ID, y=C_gkg, fill=source)) + #use the fill part to set what yo
   scale_y_continuous(name = expression("Organic C (g C/kg soil)"))  #change y axis, label
   
 #save figure
-ggsave('Cgkg_2023_src_stacked.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+ggsave('Cgkg_2023_src_stacked_200826.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
        path = "Figures", #save to folder
        width = 6, height = 4, units = "in", #set dimensions
        dpi = 300, #set resolution
@@ -3721,6 +3868,10 @@ coal_soil26_means <- color_soil26_g %>%
   group_by(sample_grp) %>%
   summarise(across(where(is.numeric), mean)) #mean
 
+#save csv of coal concentration to use
+#write.csv(coal_soil26_means, "coal_soil26_models.csv") #saves as csv in current workspace
+
+#coal_soil26_means <- read_csv("coal_soil26_models.csv") #load from csv to save time
 
 #calculate percent carbon potentially attributable to coal
 SOM_2026 <- SOM_2026 %>%
@@ -4018,16 +4169,18 @@ ggsave('Cper_src_facetsite_g.svg', #save plot name and type - can be "eps", "pdf
 ```
 
 ## Correlations
-```{r corr 2023}
+```{r corr 2023 SOM}
 
 #2023
 
 #make numeric, remove irrelevant
 SOM_13C_T0_num <- SOM_13C_T0 %>% 
   dplyr::select(SOM_C, SOM_N, SOM_CN, POM_C, POM_N, POM_CN, MAOM_C, MAOM_N, MAOM_CN, SOM_15N, 
-                g_debris, pH,
-                root_mass, shoot_mass, plant_r, plant_shannon, plant_simpson,
-                AM_hyph_per, AM_arb_per) %>%
+                g_debris, pH, per_coal, coal_C,
+                root_mass, shoot_mass, plant_biomass,
+                plant_r, plant_shannon, plant_simpson,
+                AM_hyph_per, AM_arb_per, 
+                spores_g, AM_mm_g, other_mm_g, AM_biomass_gkg, total_fun_gkg, AM_C_mgkg, otherfun_C_mgkg) %>%
   cbind(soil_metals_wide) %>%
   dplyr::select_if(is.numeric)
 
@@ -4049,6 +4202,81 @@ corrplot::corrplot(df_corr23, method = 'circle', type = 'upper', #plot upper hal
          tl.srt = 90, tl.offset = 0.4, #text label angle rotation, offset
          order = 'alphabet',  #FPC first principal component order
          p.mat = cortest23$p, #define p values
+         insig = 'label_sig', #add *s for significance levels
+         sig.level = c(0.001, 0.01, 0.05), #define significance levels
+         pch.cex = 0.3, #star sizes
+         cl.cex = 0.5, #color legend text size
+         cex.main = 1, #set title font size
+         title = "Correlation Matrix" #set title
+         )
+
+
+```
+
+
+```{r corr 2023 ITS}
+
+#2023
+
+#make numeric, remove incomplete
+env_ITS_num <- env_ITS[,-c(17,18)] %>%
+  dplyr::select_if(is.numeric)
+
+
+#df
+ITS_corr <- round(cor(env_ITS_num, use = "pairwise.complete.obs", method="pearson"), 3) #create df for corr. matrix, will use only complete pairs (ignore other NAs), w/3 decimals
+ITS_corr #view correlations
+
+
+#test significance P values with 95% confidence interval
+ITS_cortest <- cor.mtest(env_ITS_num, conf.level = 0.95)
+ITS_cortest #view P values
+
+#plot matrix with corrplot
+corrplot::corrplot(ITS_corr, method = 'circle', type = 'upper', #plot upper half, show as colors
+         col = colors_ramp2, #set gradient colors from defined palette in Chunk 3
+         mar=c(1,0,1,0), #set margins for all incl. title - BLTR
+         tl.col = 'black',tl.cex = 0.4, #text label color, size
+         tl.srt = 90, tl.offset = 0.4, #text label angle rotation, offset
+         order = 'alphabet',  #FPC first principal component order
+         p.mat = ITS_cortest$p, #define p values
+         insig = 'label_sig', #add *s for significance levels
+         sig.level = c(0.001, 0.01, 0.05), #define significance levels
+         pch.cex = 0.3, #star sizes
+         cl.cex = 0.5, #color legend text size
+         cex.main = 1, #set title font size
+         title = "Correlation Matrix" #set title
+         )
+
+
+```
+
+```{r corr 2023 16S, eval=FALSE}
+
+#2023
+
+#make numeric, remove incomplete
+env_16S_num <- env_16S[,-c(18,19)] %>%
+  dplyr::select_if(is.numeric)
+
+
+#df
+x16S_corr <- round(cor(env_16S_num, use = "pairwise.complete.obs", method="pearson"), 3) #create df for corr. matrix, will use only complete pairs (ignore other NAs), w/3 decimals
+x16S_corr #view correlations
+
+
+#test significance P values with 95% confidence interval
+x16S_cortest <- cor.mtest(env_16S_num, conf.level = 0.95)
+x16S_cortest #view P values
+
+#plot matrix with corrplot
+corrplot::corrplot(x16S_corr, method = 'circle', type = 'upper', #plot upper half, show as colors
+         col = colors_ramp2, #set gradient colors from defined palette in Chunk 3
+         mar=c(1,0,1,0), #set margins for all incl. title - BLTR
+         tl.col = 'black',tl.cex = 0.4, #text label color, size
+         tl.srt = 90, tl.offset = 0.4, #text label angle rotation, offset
+         order = 'alphabet',  #FPC first principal component order
+         p.mat = x16S_cortest$p, #define p values
          insig = 'label_sig', #add *s for significance levels
          sig.level = c(0.001, 0.01, 0.05), #define significance levels
          pch.cex = 0.3, #star sizes
@@ -6648,6 +6876,8 @@ ggsave('AM_hyph_waste1.svg', #save plot name and type - can be "eps", "pdf", "jp
        dpi = 300, #set resolution
        bg=NULL) #background from plot specifications
 
+summary(aov(AM_hyph_per ~ per_coal, data = SOM_13C_T0)) #coal not sig
+
 shapiro.test(resid(lm(AM_hyph_per ~ g_debris + Site_ID, data = SOM_13C_T0))) #check normality of residuals - normal
 summary(aov(AM_hyph_per ~ g_debris + Site_ID, data = SOM_13C_T0)) #debris sig, site almost
 
@@ -6999,218 +7229,106 @@ ggsave('fungal_biomass_stacked.svg', #save plot name and type - can be "eps", "p
 ```
 
 
-### Test other possible
-
-```{r fungal metrics}
-
-#define what to analyze
-factors <- c("pH","SOM_N","SOM_CN","AM_hyph_per") #predictor variable
-
-#factors <- "pH_range"
-continuous_vars <- c("AM_biomass","total_fun_biomass") #response variables
-data <- env_ITS
-
-#evaluate group sizes
-#evaluate_group_sizes(data, factors, continuous_vars) 
-summarize_group_sizes(data, factors, continuous_vars) 
-
-#run the analysis
-#hyph_siteid_diff <- differences_multifactor(data, factors, continuous_vars)
-hyph_siteid_diff <- differences(data, factors, continuous_vars)
+### Test env var
 
 
-```
+```{r fungi x env var stats}
 
+#add site ID back to numeric
+SOM_13C_T0_num <- SOM_13C_T0_num %>%
+  mutate(Site_ID = SOM_13C_T0$Site_ID)
 
-```{r spores pH}
+#pH
+summary(aov(spores_g ~ pH, data = SOM_13C_T0)) #not close
+summary(aov(AM_mm_g ~ pH, data = SOM_13C_T0)) #not close
+summary(aov(other_mm_g ~ pH, data = SOM_13C_T0)) #not close
+summary(aov(AM_biomass_gkg ~ pH, data = SOM_13C_T0)) #not close
+summary(aov(total_fun_gkg ~ pH, data = SOM_13C_T0)) #not close
 
-#Spores boxplot
-ggplot(data = SOM_13C_T0, aes(x=pH_range, y=spores_g, fill=Site_ID)) + 
-	geom_boxplot() + 
-  scale_fill_manual(values = colors4) + #define colors to use
-  #scale_y_continuous(labels = scales::percent_format(accuracy = 1)) + #change to %
-  my_theme +
-  #ggtitle("Hyphal Presence Across Sites") + #add a graph title
-  xlab("") + ylab("Spores (Count/g soil)") #define/change X and Y labels
+#debris
+summary(aov(spores_g ~ g_debris, data = SOM_13C_T0)) #not close
+summary(aov(AM_mm_g ~ g_debris, data = SOM_13C_T0)) #not close
+summary(aov(other_mm_g ~ g_debris, data = SOM_13C_T0)) #not close
+summary(aov(AM_biomass_gkg ~ g_debris, data = SOM_13C_T0)) #not close
+summary(aov(total_fun_gkg ~ g_debris, data = SOM_13C_T0)) #not close
 
-#Spores lm pH
-ggplot(data = SOM_13C_T0, aes(x=pH, y=spores_g)) + 
+#15N
+summary(aov(spores_g ~ SOM_15N, data = SOM_13C_T0_num)) #not close
+summary(aov(AM_mm_g ~ SOM_15N, data = SOM_13C_T0_num)) #not close
+summary(aov(other_mm_g ~ SOM_15N, data = SOM_13C_T0_num)) #not close
+summary(aov(AM_biomass_gkg ~ SOM_15N, data = SOM_13C_T0_num)) #not close
+summary(aov(total_fun_gkg ~ SOM_15N, data = SOM_13C_T0_num)) #not close
+
+#P
+summary(aov(spores_g ~ ppm_P1, data = SOM_13C_T0_num)) #not close
+summary(aov(AM_mm_g ~ ppm_P1, data = SOM_13C_T0_num)) #not close
+summary(aov(other_mm_g ~ ppm_P1, data = SOM_13C_T0_num)) #not close
+summary(aov(AM_biomass_gkg ~ ppm_P1, data = SOM_13C_T0_num)) #not close
+summary(aov(total_fun_gkg ~ ppm_P1, data = SOM_13C_T0_num)) #not close
+
+#Pb
+summary(aov(spores_g ~ ppm_Pb, data = SOM_13C_T0_num)) #not close
+summary(aov(AM_mm_g ~ ppm_Pb, data = SOM_13C_T0_num)) #not close
+summary(aov(other_mm_g ~ ppm_Pb, data = SOM_13C_T0_num)) #not close
+summary(aov(AM_biomass_gkg ~ ppm_Pb, data = SOM_13C_T0_num)) #sig P=0.030
+summary(aov(total_fun_gkg ~ ppm_Pb, data = SOM_13C_T0_num)) #not close
+
+shapiro.test(resid(lmer(AM_biomass_gkg ~ ppm_Pb + (1|Site_ID), #site random
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0_num,
+    na.action = na.omit))) #normal
+summary(lmer(AM_biomass_gkg ~ ppm_Pb + (1|Site_ID), #site random
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0_num,
+    na.action = na.omit)) #singular
+Anova(lmer(AM_biomass_gkg ~ ppm_Pb + (1|Site_ID), #site random
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0_num,
+    na.action = na.omit), type=3) #P=0.019
+model_performance(lmer(AM_biomass_gkg ~ ppm_Pb + (1|Site_ID), #site random
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0_num,
+    na.action = na.omit)) #AICc -246.5, Rsq 0.23
+model_performance(lm(AM_biomass_gkg ~ ppm_Pb, data = SOM_13C_T0_num)) #AICc -297.6, Rsq 0.19
+cor.test(SOM_13C_T0_num$AM_biomass_gkg, SOM_13C_T0_num$ppm_Pb, method = "pearson") #corr 0.48
+
+#Si
+summary(aov(spores_g ~ ppm_Si, data = SOM_13C_T0_num)) #not close
+summary(aov(AM_mm_g ~ ppm_Si, data = SOM_13C_T0_num)) #not close
+summary(aov(other_mm_g ~ ppm_Si, data = SOM_13C_T0_num)) #not close
+summary(aov(AM_biomass_gkg ~ ppm_Si, data = SOM_13C_T0_num)) #close
+summary(aov(total_fun_gkg ~ ppm_Si, data = SOM_13C_T0_num)) #not close
+
+shapiro.test(resid(lmer(AM_biomass_gkg ~ ppm_Pb + ppm_Si + (1|Site_ID), #site random
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0_num,
+    na.action = na.omit))) #normal
+summary(lmer(AM_biomass_gkg ~ ppm_Pb + ppm_Si + (1|Site_ID), #site random
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0_num,
+    na.action = na.omit)) #singular
+Anova(lmer(AM_biomass_gkg ~ ppm_Pb + ppm_Si + (1|Site_ID), #site random
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0_num,
+    na.action = na.omit)) #only Pb
+
+#visualize lm AM biomass v. Pb
+ggplot(data = SOM_13C_T0_num, aes(x=ppm_Pb, y=AM_biomass_gkg)) + 
   geom_point(aes(color = factor(Site_ID))) + #add points to plot
   geom_smooth(method="lm", se=TRUE, color=plotline_color, fill=fill_color) +
   scale_color_manual(values = colors4) + #define colors to use
   my_theme +
-  xlab("pH") + ylab("Spores (Count/g soil)") #define/change X and Y labels
+  xlab("Pb content (mg/kg soil)") + ylab("AM fungal biomass (mg/kg soil)") #define/change X and Y labels
 
-ggsave('Spores_pH.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
-       path = "Figures", #save to folder
-       width = 6, height = 4, units = "in", #set dimensions
-       dpi = 300, #set resolution
-       bg=NULL) #background from plot specifications
+#remove outliers Pb
+SOM_13C_T0_num <- SOM_13C_T0_num %>%
+  filter(ppm_Pb < 200)
 
-
-```
-
-```{r AM mm g pH}
-
-#AM HLD boxplot
-ggplot(data = SOM_13C_T0, aes(x=pH_range, y=AM_mm_g, fill=Site_ID)) + 
-	geom_boxplot() + 
-  scale_fill_manual(values = colors4) + #define colors to use
-  my_theme +
-  xlab("") + ylab("AM hyphal length density (mm/g soil)") #define/change X and Y labels
-
-#AM HLD lm ph
-ggplot(data = SOM_13C_T0, aes(x=pH, y=AM_mm_g)) + 
-  geom_point(aes(color = factor(Site_ID))) + #add points to plot
-  geom_smooth(method="lm", se=TRUE, color=plotline_color, fill=fill_color) +
-  scale_color_manual(values = colors4) + #define colors to use
-  my_theme +
-  xlab("pH") + ylab("AM hyphal length density (mm/g soil)") #define/change X and Y labels
-
-ggsave('AM_HLD_pH.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
-       path = "Figures", #save to folder
-       width = 6, height = 4, units = "in", #set dimensions
-       dpi = 300, #set resolution
-       bg=NULL) #background from plot specifications
-
-
-```
-
-```{r other fungi mm g pH}
-
-#Other HLD boxplot
-ggplot(data = SOM_13C_T0, aes(x=pH_range, y=other_mm_g, fill=Site_ID)) + 
-	geom_boxplot() + 
-  scale_fill_manual(values = colors4) + #define colors to use
-  my_theme +
-  xlab("") + ylab("Non-AM hyphal length density (mm/g soil)") #define/change X and Y labels
-
-#Other HLD lm ph
-ggplot(data = SOM_13C_T0, aes(x=pH, y=other_mm_g)) + 
-  geom_point(aes(color = factor(Site_ID))) + #add points to plot
-  geom_smooth(method="lm", se=TRUE, color=plotline_color, fill=fill_color) +
-  scale_color_manual(values = colors4) + #define colors to use
-  my_theme +
-  xlab("pH") + ylab("Non-AM hyphal length density (mm/g soil)") #define/change X and Y labels
-
-ggsave('other_HLD_pH.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
-       path = "Figures", #save to folder
-       width = 6, height = 4, units = "in", #set dimensions
-       dpi = 300, #set resolution
-       bg=NULL) #background from plot specifications
-
-
-```
-
-```{r AM length ratio pH, eval=FALSE}
-
-#Length ratio boxplot
-ggplot(data = HLD, aes(x=Site_ID, y=AM_fun_mm_ratio, fill=Site_ID)) + 
-	geom_boxplot() + 
-  scale_fill_manual(values = colors4) + #define colors to use
-  my_theme + xlab("") + 
-  scale_y_continuous(name = expression("AM fungal: other fungal HLD ratio")) #change y axis
-  
-
-ggsave('AM_HLD_ratio.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
-       path = "Figures", #save to folder
-       width = 6, height = 4, units = "in", #set dimensions
-       dpi = 300, #set resolution
-       bg=NULL) #background from plot specifications
-
-
-```
-
-
-```{r total fungal biomass pH}
-
-#Biomass boxplot
-ggplot(data = SOM_13C_T0, aes(x=pH_range, y=total_fun_gkg, fill=Site_ID)) + 
-	geom_boxplot() + 
-  scale_fill_manual(values = colors4) + #define colors to use
-  my_theme + xlab("") + 
-  scale_y_continuous(name = expression("Total fungal biomass (mg/kg soil)"), labels = multiply1000)  #change y axis, label
-
-#biomass lm ph
-ggplot(data = SOM_13C_T0, aes(x=pH, y=total_fun_gkg)) + 
-  geom_point(aes(color = factor(Site_ID))) + #add points to plot
-  geom_smooth(method="lm", se=TRUE, color=plotline_color, fill=fill_color) +
-  scale_color_manual(values = colors4) + #define colors to use
-  my_theme +
-  xlab("pH") + ylab("Total fungal biomass (mg/kg soil)") #define/change X and Y labels
-
-ggsave('total_fun_biomass_pH.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
-       path = "Figures", #save to folder
-       width = 6, height = 4, units = "in", #set dimensions
-       dpi = 300, #set resolution
-       bg=NULL) #background from plot specifications
-
-
-```
-
-```{r AM fungal biomass pH}
-
-#Biomass boxplot
-ggplot(data = SOM_13C_T0, aes(x=pH_range, y=AM_biomass_gkg, fill=Site_ID)) + 
-	geom_boxplot() + 
-  scale_fill_manual(values = colors4) + #define colors to use
-  my_theme + xlab("") + 
-  scale_y_continuous(name = expression("AM fungal biomass (mg/kg soil)"), labels = multiply1000)  #change y axis, label
-  
-#biomass lm ph
-ggplot(data = SOM_13C_T0, aes(x=pH, y=AM_biomass_gkg)) + 
-  geom_point(aes(color = factor(Site_ID))) + #add points to plot
-  geom_smooth(method="lm", se=TRUE, color=plotline_color, fill=fill_color) +
-  scale_color_manual(values = colors4) + #define colors to use
-  my_theme +
-  xlab("pH") + ylab("AM fungal biomass (mg/kg soil)") #define/change X and Y labels
-
-ggsave('AM_biomass_pH.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
-       path = "Figures", #save to folder
-       width = 6, height = 4, units = "in", #set dimensions
-       dpi = 300, #set resolution
-       bg=NULL) #background from plot specifications
-
-
-```
-
-```{r AM biomass ratio pH, eval=FALSE}
-
-#Biomass ratio boxplot
-ggplot(data = HLD, aes(x=Site_ID, y=AM_fun_g_ratio, fill=Site_ID)) + 
-	geom_boxplot() + 
-  scale_fill_manual(values = colors4) + #define colors to use
-  my_theme + xlab("") + 
-  scale_y_continuous(name = expression("AM fungal: other fungal biomass ratio")) #change y axis
-  
-
-ggsave('AM_biomass_ratio.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
-       path = "Figures", #save to folder
-       width = 6, height = 4, units = "in", #set dimensions
-       dpi = 300, #set resolution
-       bg=NULL) #background from plot specifications
-
-
-```
-
-### By coal waste
-
-```{r fungi x waste stats}
-
-shapiro.test(resid(lm(spores_g ~ g_debris + Site_ID, data = SOM_13C_T0))) #check normality of residuals - normal
-summary(aov(spores_g ~ g_debris + Site_ID, data = SOM_13C_T0)) #not sig
-
-shapiro.test(resid(lm(AM_mm_g ~ g_debris + Site_ID, data = SOM_13C_T0))) #check normality of residuals - normal
-summary(aov(AM_mm_g ~ g_debris + Site_ID, data = SOM_13C_T0)) #not sig
-
-shapiro.test(resid(lm(other_mm_g ~ g_debris + Site_ID, data = SOM_13C_T0))) #check normality of residuals - normal
-summary(aov(other_mm_g ~ g_debris + Site_ID, data = SOM_13C_T0)) #not sig
-
-shapiro.test(resid(lm(AM_biomass_gkg ~ g_debris + Site_ID, data = SOM_13C_T0))) #check normality of residuals - normal
-summary(aov(AM_biomass_gkg ~ g_debris + Site_ID, data = SOM_13C_T0)) #not sig
-
-shapiro.test(resid(lm(total_fun_gkg ~ g_debris + Site_ID, data = SOM_13C_T0))) #check normality of residuals - normal
-summary(aov(total_fun_gkg ~ g_debris + Site_ID, data = SOM_13C_T0)) #not sig
+summary(aov(spores_g ~ ppm_Pb, data = SOM_13C_T0_num)) #not close
+summary(aov(AM_mm_g ~ ppm_Pb, data = SOM_13C_T0_num)) #not close
+summary(aov(other_mm_g ~ ppm_Pb, data = SOM_13C_T0_num)) #not close
+summary(aov(AM_biomass_gkg ~ ppm_Pb, data = SOM_13C_T0_num)) #not close
+summary(aov(total_fun_gkg ~ ppm_Pb, data = SOM_13C_T0_num)) #not close
 
 ```
 
@@ -7352,7 +7470,7 @@ asv_ITS.o_long %>%
   filter(order == "Agaricales" |
            order == "Archaeorhizomycetales" |
            order == "Chaetothyriales" |
-           order == "Geoglossales" |
+           order == "Cladosporiales" |
            order == "Helotiales" |
            order == "Hypocreales" |
            order == "Mortierellales" |
@@ -7387,11 +7505,11 @@ asv_ITS.g_long %>%
            genus == "Cladosporium" |
            genus == "Clavaria" |
            genus == "Clavulinopsis" |
-           genus == "Dermoloma" |
            genus == "Hygrocybe" |
            genus == "Linnemannia" |
            genus == "Mortierella" |
            genus == "Podila" |
+           genus == "Ramariopsis" |
            genus == "Saitozyma") %>%
 ggplot(aes(x=reorder(genus, -count), y=count, fill=genus)) + 
   geom_bar(stat = "summary", add = "mean", width = 0.7, position="stack", colour="black") + #add mean bars
@@ -7411,7 +7529,73 @@ ggsave('fungal_genus.svg', #save plot name and type - can be "eps", "pdf", "jpeg
 
 ```
 
+```{r plot guilds}
+
+#bar chart
+asv_ITS.s_long %>%
+  filter(!is.na(guild_troph)) %>%
+ggplot(aes(x=Site_ID, y=count, fill=guild_troph)) + #use the fill part to set what you want to stack by
+  geom_bar(stat = "summary", add = "mean", width = 0.7, position="stack", colour="black") + #add mean bars with black outlines stacked by the fill variable
+  scale_fill_manual(values = colors4) + #define colors to use
+  my_theme + xlab("") + ylab("Fungal reads by trophic guild") +
+  theme(legend.position="right") #+
+  
+
+ggsave('ITS_guilds.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 10, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+```
+
+
 ### AMF species
+
+```{r AMF sp spec rich}
+
+#stats
+shapiro.test(resid(lm(Glom_sr ~ Site_ID, data = env_ITS))) #check normality of residuals - not normal but high W
+leveneTest(lm(Glom_sr ~ Site_ID, data = env_ITS)) #homogenous
+summary(aov(Glom_sr ~ Site_ID, data = env_ITS)) #sig
+TukeyHSD(aov(Glom_sr ~ Site_ID, data = env_ITS)) #AM < BU 0.044
+
+#plot
+ggplot(env_ITS, aes(x=Site_ID, y=Glom_sr, fill=Site_ID)) +
+  geom_boxplot(coef=Inf) +
+  #geom_jitter(shape=16, position=position_jitter(0.1), size = 0.85) +
+  scale_fill_manual(values = colors4) + #define colors to use
+  xlab("") + ylab("AM Fungal Species Richness") + 
+  my_theme
+
+ggsave('AMF_sp_sobs.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+```
+
+```{r AM guild}
+
+#bar chart
+AMF_sp %>%
+  filter(count > 0) %>%
+ggplot(aes(x=Site_ID, y=count, fill=AM_guild)) + #use the fill part to set what you want to stack by
+  geom_bar(stat = "summary", add = "mean", width = 0.7, position="stack", colour="black") + #add mean bars with black outlines stacked by the fill variable
+  scale_fill_manual(values = colors3) + #define colors to use
+  my_theme + xlab("") + ylab("Mean AMF reads by functional guild") +
+  theme(legend.position="right") #+
+  
+
+ggsave('AMF_guilds.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 10, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+```
+
 ```{r AM sp}
 
 #bar chart
@@ -7431,6 +7615,325 @@ ggsave('AMF_reads.svg', #save plot name and type - can be "eps", "pdf", "jpeg", 
        bg=NULL) #background from plot specifications
 
 ```
+
+```{r NMDS AMF sp, warning=FALSE}
+
+#Hellinger (square root) transform and standardize with vegan library
+AMF_s_h_std <- AMF_ITS.s %>%
+  dplyr::select((where(is.numeric))) %>% #select only numeric columns
+  decostand(., #call decostand transformation function
+				 method = "hellinger", #transformation method
+				 zap = FALSE, #make near zero values into zeros to avoid exaggeration
+				 na.rm = TRUE) %>% #remove NA values
+  mutate(across(where(is.numeric), ~scale(., center = TRUE, scale = TRUE)))
+
+its_nmds_df <- AMF_s_h_std
+
+#test how many axes are appropriate
+stress <- vector(length = 6)
+for (i in 1:6) {
+    stress[i] <- metaMDS(its_nmds_df, distance = "bray", k = i,
+                         model = "global", #calc stress on ranks of data
+                         maxit = 400, #max iterations of configuration adjustments
+                         try = 20, trymax = 20, #min and max runs
+                         autotransform = FALSE, #don't transform data
+                         weakties = TRUE, #set fitted distances as un-fixed
+                         scaling = TRUE, #re-scale ordination axes
+                         na.rm = TRUE)$stress
+}
+names(stress) <- paste0(1:6, "Dim")
+par(mar = c(3.5,3.5,1,1), mgp = c(2, 0.6, 0), cex = 0.8, las = 2)
+barplot(stress, ylab = "stress")
+
+#run NMDS with 5 axes to be reliably stress < 0.2
+set.seed(42) #set seed for reproducibility
+its_nmds <- metaMDS(its_nmds_df, 
+                distance = "bray", #data & distance measure
+                k = 3, #number of axes
+                model = "global", #calc stress on ranks of data
+                maxit = 400, #max iterations of configuration adjustments
+                try = 20, trymax = 200, #min and max runs
+                autotransform = FALSE, #don't transform data
+                weakties = TRUE, #set fitted distances as un-fixed
+                pc = TRUE, #rotate axes using PCA to orient first 2 axes as containing most of the variability
+                scaling = TRUE, #re-scale ordination axes to ‘unit root mean squares’
+                na.rm = TRUE) #remove NA values
+
+its_nmds #check "stress" value to see how well the data is represented by the ordination
+goodness(its_nmds) #check goodness of fit for each point
+stressplot(its_nmds, main = "Shepard plot") #diagnostic plot
+
+#make fit vectors with env variables and view
+its_nmdsfit <- envfit(its_nmds, env_ITS_num[,-c(25:29)], #numeric df, remove self-reference
+                      permutations = 999, na.rm=TRUE)
+its_nmdsfit #check fit vectors
+
+#make df of scores, add sites
+its_nmds_scores <- as.data.frame(vegan::scores(its_nmds))
+its_nmds_scores$Site_ID = env_ITS$Site_ID 
+
+#make df of vectors, only significant vectors
+its_nmds_vectors <- as.data.frame(vegan::scores(its_nmdsfit, display = "vectors")) #extracts relevant scores from envfit
+its_nmds_vectors <- cbind(its_nmds_vectors, variable = rownames(its_nmds_vectors)) #and then gives them their names
+its_nmds_vectors <- cbind(its_nmds_vectors, pval = its_nmdsfit$vectors$pvals) # add pvalues to dataframe
+its_sig_vectors <- subset(its_nmds_vectors, pval<=0.1) #subset data to show variables somewhat significant at rounded 0.1
+
+#plot scores with ggplot
+ggplot(its_nmds_scores) + 
+  geom_point(size = 2, aes(x = NMDS1, y = NMDS2, color = Site_ID)) +
+  stat_ellipse(aes(x = NMDS1, y = NMDS2, color = Site_ID, fill = Site_ID),
+               alpha = 0.2, #transparency of ellipse fill
+               geom = "polygon") + #draw as polygon rather than just outline
+  geom_segment(data = its_sig_vectors,
+              aes(x = 0, xend = NMDS1 * 3000,
+                  y = 0, yend = NMDS2 * 3000), 
+              arrow = arrow(length = unit(0.25,"cm"),
+                            type = "open", angle = 20,
+                            ends = "last"),
+              color = "grey10", 
+              lwd = 0.3) +
+  geom_text_repel(data = its_sig_vectors,
+                  aes(x = NMDS1 * 3000,
+                      y = NMDS2 * 3000, 
+                      label = variable), 
+                  size = 3,
+                  max.overlaps = Inf) +
+  scale_color_manual(values = colors4) +
+  scale_fill_manual(values = colors4) + #match fill colors to your color scheme
+  labs(x = "NMDS1", y = "NMDS2", color = "Site", fill = "Site") +
+  coord_fixed() +
+  my_theme
+
+#save figure - name, type, folder, dimensions, resolution, background specs
+ggsave('AMF_sp_NMDS_200826.svg', path = "Figures", width = 6, height = 4, units = "in", dpi = 300, bg=NULL)
+
+```
+
+```{r AMF permanova}
+
+#only enough reads
+AMF_ITS.s_pos <- AMF_ITS.s[rowSums(AMF_ITS.s) >= 10, ]
+env_AMF <- env_ITS[rownames(AMF_ITS.s_pos), ]
+
+#Bray-Curtis
+AMF_bray.list <-  replicate(100, matrix(nrow = dim(AMF_ITS.s_pos)[1], ncol = dim(AMF_ITS.s_pos)[1]), simplify = FALSE)
+for (i in 1:100) {
+  AMF_bray.list[[i]] <- vegdist(as.matrix(rrarefy(AMF_ITS.s_pos,sample=10))/10, method="bray")
+}
+AMF.ml.bray <- Reduce("+", AMF_bray.list) / length(AMF_bray.list)
+
+
+#PERMANOVA multivariate
+#create bins for AM assoc
+env_AMF$AM_assoc_bins <- cut(env_AMF$AM_assoc, breaks = c(0, 0.33, 0.67, 1), labels = c("Low", "Medium", "High"))
+table(env_AMF$AM_assoc_bins)
+
+#all
+pred_var <- c("g_debris", "per_coal", "pH",
+              "ppm_Ca", "ppm_Fe", "ppm_Mg", "ppm_Na", "ppm_K", "ppm_P", "ppm_S",
+              "plant_shannon", "plant_simpson", "plant_r",
+              "Hygrocybes", "AM_assoc", "AM_assoc_bins")
+
+formula_bray <- paste("AMF.ml.bray ~", paste(pred_var, collapse="+")) %>% as.formula()
+
+adonis2(formula_bray, method = "none", na.action=na.omit, data = env_AMF, 
+        by = "terms", #each term analyzed separately
+        permutations = 9999) #debris, pH, Ca, Mg, simpson, Hygrocybes
+
+adonis2(formula_bray, method = "none", na.action=na.omit, data = env_AMF, 
+        by = "margin", #each term analyzed for marginal effects
+        permutations = 9999) #debris, pH, Hygrocybes
+
+#check beta dispersion of significant vars
+mod <- betadisper(AMF.ml.bray, env_AMF$g_debris)
+permutest(mod, permutations = 999) #heterogeneous
+
+mod <- betadisper(AMF.ml.bray, env_AMF$pH)
+permutest(mod, permutations = 999) #heterogeneous
+
+mod <- betadisper(AMF.ml.bray, env_AMF$Hygrocybes)
+permutest(mod, permutations = 999) #homogenous
+
+```
+
+```{r AM waxcap}
+
+#no outliers
+env_ITS_sm1 <- env_ITS %>%
+  filter(Hygrocybes < 1000) #remove 2 outliers
+
+env_ITS_sm2 <- env_ITS %>%
+  filter(Hygrocybes < 1000) %>%
+  filter(Glomeromycota < 200) #remove 1 outlier
+
+#stats - reads for each
+summary(aov(Glomeromycota ~ Hygrocybes, data= env_ITS_sm2)) #very sig
+shapiro.test(resid(lm(Glomeromycota ~ Hygrocybes, data= env_ITS_sm2))) #not normal, highish W
+
+shapiro.test(resid(lmer(Glomeromycota ~ Hygrocybes + (1|Site_ID), #site random
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = env_ITS_sm2, 
+    na.action = na.omit))) #not normal, highish W
+
+summary(lmer(Glomeromycota ~ Hygrocybes + Glomeromycota + (1|Site_ID), #site random
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = env_ITS_sm2, #choose dataframe
+    na.action = na.omit)) #random accounts for none, singular
+Anova(lmer(Glomeromycota ~ Hygrocybes + Glomeromycota + (1|Site_ID), #site random
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = env_ITS_sm2, #choose dataframe
+    na.action = na.omit), type=3) # very sig
+model_performance(lmer(Glomeromycota ~ Hygrocybes + Glomeromycota + (1|Site_ID), #site random
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = env_ITS_sm2, #choose dataframe
+    na.action = na.omit)) #AICc 368.3, BIC 363.4, R2 0.29
+cor.test(env_ITS_sm2$Hygrocybes, env_ITS_sm2$Glomeromycota, method = "pearson") #corr full 0.096, sm1 0.35, sm2 0.55
+
+#stats - species richness
+summary(aov(Glom_sr ~ Hygrocybes, data= env_ITS_sm2)) #very sig
+shapiro.test(resid(lm(Glom_sr ~ Hygrocybes, data= env_ITS_sm1))) #not normal, high W
+shapiro.test(resid(lmer(Glom_sr ~ Hygrocybes + (1|Site_ID), #site random
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = env_ITS_sm1, 
+    na.action = na.omit))) #not normal, high W
+
+summary(lmer(Glom_sr ~ Hygrocybes + (1|Site_ID), #site random
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = env_ITS_sm1, 
+    na.action = na.omit)) #random accounts for some
+Anova(lmer(Glom_sr ~ Hygrocybes + (1|Site_ID), #site random
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = env_ITS_sm2, 
+    na.action = na.omit), type=3) #very sig
+model_performance(lmer(Glom_sr ~ Hygrocybes + (1|Site_ID), #site random
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = env_ITS_sm1, 
+    na.action = na.omit)) #AICc 148.6, BIC 153.9, R2 0.22
+model_performance(lm(Glom_sr ~ Hygrocybes, data = env_ITS_sm1)) #AICc 140.7, BIC 144.9, Rsq 0.18
+cor.test(env_ITS_sm1$Hygrocybes, env_ITS_sm1$Glom_sr, method = "pearson") #corr full 0.39, sm1 0.45, sm2 0.51
+
+#waxcaps vs AMF - without outliers
+env_ITS_sm2 %>%
+ggplot(aes(y=Glomeromycota, x=Hygrocybes)) + 
+  geom_point(aes(color = factor(Site_ID))) + #add points to plot
+  geom_smooth(method="lm", se=TRUE, color="grey10", fill=fill_color) +
+  scale_color_manual(values = colors4) + #define colors to use
+  my_theme +
+  ylab("AMF reads") + xlab("Waxcap reads") #define/change X and Y labels
+
+ggsave('AMF_waxcap.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+#versus species richness
+env_ITS_sm2 %>%
+ggplot(aes(y=Glom_sr, x=Hygrocybes)) + 
+  geom_point(aes(color = factor(Site_ID))) + #add points to plot
+  geom_smooth(method="lm", se=TRUE, color="grey10", fill=fill_color) +
+  scale_color_manual(values = colors4) + #define colors to use
+  my_theme +
+  ylab("AMF species richness") + xlab("Waxcap reads") #define/change X and Y labels
+
+ggsave('AMFrich_waxcap.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+```
+
+```{r AM reads vs env var}
+
+#pH
+summary(aov(Glomeromycota ~ pH, data= env_ITS)) #not close
+summary(aov(Glom_sr ~ pH, data= env_ITS)) #not close
+
+#per coal
+summary(aov(Glomeromycota ~ per_coal, data= env_ITS)) #not close
+summary(aov(Glom_sr ~ per_coal, data= env_ITS)) #not close
+
+#debris
+summary(aov(Glomeromycota ~ g_debris, data= env_ITS)) #not close
+summary(aov(Glom_sr ~ g_debris, data= env_ITS)) #sig
+
+shapiro.test(resid(lmer(Glom_sr ~ g_debris + (1|Site_ID), #site random
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = env_ITS,
+    na.action = na.omit))) #not normal, high W
+summary(lmer(Glom_sr ~ g_debris + (1|Site_ID), #site random
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = env_ITS,
+    na.action = na.omit)) #random some
+Anova(lmer(Glom_sr ~ g_debris + (1|Site_ID), #site random
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = env_ITS,
+    na.action = na.omit), type=3) #P=0.033
+model_performance(lmer(Glom_sr ~ g_debris + (1|Site_ID), #site random
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = env_ITS,
+    na.action = na.omit)) #AICc 163.7, BIC 169.4, Rsq 0.24
+model_performance(lm(Glom_sr ~ g_debris, data = env_ITS)) #AICc 153.3, BIC 157.7, Rsq 0.074
+cor.test(env_ITS$Glom_sr, env_ITS$g_debris, method = "pearson") #corr -0.31
+
+#versus species richness
+env_ITS %>%
+ggplot(aes(y=Glom_sr, x=g_debris)) + 
+  geom_point(aes(color = factor(Site_ID))) + #add points to plot
+  geom_smooth(method="lm", se=TRUE, color="grey10", fill=fill_color) +
+  scale_color_manual(values = colors4) + #define colors to use
+  my_theme +
+  ylab("AMF species richness") + xlab("Colliery waste (g)") #define/change X and Y labels
+
+ggsave('AMFrich_waxcap.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+```
+
+```{r AM guilds Mg}
+
+#based on correlation matrix
+
+#stats
+shapiro.test(resid(lm(rhizo_AMF ~ ppm_Mg, data= env_ITS[env_ITS$rhizo_AMF>0,]))) #normal
+summary(aov(rhizo_AMF ~ ppm_Mg, data= env_ITS[env_ITS$rhizo_AMF>0,])) #not quite
+
+shapiro.test(resid(lmer(rhizo_AMF ~ ppm_Mg + (1|Site_ID), #site random
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = env_ITS[env_ITS$rhizo_AMF>0,], 
+    na.action = na.omit))) #normal
+Anova(lmer(rhizo_AMF ~ ppm_Mg + (1|Site_ID), #site random
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = env_ITS[env_ITS$rhizo_AMF>0,], 
+    na.action = na.omit), type=3) #P= 0.037
+summary(lmer(rhizo_AMF ~ ppm_Mg + (1|Site_ID), #site random
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = env_ITS[env_ITS$rhizo_AMF>0,], 
+    na.action = na.omit)) #
+
+model_performance(lmer(rhizo_AMF ~ ppm_Mg + (1|Site_ID), #site random
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = env_ITS[env_ITS$rhizo_AMF>0,], 
+    na.action = na.omit)) #AICc 122.5, BIC 113.3, R2 0.35
+cor.test(env_ITS$rhizo_AMF, env_ITS$ppm_Mg, method = "pearson") #corr 0.43
+
+#plot - doesn't look like much, probably a false lead
+env_ITS %>%
+  filter(rhizo_AMF > 0) %>%
+ggplot(aes(x=ppm_Mg, y=rhizo_AMF)) + 
+  geom_point(aes(color = factor(Site_ID))) + #add points to plot
+  geom_smooth(method="lm", se=TRUE, color="grey10", fill=fill_color) +
+  scale_color_manual(values = colors4) + #define colors to use
+  my_theme +
+  xlab("Mg (mg/kg soil)") + ylab("Rhizophilic AMF reads") #define/change X and Y labels
+
+
+```
+
 
 ### Waxcap species
 ```{r waxcap sp}
@@ -7453,10 +7956,256 @@ ggsave('waxcap_reads.svg', #save plot name and type - can be "eps", "pdf", "jpeg
 
 ```
 
+```{r waxcap AM}
+
+#no outliers
+env_ITS_sm1 <- env_ITS %>%
+  filter(Hygrocybes < 1000) #remove 2 outliers
+
+env_ITS_sm2 <- env_ITS %>%
+  filter(Hygrocybes < 1000) %>%
+  filter(Glomeromycota < 200) #remove 1 outlier
+
+#stats
+shapiro.test(resid(lm(Hygrocybes ~ Glom_sr + Glomeromycota, data= env_ITS_sm2))) #not normal, high W
+shapiro.test(resid(lmer(Hygrocybes ~ Glom_sr + Glomeromycota + (1|Site_ID), #site random
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = env_ITS_sm2, 
+    na.action = na.omit))) #not normal, high W
+
+hyg_glomsr_lme <- lmer(Hygrocybes ~ Glom_sr + Glomeromycota + (1|Site_ID), #site random
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = env_ITS_sm2, #choose dataframe
+    na.action = na.omit) #error singular
+summary(hyg_glomsr_lme) #random accounts for lower
+Anova(hyg_glomsr_lme) #sig
+model_performance(hyg_glomsr_lme) #AICc 459.7, BIC 465.8, R2 0.34
+cor.test(env_ITS_sm2$Hygrocybes, env_ITS_sm2$Glomeromycota, method = "pearson") #corr full 0.096, sm1 0.35, sm2 0.55
+cor.test(env_ITS_sm2$Hygrocybes, env_ITS_sm2$Glom_sr, method = "pearson") #corr full 0.39, sm1 0.45, sm2 0.51
+
+#waxcaps vs AMF - without outliers
+env_ITS_sm2 %>%
+ggplot(aes(x=Glomeromycota, y=Hygrocybes)) + 
+  geom_point(aes(color = factor(Site_ID))) + #add points to plot
+  geom_smooth(method="lm", se=TRUE, color="grey10", fill=fill_color) +
+  scale_color_manual(values = colors4) + #define colors to use
+  my_theme +
+  xlab("AMF reads") + ylab("Waxcap reads") #define/change X and Y labels
+
+ggsave('waxcap_AMF.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+```
+
+```{r NMDS waxcap sp, warning=FALSE}
+
+#Hellinger (square root) transform and standardize with vegan library
+waxcap_s_h_std <- waxcap_ITS.s[-c(8,10,22:24,31,35),] %>% #use only rows with per coal
+  dplyr::select((where(is.numeric))) %>% #select only numeric columns
+  decostand(., #call decostand transformation function
+				 method = "hellinger", #transformation method
+				 zap = FALSE, #make near zero values into zeros to avoid exaggeration
+				 na.rm = TRUE) %>% #remove NA values
+  mutate(across(where(is.numeric), ~scale(., center = TRUE, scale = TRUE)))
+
+its_nmds_df <- waxcap_s_h_std
+
+#test how many axes are appropriate
+stress <- vector(length = 6)
+for (i in 1:6) {
+    stress[i] <- metaMDS(its_nmds_df, distance = "bray", k = i,
+                         model = "global", #calc stress on ranks of data
+                         maxit = 400, #max iterations of configuration adjustments
+                         try = 20, trymax = 20, #min and max runs
+                         autotransform = FALSE, #don't transform data
+                         weakties = TRUE, #set fitted distances as un-fixed
+                         scaling = TRUE, #re-scale ordination axes
+                         na.rm = TRUE)$stress
+}
+names(stress) <- paste0(1:6, "Dim")
+par(mar = c(3.5,3.5,1,1), mgp = c(2, 0.6, 0), cex = 0.8, las = 2)
+barplot(stress, ylab = "stress")
+
+#run NMDS with 5 axes to be reliably stress < 0.2
+set.seed(42) #set seed for reproducibility
+its_nmds <- metaMDS(its_nmds_df, 
+                distance = "bray", #data & distance measure
+                k = 3, #number of axes
+                model = "global", #calc stress on ranks of data
+                maxit = 400, #max iterations of configuration adjustments
+                try = 20, trymax = 200, #min and max runs
+                autotransform = FALSE, #don't transform data
+                weakties = TRUE, #set fitted distances as un-fixed
+                pc = TRUE, #rotate axes using PCA to orient first 2 axes as containing most of the variability
+                scaling = TRUE, #re-scale ordination axes to ‘unit root mean squares’
+                na.rm = TRUE) #remove NA values
+
+its_nmds #check "stress" value to see how well the data is represented by the ordination
+goodness(its_nmds) #check goodness of fit for each point
+stressplot(its_nmds, main = "Shepard plot") #diagnostic plot
+
+#make fit vectors with env variables and view
+env_ITS_num_complete <- env_ITS_num[complete.cases(env_ITS_num), ] #check how many complete rows left for envfit
+
+its_nmdsfit <- envfit(its_nmds, env_ITS_num_complete[,-30], #numeric df, remove self-reference
+                      permutations = 999, na.rm=TRUE)
+its_nmdsfit #check fit vectors
+
+#make df of scores, add sites
+its_nmds_scores <- as.data.frame(vegan::scores(its_nmds))
+its_nmds_scores$Site_ID <- env_ITS[-c(8,10,22:24,31,35),]$Site_ID 
+
+#make df of vectors, only significant vectors
+its_nmds_vectors <- as.data.frame(vegan::scores(its_nmdsfit, display = "vectors")) #extracts relevant scores from envfit
+its_nmds_vectors <- cbind(its_nmds_vectors, variable = rownames(its_nmds_vectors)) #and then gives them their names
+its_nmds_vectors <- cbind(its_nmds_vectors, pval = its_nmdsfit$vectors$pvals) # add pvalues to dataframe
+its_sig_vectors <- subset(its_nmds_vectors, pval<=0.1) #subset data to show variables somewhat significant at rounded 0.1
+
+#plot scores with ggplot
+ggplot(its_nmds_scores) + 
+  geom_point(size = 2, aes(x = NMDS1, y = NMDS2, color = Site_ID)) +
+  stat_ellipse(aes(x = NMDS1, y = NMDS2, color = Site_ID, fill = Site_ID),
+               alpha = 0.2, #transparency of ellipse fill
+               geom = "polygon") +
+  scale_color_manual(values = colors4) +
+  scale_fill_manual(values = colors4) + #match fill colors to your color scheme
+  labs(x = "NMDS1", y = "NMDS2", color = "Site", fill = "Site") +
+  coord_fixed() +
+  my_theme
+
+#plot scores with ggplot - with vectors
+ggplot(its_nmds_scores) + 
+  geom_point(size = 2, aes(x = NMDS1, y = NMDS2, color = Site_ID)) +
+  stat_ellipse(aes(x = NMDS1, y = NMDS2, color = Site_ID, fill = Site_ID),
+               alpha = 0.2, #transparency of ellipse fill
+               geom = "polygon") + #draw as polygon rather than just outline
+  geom_segment(data = its_sig_vectors,
+              aes(x = 0, xend = NMDS1 * 40,
+                  y = 0, yend = NMDS2 * 40), 
+              arrow = arrow(length = unit(0.25,"cm"),
+                            type = "open", angle = 20,
+                            ends = "last"),
+              color = "grey10", 
+              lwd = 0.3) +
+  geom_text_repel(data = its_sig_vectors,
+                  aes(x = NMDS1 * 40,
+                      y = NMDS2 * 40, 
+                      label = variable), 
+                  size = 3,
+                  max.overlaps = Inf) +
+  scale_color_manual(values = colors4) +
+  scale_fill_manual(values = colors4) + #match fill colors to your color scheme
+  labs(x = "NMDS1", y = "NMDS2", color = "Site", fill = "Site") +
+  coord_fixed() +
+  my_theme
+
+#save figure - name, type, folder, dimensions, resolution, background specs
+ggsave('waxcap_sp_NMDS_200826.svg', path = "Figures", width = 6, height = 4, units = "in", dpi = 300, bg=NULL)
+
+```
+
+```{r waxcap permanova}
+
+#only enough reads
+waxcap_ITS.s_pos <- waxcap_ITS.s[rowSums(waxcap_ITS.s) >= 10, ]
+env_waxcap <- env_ITS[rownames(waxcap_ITS.s_pos), ]
+
+#Bray-Curtis
+waxcap_bray.list <-  replicate(100, matrix(nrow = dim(waxcap_ITS.s_pos)[1], ncol = dim(waxcap_ITS.s_pos)[1]), simplify = FALSE)
+for (i in 1:100) {
+  waxcap_bray.list[[i]] <- vegdist(as.matrix(rrarefy(waxcap_ITS.s_pos,sample=10))/10, method="bray")
+}
+waxcap.ml.bray <- Reduce("+", waxcap_bray.list) / length(waxcap_bray.list)
 
 
+#PERMANOVA multivariate
+#create bins for AM assoc
+env_waxcap$AM_assoc_bins <- cut(env_waxcap$AM_assoc, breaks = c(0, 0.33, 0.67, 1), labels = c("Low", "Medium", "High"))
+table(env_waxcap$AM_assoc_bins)
+
+#all
+pred_var <- c("g_debris", "per_coal", "pH",
+              "ppm_Ca", "ppm_Fe", "ppm_Mg", "ppm_Na", "ppm_K", "ppm_P", "ppm_S",
+              "plant_shannon", "plant_simpson", "plant_r",
+              "Glomeromycota", "Glom_sr", "AM_assoc", "AM_assoc_bins")
+
+#more selective
+pred_var2 <- c("g_debris", "per_coal", 
+              "ppm_Fe", "ppm_Mg", "ppm_Na", "ppm_K", "ppm_P",
+              "plant_r", "Glomeromycota", "AM_assoc")
+formula_bray <- paste("waxcap.ml.bray ~", paste(pred_var2, collapse="+")) %>% as.formula()
+
+adonis2(formula_bray, method = "none", na.action=na.omit, data = env_waxcap, 
+        by = "terms", #each term analyzed individually
+        permutations = 9999) #AM assoc, debris, Fe, almost coal
+
+adonis2(formula_bray, method = "none", na.action=na.omit, data = env_waxcap, 
+        by = "margin", #each term analyzed for marginal effects
+        permutations = 9999) #debris, P, Glom, AM assoc
+
+#check beta dispersion of significant vars
+mod <- betadisper(waxcap.ml.bray, env_waxcap$ppm_P)
+permutest(mod, permutations = 999) #homogenous
+
+mod <- betadisper(waxcap.ml.bray, env_waxcap$g_debris)
+permutest(mod, permutations = 999) #homogenous
+
+mod <- betadisper(waxcap.ml.bray, env_waxcap$Glomeromycota)
+permutest(mod, permutations = 999) #homogenous
+
+mod <- betadisper(waxcap.ml.bray, env_waxcap$AM_assoc_bins)
+permutest(mod, permutations = 999) #homogenous
+
+```
 
 # Plant Communities
+
+```{r plant data by site and functional group}
+
+#subset to remove NA and too many 0s in functional group
+plant_grpscomp <- plant_harvest %>%
+  filter(!is.na(functional_group)) %>%
+  filter(!is.na(shoot)) %>%
+  filter(functional_group != "unknown") %>%
+  filter(functional_group != "moss") %>%
+  filter(functional_group != "shrub")
+
+#define what to analyze - multivar
+factors <- c("site_id","functional_group") #predictor variable
+continuous_vars <- c("shoot", "root", "root_shoot") #response variables
+data <- plant_grpscomp
+  
+
+#evaluate group sizes
+#evaluate_group_sizes(data, factors, continuous_vars) 
+summarize_group_sizes(data, factors, continuous_vars) 
+
+#run the analysis
+plantmass_diff <- differences_multifactor(data, factors, continuous_vars)
+
+
+#rerun with forb mass by site only
+factors <- "site_id"
+data <- plant_harvest %>%
+  filter(functional_group == "forb")
+
+summarize_group_sizes(data, factors, continuous_vars) 
+
+forb_diff <- differences(data, factors, continuous_vars)
+
+#rerun with legume mass by site only
+data <- plant_harvest %>%
+  filter(functional_group == "legume")
+
+summarize_group_sizes(data, factors, continuous_vars) 
+
+legume_diff <- differences(data, factors, continuous_vars)
+
+```
+
 
 ```{r plant groups}
 
@@ -7485,21 +8234,16 @@ ggsave('plant_groups.svg', #save plot name and type - can be "eps", "pdf", "jpeg
        dpi = 300, #set resolution
        bg=NULL) #background from plot specifications
 
-shapiro.test(resid(lm(shoot ~ functional_group * site_id, data = plant_harvest[ #not normal
-                          !is.na(plant_harvest$shoot), c(2,6,7)]))) #subset only columns of interest, remove na
-leveneTest(lm(shoot ~ functional_group * site_id, data = plant_harvest[ 
-                          !is.na(plant_harvest$shoot), c(2,6,7)])) #heterogeneous
+shapiro.test(resid(lm(shoot ~ functional_group * site_id, data = plant_grpscomp))) #not normal
+leveneTest(lm(shoot ~ functional_group * site_id, data = plant_grpscomp)) #heterogenous
 
-summary(art(shoot ~ factor(functional_group) * factor(site_id), data = plant_harvest[!is.na(plant_harvest$shoot),])) #run ART ANOVA
-
-shapiro.test(resid(lm(log(shoot) ~ functional_group * site_id, data = plant_harvest[ #normal
-                          !is.na(plant_harvest$shoot), c(2,6,7)]))) #subset only columns of interest, remove na
-summary(aov(log(shoot) ~ functional_group * site_id, data = plant_harvest[ 
-                          !is.na(plant_harvest$shoot), c(2,6,7)])) #sig for all terms
-TukeyHSD(aov(log(shoot) ~ functional_group * site_id, data = plant_harvest[ #normal
-                          !is.na(plant_harvest$shoot), c(2,6,7)])) 
-#grass:Bickershaw 2-forb:Bickershaw 1       0.0051386
-#legume:Amberswood-grass:Bickershaw 2       0.0241997
+plant_grpscomp$functional_group <- as.factor(plant_grpscomp$functional_group)
+summary(art(shoot ~ functional_group * site_id, data = plant_grpscomp)) #is ART ANOVA valid
+art_model <- art(shoot ~ functional_group * site_id, data = plant_grpscomp)
+anova(art_model) #interaction is sig
+art.con(art_model, ~ functional_group * site_id) #post-hoc contrasts
+#FM forbs > BU forbs, P=0.023
+#BM grass > AM grass, 0.043
 
 
 ```
@@ -7583,6 +8327,147 @@ summary(aov(simpson ~ site_id, data = diversity)) #sig
 TukeyHSD(aov(simpson ~ site_id, data = diversity)) #Flashes > Bick 1
 
 ```
+
+```{r plant biomass x env var stats}
+
+#add site ID back to numeric
+SOM_13C_T0_num <- SOM_13C_T0_num %>%
+  mutate(Site_ID = SOM_13C_T0$Site_ID)
+
+#pH vs. biomass
+summary(aov(plant_biomass ~ pH, data = SOM_13C_T0)) #sig
+summary(aov(shoot_mass ~ pH, data = SOM_13C_T0)) #not close
+summary(aov(root_mass ~ pH, data = SOM_13C_T0)) #sig
+
+Anova(lmer(plant_biomass ~ pH + (1|Site_ID), #site random
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0_num,
+    na.action = na.omit), type=3) #not sig
+
+Anova(lmer(root_mass ~ pH + (1|Site_ID), #site random
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0_num,
+    na.action = na.omit), type=3) #sig P=0.054
+
+shapiro.test(resid(lmer(root_mass ~ pH + (1|Site_ID), #site random
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0_num,
+    na.action = na.omit))) #normal
+summary(lmer(root_mass ~ pH + (1|Site_ID), #site random
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0_num,
+    na.action = na.omit)) #lower var random
+model_performance(lmer(root_mass ~ pH + (1|Site_ID), #site random
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0_num,
+    na.action = na.omit)) #AICc 268.2, Rsq 0.14
+model_performance(lm(root_mass ~ pH, data = SOM_13C_T0_num)) #AICc 272.7, Rsq 0.17
+cor.test(SOM_13C_T0_num$root_mass, SOM_13C_T0_num$pH, method = "pearson") #corr -0.44
+
+#debris
+summary(aov(plant_biomass ~ g_debris, data = SOM_13C_T0)) #close
+summary(aov(shoot_mass ~ g_debris, data = SOM_13C_T0)) #sig P=0.021
+summary(aov(root_mass ~ g_debris, data = SOM_13C_T0)) #sig P=0.017
+
+Anova(lmer(shoot_mass ~ g_debris + (1|Site_ID), #site random
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0_num,
+    na.action = na.omit), type=3) #not sig
+
+Anova(lmer(root_mass ~ g_debris + (1|Site_ID), #site random
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0_num,
+    na.action = na.omit), type=3) #not sig
+
+model_performance(lm(shoot_mass ~ g_debris, data = SOM_13C_T0_num)) #AICc 163.8, Rsq 0.11
+cor.test(SOM_13C_T0_num$shoot_mass, SOM_13C_T0_num$g_debris, method = "pearson") #corr 0.36
+
+model_performance(lm(root_mass ~ g_debris, data = SOM_13C_T0_num)) #AICc 275.2, Rsq 0.12
+cor.test(SOM_13C_T0_num$root_mass, SOM_13C_T0_num$g_debris, method = "pearson") #corr -0.37
+
+
+#Ba
+summary(aov(plant_biomass ~ ppm_Ba, data = SOM_13C_T0_num)) #sig
+summary(aov(shoot_mass ~ ppm_Ba, data = SOM_13C_T0_num)) #sig
+summary(aov(root_mass ~ ppm_Ba, data = SOM_13C_T0_num)) #close
+
+Anova(lmer(plant_biomass ~ ppm_Ba + (1|Site_ID), #site random
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0_num,
+    na.action = na.omit), type=3) #P=0.055
+
+Anova(lmer(shoot_mass ~ ppm_Ba + (1|Site_ID), #site random
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0_num,
+    na.action = na.omit), type=3) #P=0.041
+
+shapiro.test(resid(lmer(shoot_mass ~ ppm_Ba + (1|Site_ID), #site random
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0_num,
+    na.action = na.omit))) #normal
+summary(lmer(shoot_mass ~ ppm_Ba + (1|Site_ID), #site random
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0_num,
+    na.action = na.omit)) #random accounts for less
+model_performance(lmer(shoot_mass ~ ppm_Ba + (1|Site_ID), #site random
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0_num,
+    na.action = na.omit)) #AICc 166.8, Rsq 0.07
+model_performance(lm(shoot_mass ~ ppm_Ba, data = SOM_13C_T0_num)) #AICc 163.7, Rsq 0.11
+cor.test(SOM_13C_T0_num$shoot_mass, SOM_13C_T0_num$ppm_Ba, method = "pearson") #corr -0.37
+
+
+#visualize root mass vs pH
+ggplot(data = SOM_13C_T0, aes(x=pH, y=root_mass)) + 
+  geom_point(aes(color = factor(Site_ID))) + #add points to plot
+  geom_smooth(method="lm", se=TRUE, color=plotline_color, fill=fill_color) +
+  scale_color_manual(values = colors4) + #define colors to use
+  my_theme +
+  xlab("Soil pH") + ylab("Root Biomass (g/ mesocosm)") #define/change X and Y labels
+
+#save figure
+ggsave('roots_pH.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+
+#visualize shoot mass vs Ba
+SOM_13C_T0_num %>%
+  filter(ppm_Ba > 50) %>%
+ggplot(aes(x=ppm_Ba, y=shoot_mass)) + 
+  geom_point(aes(color = factor(Site_ID))) + #add points to plot
+  geom_smooth(method="lm", se=TRUE, color=plotline_color, fill=fill_color) +
+  scale_color_manual(values = colors4) + #define colors to use
+  my_theme +
+  xlab("Ba content (mg/kg soil)") + ylab("Shoot biomass (g/ mesocosm)") #define/change X and Y labels
+
+#save figure
+ggsave('shoots_Ba.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 6, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+#stats without Ba outlier
+Anova(lmer(shoot_mass ~ ppm_Ba + (1|Site_ID), #site random
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0_num[SOM_13C_T0_num$ppm_Ba > 50,],
+    na.action = na.omit), type=3) #P=0.011
+summary(aov(shoot_mass ~ ppm_Ba, data = SOM_13C_T0_num[SOM_13C_T0_num$ppm_Ba > 50,])) #P=0.0013
+model_performance(lmer(shoot_mass ~ ppm_Ba + (1|Site_ID), #site random
+    REML = TRUE, #restricted maximum likelihood (REML) for model comparison 
+    data = SOM_13C_T0_num[SOM_13C_T0_num$ppm_Ba > 50,],
+    na.action = na.omit)) #AICc 161.9, Rsq 0.12
+model_performance(lm(shoot_mass ~ ppm_Ba, 
+                     data = SOM_13C_T0_num[SOM_13C_T0_num$ppm_Ba > 50,])) #AICc 154.69, Rsq 0.23
+cor.test(SOM_13C_T0_num[SOM_13C_T0_num$ppm_Ba > 50,]$shoot_mass, 
+         SOM_13C_T0_num[SOM_13C_T0_num$ppm_Ba > 50,]$ppm_Ba, method = "pearson") #corr -0.50
+
+
+```
+
 
 # NBN Communities
 
@@ -8463,10 +9348,6 @@ ggsave('ITS_rarecurve.svg', #save plot name and type - can be "eps", "pdf", "jpe
 ```
 
 ```{r ITS beta asv, warning=FALSE}
-
-#add coal
-env_ITS <- env_ITS %>%
-  merge(per_coal23, by="Plot_ID", all.x = TRUE) 
 
 #calculate distances
 
@@ -10511,11 +11392,16 @@ ggplot(data = endbiomass, aes(x=Management, y=worms, fill=Management)) +
 
 ```
 
-## Coal in mesocosms
+## Coal rocks and debris
 
 ### Rocks and debris in pots
 
 ```{r rocks, warning=FALSE}
+
+#convert to g/g and  g/kg
+SOM_13C_T0 <- SOM_13C_T0 %>%
+  mutate(debris_g_g = g_debris / g_soil) %>%
+  mutate(debris_gkg = g_debris / (g_soil/1000)) 
 
 #mass bar chart with error bars
 ggplot(data = summary_endbio, aes(x=Site_ID, y=rocks_debris_mean, fill=Site_ID)) + 
@@ -10524,11 +11410,26 @@ ggplot(data = summary_endbio, aes(x=Site_ID, y=rocks_debris_mean, fill=Site_ID))
   geom_errorbar(aes(ymin=rocks_debris_mean-rocks_debris_se, ymax=rocks_debris_mean+rocks_debris_se),
   color = "grey10", width = 0.7, position = "dodge") + 
   #ggtitle("Rocks and Debris per site") + #add a graph title
-  xlab("") + ylab("Mass of Coal Debris in 20 cm (g)") + #define/change X and Y labels
+  xlab("") + ylab("Mass of Colliery Waste in 20 cm (g)") + #define/change X and Y labels
   my_theme
 
 #save figure
 ggsave('debris.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 6, height = 4, units = "in", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
+#box plot
+ggplot(data = SOM_13C_T0, aes(x=Site_ID, y=debris_gkg, fill=Site_ID)) + 
+	geom_boxplot() +
+  scale_fill_manual(values=colors4) + #define colors to use
+  #ggtitle("Coal in BD cores") + #add a graph title
+  xlab("") + ylab("Colliery Waste (g/kg soil)") + #define/change X and Y labels
+  my_theme
+
+#save figure
+ggsave('debris2.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
 	path = "Figures", #save to folder within working directory
 	width = 6, height = 4, units = "in", #set dimensions for figure
 	dpi = 300, #set resolution
@@ -10545,9 +11446,10 @@ TukeyHSD(rmass_aov) #Unmanaged-23 yr P=0.0000012, Unmanaged-15 yr P=0.0057, 4 yr
 
 ```{r coal, warning=FALSE}
 
-#convert to g / kg
+#convert to g/g and  g/kg
 SOM_2026 <- SOM_2026 %>%
-  mutate(coal_gkg = (coal_2mm_g / core_wt)*1000)
+  mutate(coal_g_g = coal_2mm_g / core_wt) %>%
+  mutate(coal_gkg = coal_2mm_g / (core_wt/1000)) 
 
 #box plot
 ggplot(data = SOM_2026, aes(x=Site_ID, y=coal_2mm_g, fill=Management)) + 
@@ -10558,7 +11460,7 @@ ggplot(data = SOM_2026, aes(x=Site_ID, y=coal_2mm_g, fill=Management)) +
   my_theme
 
 #save figure
-ggsave('coal.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+ggsave('coal_2mm.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
 	path = "Figures", #save to folder within working directory
 	width = 6, height = 4, units = "in", #set dimensions for figure
 	dpi = 300, #set resolution
@@ -10574,6 +11476,21 @@ ggplot(data = SOM_2026, aes(x=Site_ID, y=coal_gkg, fill=Management)) +
 
 #save figure
 ggsave('coal2.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+	path = "Figures", #save to folder within working directory
+	width = 6, height = 4, units = "in", #set dimensions for figure
+	dpi = 300, #set resolution
+	bg=NULL) #background from plot specifications
+
+#box plot
+ggplot(data = SOM_2026, aes(x=Site_ID, y=coal_gkg, fill=Site_ID)) + 
+	geom_boxplot() +
+  scale_fill_manual(values=colors6) + #define colors to use
+  #ggtitle("Coal in BD cores") + #add a graph title
+  xlab("") + ylab("Coal >2mm in topsoil (g/kg soil)") + #define/change X and Y labels
+  my_theme
+
+#save figure
+ggsave('coal3.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
 	path = "Figures", #save to folder within working directory
 	width = 6, height = 4, units = "in", #set dimensions for figure
 	dpi = 300, #set resolution
