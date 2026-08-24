@@ -1213,6 +1213,31 @@ sites_sf <- site_locations %>%
 
 ```
 
+### CO2 flux
+```{r load CO2 data}
+
+#read in data
+flux_data <- read_csv("co2_flux.csv") %>%
+  mutate(net_gCO2 = net_flux /1000) %>%
+  mutate(gC_stored = abs(net_gCO2*(12/44)))
+
+#summary
+sum_flux <- flux_data %>% 
+  dplyr::select(!month_code) %>%
+  group_by(site_id, plot_id, month) %>%
+  summarise(across(where(is.numeric), mean)) %>% #calc mean per month
+  group_by(site_id, plot_id) %>%
+  summarise(across(where(is.numeric), sum)) #sum of all means
+
+#order variables
+flux_data$site_id <- factor(flux_data$site_id, levels = order_IDs_4)
+flux_data$month <- factor(flux_data$month, levels = c("June", "July", "August","September", "November"))
+
+sum_flux$site_id <- factor(sum_flux$site_id, levels = order_IDs_4)
+
+
+```
+
 ### Coal concentrations
 
 #### Calibration data
@@ -1431,7 +1456,7 @@ soil_metals_wide <- soil_metals %>%
 #metals means only
 metals_means <- soil_metals_wide %>%
   group_by(Site_ID) %>%
-  rename_all(~stringr::str_replace(.,"ppm_","")) %>% #remove prefix from column names
+  dplyr::rename_all(~stringr::str_replace(.,"ppm_","")) %>% #remove prefix from column names
   summarise(across(where(is.numeric), ~signif(mean(., na.rm=TRUE), digits = 3))) #means, rounded
 
 #write csv
@@ -1875,7 +1900,7 @@ taxa_ITS_unique <- taxa_ITS %>%
 taxa_ITS_unique <- unique(taxa_ITS_unique)
 
 taxa_ITS_unique <- taxa_ITS_unique %>%
-  rename("asv" = "ASV") %>%
+  dplyr::rename("asv" = "ASV") %>%
   merge(asv_ITS_pivot, all = TRUE) 
 
 #write.csv(taxa_ITS_unique, "asv_tbl.csv")
@@ -2385,49 +2410,49 @@ SOM_T0 <- SOM_13C %>%
   filter(Fraction == "SOM") %>%
   filter(Incubation_T == 0) %>%
   dplyr::select(Sample_year, Site_ID, Site, Mgmt_year, Mgmt_fct, Plot_ID, Incubation_T, per_C, per_N, C_gkg, N_gkg, C_N, d13C, `13C_excess_per`, `15N`, per_POM, per_MAOM, C_kgm2_7cm, pot_C_g, pot_13C_mg, g_debris, g_soil) %>% #select columns to keep
-  rename("SOM_perC" = "per_C") %>%
-  rename("SOM_perN" = "per_N") %>%
-  rename("SOM_potC_g" = "pot_C_g") %>%
-  rename("SOM_C" = "C_gkg") %>%
-  rename("SOM_N" = "N_gkg") %>%
-  rename("SOM_CN" = "C_N") %>%
-  rename("SOM_d13C" = "d13C") %>%
-  rename("SOM_13C_excess" = "13C_excess_per") %>%
-  rename("SOM_pot13C_mg" = "pot_13C_mg") %>%
-  rename("SOM_15N" = "15N") %>%
-  rename("SOM_C_kgm2_7cm" = "C_kgm2_7cm")
+  dplyr::rename("SOM_perC" = "per_C") %>%
+  dplyr::rename("SOM_perN" = "per_N") %>%
+  dplyr::rename("SOM_potC_g" = "pot_C_g") %>%
+  dplyr::rename("SOM_C" = "C_gkg") %>%
+  dplyr::rename("SOM_N" = "N_gkg") %>%
+  dplyr::rename("SOM_CN" = "C_N") %>%
+  dplyr::rename("SOM_d13C" = "d13C") %>%
+  dplyr::rename("SOM_13C_excess" = "13C_excess_per") %>%
+  dplyr::rename("SOM_pot13C_mg" = "pot_13C_mg") %>%
+  dplyr::rename("SOM_15N" = "15N") %>%
+  dplyr::rename("SOM_C_kgm2_7cm" = "C_kgm2_7cm")
 
 POM_T0 <- SOM_13C %>%
   filter(Fraction == "POM") %>%
   filter(Incubation_T == 0) %>%
   dplyr::select(Sample_year, Site_ID, Site, Mgmt_year, Mgmt_fct, Plot_ID, Incubation_T, per_C, per_N, C_gkg, N_gkg, C_N, d13C, `13C_excess_per`, `15N`, per_POM, per_MAOM, C_kgm2_7cm, pot_C_g, pot_13C_mg) %>% #select columns to keep
-  rename("POM_perC" = "per_C") %>%
-  rename("POM_perN" = "per_N") %>%
-  rename("POM_potC_g" = "pot_C_g") %>%
-  rename("POM_C" = "C_gkg") %>%
-  rename("POM_N" = "N_gkg") %>%
-  rename("POM_CN" = "C_N") %>%
-  rename("POM_d13C" = "d13C") %>%
-  rename("POM_13C_excess" = "13C_excess_per") %>%
-  rename("POM_pot13C_mg" = "pot_13C_mg") %>%
-  rename("POM_15N" = "15N") %>%
-  rename("POM_C_kgm2_7cm" = "C_kgm2_7cm")
+  dplyr::rename("POM_perC" = "per_C") %>%
+  dplyr::rename("POM_perN" = "per_N") %>%
+  dplyr::rename("POM_potC_g" = "pot_C_g") %>%
+  dplyr::rename("POM_C" = "C_gkg") %>%
+  dplyr::rename("POM_N" = "N_gkg") %>%
+  dplyr::rename("POM_CN" = "C_N") %>%
+  dplyr::rename("POM_d13C" = "d13C") %>%
+  dplyr::rename("POM_13C_excess" = "13C_excess_per") %>%
+  dplyr::rename("POM_pot13C_mg" = "pot_13C_mg") %>%
+  dplyr::rename("POM_15N" = "15N") %>%
+  dplyr::rename("POM_C_kgm2_7cm" = "C_kgm2_7cm")
   
 MAOM_T0 <- SOM_13C %>%
   filter(Fraction == "MAOM") %>%
   filter(Incubation_T == 0) %>%
   dplyr::select(Sample_year, Site_ID, Site, Mgmt_year, Mgmt_fct, Plot_ID, Incubation_T, per_C, per_N, C_gkg, N_gkg, C_N, d13C, `13C_excess_per`, `15N`, per_POM, per_MAOM, C_kgm2_7cm, pot_C_g, pot_13C_mg) %>% #select columns to keep
-  rename("MAOM_perC" = "per_C") %>%
-  rename("MAOM_perN" = "per_N") %>%
-  rename("MAOM_potC_g" = "pot_C_g") %>%
-  rename("MAOM_C" = "C_gkg") %>%
-  rename("MAOM_N" = "N_gkg") %>%
-  rename("MAOM_CN" = "C_N")  %>%
-  rename("MAOM_d13C" = "d13C") %>%
-  rename("MAOM_13C_excess" = "13C_excess_per") %>%
-  rename("MAOM_pot13C_mg" = "pot_13C_mg") %>%
-  rename("MAOM_15N" = "15N") %>%
-  rename("MAOM_C_kgm2_7cm" = "C_kgm2_7cm")
+  dplyr::rename("MAOM_perC" = "per_C") %>%
+  dplyr::rename("MAOM_perN" = "per_N") %>%
+  dplyr::rename("MAOM_potC_g" = "pot_C_g") %>%
+  dplyr::rename("MAOM_C" = "C_gkg") %>%
+  dplyr::rename("MAOM_N" = "N_gkg") %>%
+  dplyr::rename("MAOM_CN" = "C_N")  %>%
+  dplyr::rename("MAOM_d13C" = "d13C") %>%
+  dplyr::rename("MAOM_13C_excess" = "13C_excess_per") %>%
+  dplyr::rename("MAOM_pot13C_mg" = "pot_13C_mg") %>%
+  dplyr::rename("MAOM_15N" = "15N") %>%
+  dplyr::rename("MAOM_C_kgm2_7cm" = "C_kgm2_7cm")
 
 SOM_13C_T0 <- merge(SOM_T0, POM_T0, by=c("Sample_year", "Site", "Site_ID", "Mgmt_year", "Mgmt_fct", "Plot_ID", "Incubation_T"), all=TRUE) %>%
   merge(MAOM_T0, by=c("Sample_year", "Site", "Site_ID", "Mgmt_year", "Mgmt_fct", "Plot_ID", "Incubation_T"), all.y=TRUE) %>%
@@ -2453,6 +2478,7 @@ summary_SOM_13C <- SOM_13C[-176,] %>% #remove outlier 13C value until remeasure
 
 #add columns from other datasets to compare
 SOM_13C_T0 <- SOM_13C_T0 %>%
+  mutate(NEP_gC = sum_flux$gC_stored[match(SOM_13C_T0$Plot_ID, sum_flux$plot_id)]) %>%
   mutate(shoot_13C_mg = plant13C_shoots$excess13C_mg[match(SOM_13C_T0$Plot_ID, plant13C_shoots$pot)]) %>%
   mutate(root_13C_mg = plant13C_roots$excess13C_mg[match(SOM_13C_T0$Plot_ID, plant13C_roots$pot)]) %>%
   mutate(recovery = (SOM_pot13C_mg + shoot_13C_mg + root_13C_mg)/122 * 100) %>% #percent recovery
@@ -2523,7 +2549,7 @@ summary_SOM_13C_T0$Site_ID <- factor(summary_SOM_13C_T0$Site_ID, levels = order_
 
 #read in field soil C/N data from 2026 and calculate additional
 SOM_2026 <- read_csv("SOM_2026.csv") %>%
-  rename("SOM_C_kgm2_7cm" = "C_kgm2_7cm") %>%
+  dplyr::rename("SOM_C_kgm2_7cm" = "C_kgm2_7cm") %>%
   mutate(MAOM_perC = 
            MAOM53_perC*(per_53/(per_53+per_45)) + MAOM45_perC*(per_45/(per_53+per_45))) %>% #calculate total MAOM per C
   mutate(MAOM_perN = 
@@ -2570,7 +2596,7 @@ UK_soil <- read_csv("Manning2015_dryad.csv") %>%
   filter(type == "U") %>% #use only unimproved sites
   mutate(POM_C = C250 + C50_250) %>% #match to Wigan data
   mutate(MAOM_C = C50_0.45) %>% #match to Wigan data
-  rename("pH" = "PH") %>% #match case with Wigan data
+  dplyr::rename("pH" = "PH") %>% #match case with Wigan data
   mutate(vegetation = str_replace(vegetation, "wet grassland", "Wet Grassland")) %>% #match naming with Wigan data
   mutate(vegetation = str_replace(vegetation, "Acid grass", "Acid Grass")) %>% #match naming with Wigan data
   mutate(Sample_year = 2005) %>%
@@ -2588,10 +2614,10 @@ summary_UKsoils <- UK_soil %>%
 
 soilC_compare <- SOM_2026 %>%
   dplyr::select(Sample_year, Site_ID, SOM_C_kgm2_7cm, POM53_C_kgm2_7cm, MAOM45_C_kgm2_7cm, pH) %>%
-  rename("site" = "Site_ID") %>%
-  rename("TotalC" = "SOM_C_kgm2_7cm") %>%
-  rename("POM_C" = "POM53_C_kgm2_7cm") %>%
-  rename("MAOM_C" = "MAOM45_C_kgm2_7cm") %>%
+  dplyr::rename("site" = "Site_ID") %>%
+  dplyr::rename("TotalC" = "SOM_C_kgm2_7cm") %>%
+  dplyr::rename("POM_C" = "POM53_C_kgm2_7cm") %>%
+  dplyr::rename("MAOM_C" = "MAOM45_C_kgm2_7cm") %>%
   mutate(type = "R") %>% #R for restored
   mutate(vegetation = case_when(site == "BU" ~ "BU Wet Grassland", #set value in new column 
 															  site == "BM" ~ "BM Wet Grassland", 
@@ -2636,8 +2662,8 @@ soilC_compare$vegetation <- factor(soilC_compare$vegetation,
 UK_AMpl <- read_csv("DIGFOR_combined_simplified.csv") %>%
   dplyr::select(vegetation, type, site, PH, 
                 AM, mean_AM, median_AM, speciesr, shannon, simpson) %>%
-  rename("pH" = "PH") %>% #match case with Wigan data
-  rename("Site" = "site") %>% #match case with Wigan data
+  dplyr::rename("pH" = "PH") %>% #match case with Wigan data
+  dplyr::rename("Site" = "site") %>% #match case with Wigan data
   filter(type == "U") %>% #use only unimproved sites
   mutate(vegetation = str_replace(vegetation, "wet_grassland", "Wet Grassland")) %>% #match naming with Wigan data
   filter(vegetation == "Wet Grassland" | vegetation == "Mesotrophic") %>%
@@ -3701,13 +3727,13 @@ coal_soil23_means <- color_soil23 %>%
 #calculate percent carbon potentially attributable to coal - use low values for conservative est
 per_coal23 <- coal_soil23_means %>%
   dplyr::select(sample_grp, pred_rf) %>%
-  rename("Plot_ID" = "sample_grp") %>%
-  rename("per_coal" = "pred_rf")
+  dplyr::rename("Plot_ID" = "sample_grp") %>%
+  dplyr::rename("per_coal" = "pred_rf")
 
 #save csv of coal concentration to use
 #write.csv(per_coal23, "per_coal23.csv") #saves as csv in current workspace
 
-#per_coal23 <- read_csv("per_coal23.csv") #load from csv to save time
+per_coal23 <- read_csv("per_coal23.csv") #load from csv to save time
 
 SOM_13C_T0 <- SOM_13C_T0 %>%
   merge(per_coal23, by="Plot_ID", all.x = TRUE) 
@@ -4175,8 +4201,12 @@ ggsave('Cper_src_facetsite_g.svg', #save plot name and type - can be "eps", "pdf
 
 #make numeric, remove irrelevant
 SOM_13C_T0_num <- SOM_13C_T0 %>% 
-  dplyr::select(SOM_C, SOM_N, SOM_CN, POM_C, POM_N, POM_CN, MAOM_C, MAOM_N, MAOM_CN, SOM_15N, 
+  dplyr::select(SOM_C, SOM_N, SOM_CN, POM_C, POM_N, POM_CN, MAOM_C, MAOM_N, MAOM_CN, 
+                SOM_15N, POM_15N, MAOM_15N,
                 g_debris, pH, per_coal, coal_C,
+                NEP_gC, shoot_13C_mg, SOM_13C_excess, fMAOM_13C, 
+                MAOM_13C_excess, MAOM_pot13C_mg,
+                POM_13C_excess, POM_pot13C_mg,
                 root_mass, shoot_mass, plant_biomass,
                 plant_r, plant_shannon, plant_simpson,
                 AM_hyph_per, AM_arb_per, 
@@ -4322,6 +4352,51 @@ corrplot::corrplot(df_corr26, method = 'circle', type = 'upper', #plot upper hal
          cex.main = 1, #set title font size
          title = "Correlation Matrix" #set title
          )
+
+
+```
+
+## CO2 flux
+```{r CO2 flux}
+
+#time series boxplots
+flux_data %>%
+  na.omit() %>% #omit NA values
+ggplot(aes(x=month, y=net_g, group=interaction(month, site_id))) + 
+  geom_boxplot(aes(fill=site_id), position = position_dodge()) +
+  #geom_dotplot(aes(fill=Site, stroke=TRUE), binaxis = "y", dotsize = 0.5, position = position_dodge(), stackdir = "center", binpositions = "bygroup") +
+  scale_fill_manual(values = colors4) + #define colors to use
+  scale_color_manual(values = colors4) +
+  my_theme + xlab("") +
+  ylab(expression(NEP~(g~CO[2]~m^-2))) 
+
+ggsave('NEP_g.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 7, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
+
+
+```
+
+```{r CO2 flux}
+
+#time series boxplots
+flux_data %>%
+  na.omit() %>% #omit NA values
+ggplot(aes(x=month, y=gC_stored, group=interaction(month, site_id))) + 
+  geom_boxplot(aes(fill=site_id), position = position_dodge()) +
+  #geom_dotplot(aes(fill=Site, stroke=TRUE), binaxis = "y", dotsize = 0.5, position = position_dodge(), stackdir = "center", binpositions = "bygroup") +
+  scale_fill_manual(values = colors4) + #define colors to use
+  scale_color_manual(values = colors4) +
+  my_theme + xlab("") +
+  ylab(expression(NEP~(g~CO[2]~m^-2))) 
+
+ggsave('NEP_gC.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "tiff", "png", "bmp", "svg"
+       path = "Figures", #save to folder
+       width = 7, height = 4, units = "in", #set dimensions
+       dpi = 300, #set resolution
+       bg=NULL) #background from plot specifications
 
 
 ```
@@ -5450,7 +5525,7 @@ ggsave('SOC_comparison2_2026.svg', #save plot name and type - can be "eps", "pdf
 #add new C to df to compare
 newC <- SOM_2026 %>%
   dplyr::select(Site_ID, new_C_kgm2_7cm) %>%
-  rename("site" = "Site_ID")
+  dplyr::rename("site" = "Site_ID")
 
 soilC_compare <- soilC_compare %>%
   merge(newC, by="site", all.x = TRUE) #%>%
