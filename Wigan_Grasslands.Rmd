@@ -4458,8 +4458,7 @@ ggsave('Cpools_mg_mic_stack_151026.svg', #save plot name
 
 #2023
 soil_metals_num <- soil_metals_wide %>%
-  dplyr::select_if(is.numeric) %>%
-  mutate(Plot_ID = soil_metals_wide$Plot_ID)
+  dplyr::select(Plot_ID,ppm_Al:ppm_Zn)
   
 
 SOM_13C_T0 <- SOM_13C_T0 %>% 
@@ -4488,8 +4487,8 @@ SOM_13C_T0_num <- SOM_13C_T0 %>%
                 plant_r, plant_shannon, plant_simpson,
                 AM_hyph_per, AM_arb_per,
                 glom_reads, AMF_specN, waxcap_reads, 
-                rich_ITS, rich_16S, shannon_ITS, shannon_16S, gini_ITS, gini_16S) %>%
-  cbind(soil_metals_num[,-1]) %>%
+                rich_ITS, rich_16S, shannon_ITS, shannon_16S, gini_ITS, gini_16S,
+                ppm_Al:ppm_Zn) %>%
   dplyr::select_if(is.numeric) 
 
 
@@ -4536,8 +4535,8 @@ SOM_13C_T0_num <- SOM_13C_T0 %>%
                 AM_hyph_per, AM_arb_per, 
                 spores_g, AM_mm_g, other_mm_g, AM_biomass_gkg, total_fun_gkg, AM_C_mgkg, otherfun_C_mgkg,
                 glom_reads, AMF_specN, waxcap_reads, 
-                rich_ITS, rich_16S, shannon_ITS, shannon_16S, gini_ITS, gini_16S) %>%
-  cbind(soil_metals_wide) %>%
+                rich_ITS, rich_16S, shannon_ITS, shannon_16S, gini_ITS, gini_16S,
+                ppm_Al:ppm_Zn) %>%
   dplyr::select_if(is.numeric)
 
 
@@ -9355,8 +9354,8 @@ ggsave('roots_pH.svg', #save plot name and type - can be "eps", "pdf", "jpeg", "
 
 #visualize shoot mass vs Ba
 SOM_13C_T0 %>%
-  filter(ppm_Ba.y > 50) %>%
-ggplot(aes(x=ppm_Ba.y, y=shoot_mass)) + 
+  filter(ppm_Ba > 50) %>%
+ggplot(aes(x=ppm_Ba, y=shoot_mass)) + 
   geom_point(aes(color = factor(Site_ID))) + #add points to plot
   geom_smooth(method="lm", se=TRUE, color=plotline_color, fill=fill_color) +
   scale_color_manual(values = colors4) + #define colors to use
